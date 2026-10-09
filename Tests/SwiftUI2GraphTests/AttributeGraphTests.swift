@@ -119,6 +119,15 @@ struct AttributeGraphTests {
         #expect(derived.peekValue == 2)
     }
 
+    @Test func existentialFieldComparison() {
+        // A struct holding a non-class protocol existential: comparing must open the payload, not
+        // re-box the existential (that recursed until the stack overflowed).
+        struct Handler: ComparisonTestProtocol { var value: Int }
+        struct Holder { var handler: any ComparisonTestProtocol }
+        #expect(GraphComparison.isIdentical(Holder(handler: Handler(value: 1)), Holder(handler: Handler(value: 1))))
+        #expect(!GraphComparison.isIdentical(Holder(handler: Handler(value: 1)), Holder(handler: Handler(value: 2))))
+    }
+
     @Test func structuralComparison() {
         struct Inner { var a: Int; var s: String }
         struct V { var x: Int; var inner: Inner; var object: AnyObject?; var f: () -> Void }
@@ -142,3 +151,5 @@ struct AttributeGraphTests {
         #expect(GraphComparison.compareAny(anyA, anyB))
     }
 }
+
+protocol ComparisonTestProtocol {}

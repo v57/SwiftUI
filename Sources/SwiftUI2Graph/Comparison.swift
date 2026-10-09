@@ -141,20 +141,20 @@ public enum GraphComparison {
         return open(type)
     }
 
-    /// Compares two type-erased values (dynamic types must match).
     public static func compareAny(_ lhs: Any, _ rhs: Any) -> Bool {
+        // `type(of:)` is the payload's concrete type even when the `Any` boxes an existential
+        // (e.g. converted from a generic existential type); opening the box itself would yield
+        // the existential again, so open the concrete metatype and cast to it instead.
         let lhsType = type(of: lhs)
         guard lhsType == type(of: rhs) else { return false }
         if RuntimeReflection.kind(of: lhsType) == .class {
-            // Opening an `Any` that holds a class-bound existential can re-yield the existential
-            // type itself; compare instance identity directly instead.
             return (lhs as AnyObject) === (rhs as AnyObject)
         }
-        func open<T>(_ value: T) -> Bool {
-            guard let other = rhs as? T else { return false }
-            return isIdentical(value, other)
+        func open<T>(_: T.Type) -> Bool {
+            guard let l = lhs as? T, let r = rhs as? T else { return false }
+            return isIdentical(l, r)
         }
-        return _openExistential(lhs, do: open)
+        return _openExistential(lhsType, do: open)
     }
 }
 
