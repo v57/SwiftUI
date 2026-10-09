@@ -19,6 +19,8 @@ public struct ResolvedImage: Hashable, Sendable {
     public var tint: Color.Resolved?
     /// Symbol scale (`imageScale`); the point size stays the font's.
     public var scale: Image.Scale = .medium
+    /// Variable-value symbols: layers above the value are drawn dimmed (0...1).
+    public var variableValue: Double?
 }
 
 /// An opaque platform image with its intrinsic size (compared by identity).
@@ -52,19 +54,21 @@ public struct Image: Equatable {
     var source: ResolvedImage.Source
     var isResizable = false
     var isTemplate: Bool
+    var variableValue: Double?
 
     public init(systemName: String) {
         source = .system(systemName)
         isTemplate = true
     }
 
-    /// Variable-value symbols are drawn at full value.
     public init(systemName: String, variableValue: Double?) {
         self.init(systemName: systemName)
+        self.variableValue = variableValue
     }
 
     public init(_ name: String, variableValue: Double?, bundle: Bundle? = nil) {
         self.init(name)
+        self.variableValue = variableValue
     }
 
     public init(_ name: String) {
@@ -95,7 +99,7 @@ public struct Image: Equatable {
             let missing = environment.symbolVariants.names.filter { !name.split(separator: ".").contains(Substring($0)) }
             if !missing.isEmpty { source = .system(([name] + missing).joined(separator: ".")) }
         }
-        return ResolvedImage(source: source, isResizable: isResizable, pointSize: font.size, weight: font.weight, tint: tint, scale: environment.imageScale)
+        return ResolvedImage(source: source, isResizable: isResizable, pointSize: font.size, weight: font.weight, tint: tint, scale: environment.imageScale, variableValue: variableValue)
     }
 }
 

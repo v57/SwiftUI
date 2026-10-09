@@ -85,6 +85,10 @@ public final class AppKitBackend: RenderBackend {
 
     // MARK: Metrics
 
+    public func unroundedTextWidth(_ text: ResolvedText) -> CGFloat {
+        AppKitText.attributedString(text).boundingRect(with: CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin]).width
+    }
+
     public func measureText(_ text: ResolvedText, proposal: ProposedViewSize) -> CGSize {
         let string = AppKitText.attributedString(text)
         // Infinite proposals (stack flexibility probes) mean "unconstrained".
@@ -200,7 +204,14 @@ public final class AppKitBackend: RenderBackend {
             }
         case .checkbox: return ControlMetrics(minSize: CGSize(width: 14, height: 16))
         case .switch: return ControlMetrics(minSize: CGSize(width: 38, height: 22))
-        case .textField: return ControlMetrics(minSize: CGSize(width: 0, height: 21), idealWidth: 96)
+        case .textField(let style):
+            // Measured on macOS SwiftUI: plain fields are their text line (2pt side insets),
+            // bezeled ones add 2.5pt above and below, rounded borders are 22pt tall.
+            switch style {
+            case .plain: return ControlMetrics(contentInsets: EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 2), idealWidth: 96)
+            case .roundedBorder: return ControlMetrics(contentInsets: EdgeInsets(top: 0, leading: 11, bottom: 0, trailing: 11), idealWidth: 96, fixedHeight: 22)
+            case .automatic, .squareBorder: return ControlMetrics(contentInsets: EdgeInsets(top: 2.5, leading: 4.25, bottom: 2.5, trailing: 4.25), idealWidth: 96)
+            }
         case .slider: return ControlMetrics(minSize: CGSize(width: 0, height: 20), idealWidth: 0)
         case let .datePicker(date, time):
             // SwiftUI uses the field's intrinsic width (locale dependent) and is 24pt tall.
@@ -295,11 +306,17 @@ enum AppKitImages {
             let scale: NSImage.SymbolScale = image.scale == .small ? .small : image.scale == .large ? .large : .medium
             let configuration = NSImage.SymbolConfiguration(pointSize: image.pointSize, weight: NSFont.Weight(rawValue: CGFloat(image.weight.value)), scale: scale)
             // Symbol variants that don't exist for a symbol fall back to the closest base name.
+            func makeSymbol(_ name: String) -> NSImage? {
+                if let value = image.variableValue {
+                    return NSImage(systemSymbolName: name, variableValue: value, accessibilityDescription: nil)
+                }
+                return NSImage(systemSymbolName: name, accessibilityDescription: nil)
+            }
             var candidate = name
-            var symbol = NSImage(systemSymbolName: candidate, accessibilityDescription: nil)
+            var symbol = makeSymbol(candidate)
             while symbol == nil, let dot = candidate.lastIndex(of: ".") {
                 candidate = String(candidate[..<dot])
-                symbol = NSImage(systemSymbolName: candidate, accessibilityDescription: nil)
+                symbol = makeSymbol(candidate)
             }
             return symbol?.withSymbolConfiguration(configuration)
         case .named(let name):

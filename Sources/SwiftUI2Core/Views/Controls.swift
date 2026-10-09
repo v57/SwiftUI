@@ -657,31 +657,37 @@ struct _TextInput: View {
         let tracer = inputs.tracer
         let path = inputs.path
         return _ViewOutputs(layout: inputs.makeLayoutAttribute {
-            var metrics = services.controlMetrics(.textField)
+            let env = environment.value
+            var metrics = services.controlMetrics(.textField(env.textFieldStyle))
+            let font = (env.font ?? .body).resolve()
+            let black = Color.Resolved(red: 0, green: 0, blue: 0, opacity: 1)
+            let line = ResolvedText(string: "X", font: font, color: black, lineLimit: 1, alignment: .leading, strikethrough: false, underline: false)
+            let lineHeight = services.measureText(line, proposal: .unspecified).height
             if kind == .verticalField {
-                let env = environment.value
                 // The rendered content carries the (observed) current text.
                 guard case .textField(let field) = content.value else { return ControlLayoutComputer(metrics: metrics, path: path, tracer: tracer) }
-                let font = field.font
-                let black = Color.Resolved(red: 0, green: 0, blue: 0, opacity: 1)
                 let text = ResolvedText(string: field.text.isEmpty ? field.placeholder : field.text, font: font, color: black, lineLimit: env.lineLimit, alignment: .leading, strikethrough: false, underline: false)
-                let line = ResolvedText(string: "X", font: font, color: black, lineLimit: 1, alignment: .leading, strikethrough: false, underline: false)
                 return VerticalTextFieldLayoutComputer(
-                    metrics: metrics, text: text, lineHeight: services.measureText(line, proposal: .unspecified).height,
+                    metrics: metrics, text: text, lineHeight: lineHeight,
                     minimumLines: env.minimumLineLimit ?? 1, services: services, path: path, tracer: tracer)
             }
-            if kind == .editor { metrics.minSize.height = 40 }
-            // SwiftUI: a text field's ideal width is its prompt's width plus the bezel insets;
-            // secure fields have no ideal width.
-            let prompt = view.attribute.value.prompt
-            if kind == .field, !prompt.isEmpty {
-                let font = (environment.value.font ?? .defaultFont).resolve()
-                let promptText = ResolvedText(string: prompt, font: font, color: .init(red: 0, green: 0, blue: 0, opacity: 1), lineLimit: 1, alignment: .leading, strikethrough: false, underline: false)
-                metrics.idealWidth = services.measureText(promptText, proposal: .unspecified).width + 8
-            } else if kind == .secure {
-                metrics.idealWidth = 0
+            if kind == .editor {
+                metrics.minSize.height = 40
+                return ControlLayoutComputer(metrics: metrics, flexibleHeight: true, path: path, tracer: tracer)
             }
-            return ControlLayoutComputer(metrics: metrics, flexibleHeight: kind == .editor, path: path, tracer: tracer)
+            // macOS SwiftUI: one text line plus the style's insets (rounded borders are a fixed
+            // 22pt); the ideal width is the prompt's plus the insets, whole points when bezeled.
+            metrics.minSize.height = metrics.fixedHeight ?? max(metrics.minSize.height, lineHeight + metrics.contentInsets.vertical)
+            let prompt = view.attribute.value.prompt
+            if kind == .secure {
+                metrics.idealWidth = 0
+            } else if !prompt.isEmpty {
+                let promptText = ResolvedText(string: prompt, font: font, color: black, lineLimit: 1, alignment: .leading, strikethrough: false, underline: false)
+                let width = services.unroundedTextWidth(promptText) + metrics.contentInsets.horizontal
+                let bezeled = env.textFieldStyle == .automatic || env.textFieldStyle == .squareBorder
+                metrics.idealWidth = bezeled ? width.rounded() : width
+            }
+            return ControlLayoutComputer(metrics: metrics, path: path, tracer: tracer)
         })
     }
 }
@@ -705,7 +711,7 @@ final class VerticalTextFieldLayoutComputer: LayoutComputer {
         var width = max(metrics.minSize.width, proposal.width ?? metrics.idealWidth)
         if !width.isFinite { width = metrics.idealWidth }
         // The bezel adds the same insets as for a single-line field.
-        let insets = CGSize(width: 8, height: max(0, metrics.minSize.height - lineHeight))
+        let insets = CGSize(width: metrics.contentInsets.horizontal, height: metrics.contentInsets.vertical)
         let measured = services.measureText(text, proposal: ProposedViewSize(width: max(0, width - insets.width), height: nil)).height
         let height = max(measured, CGFloat(minimumLines) * lineHeight)
         return CGSize(width: width, height: max(metrics.minSize.height, (height + insets.height).rounded(.up)))

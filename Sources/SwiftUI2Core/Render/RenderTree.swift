@@ -180,17 +180,21 @@ public protocol PlatformServices: AnyObject {
     func controlMetrics(_ control: ControlKind) -> ControlMetrics
     /// Font-dependent vertical spacing of text (nil: plain default spacing).
     func textSpacing(_ font: Font.Resolved) -> TextSpacing?
+    /// Exact (not pixel-rounded) width of a single line of text, e.g. a text field's prompt.
+    func unroundedTextWidth(_ text: ResolvedText) -> CGFloat
 }
 
 extension PlatformServices {
     public func textSpacing(_ font: Font.Resolved) -> TextSpacing? { nil }
+    public func unroundedTextWidth(_ text: ResolvedText) -> CGFloat { measureText(text, proposal: .unspecified).width }
 }
 
 public enum ControlKind: Hashable, Sendable {
     case button(ButtonStyleKind)
     case checkbox
     case `switch`
-    case textField
+    /// Text fields: `contentInsets` surround one text line (or a `fixedHeight`).
+    case textField(TextFieldStyleKind)
     case slider
     /// A field-style date picker showing the date and/or the time.
     case datePicker(date: Bool, time: Bool)
@@ -203,11 +207,14 @@ public struct ControlMetrics: Hashable, Sendable {
     public var minSize: CGSize
     /// Ideal width for controls without intrinsic width (text fields, sliders).
     public var idealWidth: CGFloat
+    /// Height independent of the content's font (e.g. rounded-border text fields).
+    public var fixedHeight: CGFloat?
 
-    public init(contentInsets: EdgeInsets = EdgeInsets(), minSize: CGSize = .zero, idealWidth: CGFloat = 0) {
+    public init(contentInsets: EdgeInsets = EdgeInsets(), minSize: CGSize = .zero, idealWidth: CGFloat = 0, fixedHeight: CGFloat? = nil) {
         self.contentInsets = contentInsets
         self.minSize = minSize
         self.idealWidth = idealWidth
+        self.fixedHeight = fixedHeight
     }
 }
 
