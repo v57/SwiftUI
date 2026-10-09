@@ -173,9 +173,14 @@ struct InteractionTests {
         host.tap("Go to 7")
         #expect(model.path == [7])
         #expect(host.texts.contains("Detail 7"))
-        #expect(host.texts.contains("Number 7")) // title in the navigation bar
-        host.tap("Back")
+        // macOS: the title goes to the window title, the back button to the window toolbar.
+        #expect(host.graph.navigationTitle == "Number 7")
+        let back = host.graph.windowToolbar.items.first { $0.placement == .navigation }?.button
+        #expect(back?.systemImage == "chevron.backward")
+        back?.action()
+        host.flush()
         #expect(model.path.isEmpty)
+        #expect(host.graph.windowToolbar.items.isEmpty)
     }
 
     @Test func tabViewSwitchesContent() {

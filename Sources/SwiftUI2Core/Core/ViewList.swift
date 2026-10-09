@@ -253,6 +253,14 @@ final class ViewListContainer {
         let geometry = Attribute<ViewGeometry>(subgraph, isEqual: { $0 == $1 })
         geometry.label = "geometry \(id)"
         childInputs.geometry = geometry
+        childInputs.listItemPosition = Attribute<ListItemPosition>(subgraph, isEqual: { $0 == $1 }) { [unowned self] in
+            let items = self.items.value
+            guard let index = self.indexByID[id] else { return ListItemPosition() }
+            @MainActor func role(_ i: Int) -> ListElementRole? {
+                items.indices.contains(i) ? items[i].traits.value(ListElementRoleKey.self) : nil
+            }
+            return ListItemPosition(index: index, count: items.count, previous: role(index - 1), next: role(index + 1))
+        }
         let outputs = element.make(childInputs)
         let tracer = inputs.tracer
         let pathBox = PathBox()
@@ -274,6 +282,21 @@ final class ViewListContainer {
         _ = items.value
         return indexByID[id]
     }
+}
+
+/// A list element's kind (sections flatten into header / rows / footer).
+public enum ListElementRole: Hashable, Sendable { case row, header, footer, sectionGap }
+
+public enum ListElementRoleKey: _ViewTraitKey {
+    public static var defaultValue: ListElementRole { .row }
+}
+
+/// Where a child sits in its container (list chrome such as separators depends on neighbours).
+struct ListItemPosition: Equatable {
+    var index = 0
+    var count = 0
+    var previous: ListElementRole?
+    var next: ListElementRole?
 }
 
 @MainActor

@@ -121,6 +121,8 @@ public struct _ViewInputs {
     var scrollViewport: Attribute<CGRect>?
     /// Scroll targets of the enclosing scroll view (`.id` views, lazy stacks) for ScrollViewReader.
     var scrollTargets: ScrollTargets?
+    /// Position of a container child among its siblings (set by list containers).
+    var listItemPosition: Attribute<ListItemPosition>?
 
     var listInputs: _ViewListInputs {
         _ViewListInputs(host: host, subgraph: subgraph, environment: environment, depth: depth, path: path, modifierContent: modifierContent, animationScope: animationScope)
@@ -164,6 +166,8 @@ public struct _ViewListInputs {
     var path: ViewPath
     var modifierContent: ModifierContentEntry?
     var animationScope: AnimationScope?
+    /// Sections contribute their header, rows and footer as separate list elements (List).
+    var flattensSections = false
 
     func with(path component: String) -> _ViewListInputs {
         var copy = self

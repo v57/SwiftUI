@@ -111,6 +111,11 @@ public struct Color: Hashable, Sendable, CustomStringConvertible {
     public static let accentColor = Color(storage: .accent)
     static let separator = dynamic(rgb(0, 0, 0, 0.1), rgb(1, 1, 1, 0.1))
     static let controlBackground = dynamic(rgb(1, 1, 1), rgb(0.118, 0.118, 0.118))
+    /// Split view sidebar column (the window background on macOS 26+).
+    static let sidebarBackground = dynamic(rgb(0, 0, 0, 0), rgb(1, 1, 1, 0))
+    static let listSelection = dynamic(rgb(0, 0, 0, 0.1), rgb(1, 1, 1, 0.12))
+    static let listBorder = dynamic(rgb(0, 0, 0, 0.15), rgb(1, 1, 1, 0.3))
+    static let splitDivider = dynamic(rgb(0, 0, 0, 0.12), rgb(0, 0, 0, 1))
     static let segmentedTrack = dynamic(rgb(0, 0, 0, 0.06), rgb(1, 1, 1, 0.065))
     static let segmentedSelection = dynamic(rgb(1, 1, 1), rgb(1, 1, 1, 0.33))
 }

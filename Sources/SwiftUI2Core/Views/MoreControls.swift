@@ -154,8 +154,9 @@ extension View {
 
     public func controlSize(_ size: ControlSize) -> some View { environment(\.controlSize, size) }
     public func labelsHidden() -> some View { environment(\.labelsHidden, true) }
-    public func help(_ text: String) -> some View { self }
-    public func help(_ text: Text) -> some View { self }
+    public func help(_ text: String) -> some View { modifier(_HelpModifier(text: text)) }
+    public func help(_ text: Text) -> some View { modifier(_HelpModifier(text: text.plainString)) }
+    public func help(_ key: LocalizedStringKey) -> some View { modifier(_HelpModifier(text: Text(key).plainString)) }
     public func imageScale(_ scale: Image.Scale) -> some View { environment(\.imageScale, scale) }
 
     public func onSubmit(of triggers: SubmitTriggers = .text, _ action: @escaping @MainActor () -> Void) -> some View {
@@ -480,7 +481,7 @@ public struct ProgressView<Label: View, CurrentValueLabel: View>: View {
         VStack(alignment: .leading, spacing: 4) {
             if let label { label }
             if let fraction, style != .circular {
-                _LinearProgressBar(fraction: fraction)
+                _LinearProgressBar(fraction: fraction, height: controlSize == .small || controlSize == .mini ? 12 : 18)
             } else if let fraction {
                 _CircularProgress(fraction: fraction, size: controlSize == .small || controlSize == .mini ? 16 : 32)
             } else {
@@ -543,8 +544,9 @@ extension ProgressView {
 
 struct _LinearProgressBar: View {
     let fraction: Double
+    var height: CGFloat = 18
     var body: some View {
-        // macOS: an 18pt tall control with a 6pt bar, no ideal width.
+        // macOS: an 18pt tall control with a 6pt bar (small/mini: 12pt, 4pt bar), no ideal width.
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.gray.opacity(0.25))
@@ -552,8 +554,8 @@ struct _LinearProgressBar: View {
                     .frame(width: proxy.size.width * CGFloat(min(max(fraction, 0), 1)))
             }
         }
-        .frame(height: 6)
-        .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, minHeight: 18, maxHeight: 18)
+        .frame(height: height == 18 ? 6 : 4)
+        .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, minHeight: height, maxHeight: height)
     }
 }
 
@@ -622,6 +624,7 @@ public struct LabeledContent<Label: View, Content: View>: View {
     let label: Label
     let content: Content
     @Environment(\.labelsHidden) private var labelsHidden
+    @Environment(\.isInForm) private var isInForm
 
     public init(@ViewBuilder content: () -> Content, @ViewBuilder label: () -> Label) {
         self.label = label()
@@ -629,9 +632,11 @@ public struct LabeledContent<Label: View, Content: View>: View {
     }
 
     public var body: some View {
+        // Form rows push the value to the trailing edge; elsewhere label and value just sit
+        // side by side.
         HStack(alignment: .firstTextBaseline) {
             if !labelsHidden { label }
-            Spacer(minLength: 8)
+            if isInForm { Spacer(minLength: 8) }
             content.foregroundStyle(.secondary)
         }
     }

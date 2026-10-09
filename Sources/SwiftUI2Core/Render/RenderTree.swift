@@ -140,6 +140,8 @@ public struct RenderActions {
     public var drop: (@MainActor (_ providers: [AnyObject], _ location: CGPoint) -> Bool)?
     /// Drag source: makes the item provider (`NSItemProvider` on Apple platforms) for a drag.
     public var dragItem: (@MainActor () -> AnyObject?)?
+    /// Tooltip (`.help`).
+    public var toolTip: String?
     public init() {}
 }
 

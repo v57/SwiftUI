@@ -73,11 +73,17 @@ public final class AppKitBackend: RenderBackend {
         let width = proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? .greatestFiniteMagnitude
         // Like SwiftUI: line height without the font's leading, sizes rounded up to device pixels.
         var rect = string.boundingRect(with: CGSize(width: max(width, 1), height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin])
+        var usedWidth = min(rect.width, width)
         if let limit = text.lineLimit {
             let lineHeight = AppKitText.lineHeight(text)
-            rect.size.height = min(rect.height, CGFloat(limit) * lineHeight)
+            let maxHeight = CGFloat(limit) * lineHeight
+            if rect.height > maxHeight + 0.5 {
+                // Truncated text uses the whole proposed width (the last line ends in "…").
+                rect.size.height = maxHeight
+                if width < .greatestFiniteMagnitude { usedWidth = width }
+            }
         }
-        return CGSize(width: Self.ceilToPixel(min(rect.width, width)), height: Self.ceilToPixel(rect.height))
+        return CGSize(width: Self.ceilToPixel(usedWidth), height: Self.ceilToPixel(rect.height))
     }
 
     static let pixelScale: CGFloat = NSScreen.main?.backingScaleFactor ?? 2

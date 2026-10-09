@@ -527,6 +527,7 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
         layer?.shadowOpacity = 0
         effectTransform = .identity
         isTapTarget = false
+        toolTip = node?.actions.toolTip
         updateTrackingAreas()
         updateDropRegistration()
         guard case .effect(let effect) = content else { return }

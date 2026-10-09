@@ -146,6 +146,7 @@ open class NSHostingView<Content: View>: GraphHostingView {
 @MainActor
 public enum AppKitAppRunner {
     private static var windows: [NSWindow] = []
+    private static var toolbarControllers: [WindowToolbarController] = []
     private static var delegate: AppDelegate?
     /// The app's `@NSApplicationDelegateAdaptor` delegate; unhandled delegate messages go to it.
     nonisolated(unsafe) static var userDelegate: (NSObject & NSApplicationDelegate)?
@@ -178,6 +179,9 @@ public enum AppKitAppRunner {
                 window?.title = title ?? baseTitle
             }
             window.contentView = host
+            let toolbarController = WindowToolbarController(window: window, host: host)
+            toolbarControllers.append(toolbarController)
+            host.graph.onToolbarChange = { [weak toolbarController] toolbar in toolbarController?.update(toolbar) }
             // Like SwiftUI: the content's minimum size bounds the window, and the default frame is
             // `defaultSize` or the content's ideal size (at least 900x450, title bar included).
             let minimum = host.sizeThatFits(ProposedViewSize(width: 0, height: 0))

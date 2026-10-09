@@ -47,6 +47,12 @@ public struct ScrollView<Content: View>: View {
         let render = inputs.makePlatformNode(content: content, actions: actions, childOrigin: zero)
         var contentInputs = inputs.child(geometry: contentGeometry, render: render)
         contentInputs.stackAxis = nil
+        let scrollTransform = Attribute<CGPoint>(inputs.subgraph, isEqual: { $0 == $1 }) {
+            let origin = geometry.value.origin
+            let scrolled = offset.value
+            return CGPoint(x: origin.x - scrolled.x, y: origin.y - scrolled.y)
+        }
+        contentInputs.coordinateSpaces = CoordinateSpaces(scrollTransform: scrollTransform, parent: inputs.coordinateSpaces)
         contentInputs.scrollViewport = Attribute<CGRect>(inputs.subgraph, isEqual: { $0 == $1 }) {
             CGRect(origin: offset.value, size: geometry.value.size)
         }
@@ -142,10 +148,13 @@ public struct GeometryProxy {
     public func frame(in coordinateSpace: CoordinateSpace) -> CGRect {
         switch coordinateSpace {
         case .local: return CGRect(origin: .zero, size: geometry.size)
-        case .global: return geometry.frame
+        case .global:
+            let offset = spaces?.globalOffset() ?? .zero
+            return geometry.frame.offsetBy(dx: offset.x, dy: offset.y)
         case .named(let name):
-            let origin = spaces?.origin(of: name) ?? .zero
-            return geometry.frame.offsetBy(dx: -origin.x, dy: -origin.y)
+            // Unknown names behave like the global space (as in SwiftUI).
+            let offset = spaces?.offset(to: name) ?? spaces?.globalOffset() ?? .zero
+            return geometry.frame.offsetBy(dx: offset.x, dy: offset.y)
         }
     }
 

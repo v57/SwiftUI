@@ -98,11 +98,47 @@ extension ListStyle where Self == SidebarListStyle { public static var sidebar: 
 extension ListStyle where Self == BorderedListStyle { public static var bordered: BorderedListStyle { .init() } }
 
 struct ListContextKey: EnvironmentKey { static let defaultValue: ListContext? = nil }
+struct ListStyleKindKey: EnvironmentKey { static let defaultValue = ListStyleKind.automatic }
+struct SidebarColumnKey: EnvironmentKey { static let defaultValue = false }
+
+/// A list style's measured macOS metrics.
+enum ResolvedListStyle: Equatable {
+    /// The default style: inset rows with separators.
+    case automatic
+    case inset, plain, bordered, sidebar
+    /// The sidebar style inside a split view's sidebar column (no top inset: the column starts
+    /// below the toolbar).
+    case sidebarColumn
+
+    var hasBackground: Bool { self != .sidebar && self != .sidebarColumn }
+    var isSidebar: Bool { self == .sidebar || self == .sidebarColumn }
+    /// Rows are at least this tall (content is centered).
+    var minRowHeight: CGFloat { isSidebar ? 28 : 24 }
+    var showsSeparators: Bool { self == .automatic }
+    /// Padding around the rows (inside the background / border).
+    var contentInsets: EdgeInsets {
+        switch self {
+        case .automatic, .inset, .sidebar: EdgeInsets(top: 10, leading: 10, bottom: 10, trailing: 10)
+        case .sidebarColumn: EdgeInsets(top: 0, leading: 10, bottom: 10, trailing: 10)
+        case .plain: EdgeInsets()
+        case .bordered: EdgeInsets(top: 1, leading: 1, bottom: 1, trailing: 1)
+        }
+    }
+    /// Padding inside a row around its content.
+    var rowInsets: EdgeInsets {
+        switch self {
+        case .automatic, .inset, .bordered: EdgeInsets(top: 4, leading: 6, bottom: 4, trailing: 6)
+        case .plain: EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8)
+        case .sidebar, .sidebarColumn: EdgeInsets(top: 4, leading: 6, bottom: 4, trailing: 6)
+        }
+    }
+}
 
 @MainActor
 struct ListContext {
     let selection: SelectionContext?
     let isForm: Bool
+    var style: ResolvedListStyle = .automatic
 }
 
 extension ListContext: _GraphComparable {
@@ -117,10 +153,31 @@ extension EnvironmentValues {
 
     /// Controls inside a grouped `Form` use the macOS row style: label leading, control trailing.
     var isInForm: Bool { listContext?.isForm ?? false }
+
+    var listStyleKind: ListStyleKind {
+        get { self[ListStyleKindKey.self] }
+        set { self[ListStyleKindKey.self] = newValue }
+    }
+
+    /// Inside a split view's sidebar column (lists default to the sidebar style).
+    var isSidebarColumn: Bool {
+        get { self[SidebarColumnKey.self] }
+        set { self[SidebarColumnKey.self] = newValue }
+    }
 }
 
 extension View {
-    public func listStyle<S: ListStyle>(_ style: S) -> some View { self }
+    public func listStyle<S: ListStyle>(_ style: S) -> some View {
+        let kind: ListStyleKind
+        switch style {
+        case is PlainListStyle: kind = .plain
+        case is InsetListStyle: kind = .inset
+        case is SidebarListStyle: kind = .sidebar
+        case is BorderedListStyle: kind = .bordered
+        default: kind = .automatic
+        }
+        return environment(\.listStyleKind, kind)
+    }
     public func listRowInsets(_ insets: EdgeInsets?) -> some View { self }
     public func listRowSeparator(_ visibility: Visibility, edges: VerticalEdge.Set = .all) -> some View { self }
     public func listSectionSeparator(_ visibility: Visibility, edges: VerticalEdge.Set = .all) -> some View { self }
@@ -154,21 +211,72 @@ struct _ListRowModifier: ViewModifier {
     let background: AnyView?
     let delete: (@MainActor () -> Void)?
     let isForm: Bool
+    var style: ResolvedListStyle = .automatic
+    var role: ListElementRole = .row
+    var position = ListItemPosition()
 
     func body(content: Content) -> some View {
-        content
-            .padding(.vertical, isForm ? 6 : 4)
-            .padding(.horizontal, isForm ? 0 : 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 5).fill(Color.accentColor.opacity(0.25))
-                } else if let background {
-                    background
+        if isForm {
+            content
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .modifier(_OptionalTap(action: select))
+                .modifier(_OptionalDeleteMenu(delete: delete))
+        } else if role == .header {
+            header(content)
+        } else if role == .sectionGap {
+            // Between sections: 20pt; a leading gap stands in for the list's top inset.
+            Color.clear.frame(height: position.index == 0 ? style.contentInsets.top : 20)
+        } else {
+            let insets = style.rowInsets
+            content
+                .padding(insets)
+                .frame(maxWidth: .infinity, minHeight: style.minRowHeight, alignment: .leading)
+                .background {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 5).fill(Color.listSelection)
+                    } else if let background {
+                        background
+                    }
                 }
-            }
-            .modifier(_OptionalTap(action: select))
-            .modifier(_OptionalDeleteMenu(delete: delete))
+                .overlay(alignment: .bottom) {
+                    // Separators between consecutive rows (and below section headers).
+                    if style.showsSeparators, role == .row, position.next == .row {
+                        Rectangle().fill(Color.separator).frame(height: 1).padding(.horizontal, insets.leading)
+                    }
+                }
+                .padding(.top, position.index == 0 ? style.contentInsets.top : 0)
+                .modifier(_OptionalTap(action: select))
+                .modifier(_OptionalDeleteMenu(delete: delete))
+        }
+    }
+
+    /// Section headers (measured: 11pt semibold; inset lists add 20pt between sections and a
+    /// separator below; a leading header is pinned with a full-width line).
+    @ViewBuilder private func header(_ content: Content) -> some View {
+        let isFirst = position.index == 0
+        if style.isSidebar {
+            content
+                .padding(.horizontal, 4)
+                .padding(.top, isFirst ? 10 : 15)
+                .padding(.bottom, 3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            content
+                .padding(.horizontal, style.rowInsets.leading)
+                .padding(.top, isFirst ? 7 - style.contentInsets.top : 27)
+                .padding(.bottom, 7)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .overlay(alignment: .bottom) {
+                    if style.showsSeparators, !isFirst, position.next == .row {
+                        Rectangle().fill(Color.separator).frame(height: 1).padding(.horizontal, style.rowInsets.leading)
+                    } else if isFirst, style.hasBackground {
+                        Rectangle().fill(Color.separator).frame(height: 1).padding(.horizontal, -style.contentInsets.leading)
+                    }
+                }
+                .padding(.top, isFirst ? style.contentInsets.top : 0)
+                .padding(.bottom, isFirst ? 10 : 0)
+        }
     }
 }
 
@@ -194,10 +302,19 @@ extension ViewList {
     /// Applies list-row chrome using the environment's list context.
     @MainActor
     func listRows(in subgraph: Subgraph, environment: Attribute<EnvironmentValues>) -> ViewList {
-        wrapped(in: subgraph) { traits, itemSubgraph in
-            makeObservedAttribute(itemSubgraph, of: _ListRowModifier.self) {
-                makeListRowModifier(traits: traits, environment: environment.value)
+        mapElements(in: subgraph) { element in
+            var copy = element
+            copy.make = { placement in
+                let position = placement.listItemPosition
+                let modifier = makeObservedAttribute(placement.subgraph, of: _ListRowModifier.self) {
+                    var row = makeListRowModifier(traits: element.traits, environment: environment.value)
+                    row.role = element.traits.value(ListElementRoleKey.self)
+                    row.position = position?.value ?? ListItemPosition()
+                    return row
+                }
+                return _ListRowModifier._makeView(modifier: _GraphValue(modifier), inputs: placement) { element.make($0) }
             }
+            return copy
         }
     }
 }
@@ -221,7 +338,8 @@ private func makeListRowModifier(traits: ViewTraits, environment: EnvironmentVal
         select: select,
         background: traits.value(ListRowBackgroundTraitKey.self),
         delete: delete,
-        isForm: context?.isForm ?? false
+        isForm: context?.isForm ?? false,
+        style: context?.style ?? .automatic
     )
 }
 
@@ -229,14 +347,35 @@ public struct List<SelectionValue: Hashable, Content: View>: View {
     let content: Content
     let selection: SelectionContext?
 
+    @Environment(\.listStyleKind) private var styleKind
+    @Environment(\.isSidebarColumn) private var isSidebarColumn
+
+    private var style: ResolvedListStyle {
+        switch styleKind {
+        case .plain: .plain
+        case .inset, .insetGrouped, .grouped: .inset
+        case .bordered: .bordered
+        case .sidebar: isSidebarColumn ? .sidebarColumn : .sidebar
+        case .automatic: isSidebarColumn ? .sidebarColumn : .automatic
+        }
+    }
+
     public var body: some View {
+        let style = self.style
+        let insets = style.contentInsets
+        // The first row/header carries the top inset (a leading section header is pinned there).
         ScrollView {
             _ListRows(content: content)
-                .padding(.vertical, 6)
-                .padding(.horizontal, 6)
+                .padding(EdgeInsets(top: 0, leading: insets.leading, bottom: insets.bottom, trailing: insets.trailing))
                 .frame(maxWidth: .infinity, alignment: .topLeading)
+                // Sidebar rows use the body text style (stacked texts get its leading).
+                .transformEnvironment(\.font) { font in if style.isSidebar, font == nil { font = .body } }
         }
-        .environment(\.listContext, ListContext(selection: selection, isForm: false))
+        .background(style.hasBackground ? Color.controlBackground : Color.clear)
+        .overlay {
+            if style == .bordered { Rectangle().strokeBorder(Color.listBorder, lineWidth: 1) }
+        }
+        .environment(\.listContext, ListContext(selection: selection, isForm: false, style: style))
     }
 }
 
@@ -246,11 +385,13 @@ struct _ListRows<Content: View>: View {
     var body: Never { primitiveBody(Self.self) }
 
     static func _makeView(view: _GraphValue<Self>, inputs: _ViewInputs) -> _ViewOutputs {
-        let list = Content._makeViewList(view: view.project(inputs) { $0.content }, inputs: inputs.listInputs).list
+        var listInputs = inputs.listInputs
+        listInputs.flattensSections = true
+        let list = Content._makeViewList(view: view.project(inputs) { $0.content }, inputs: listInputs).list
         let rows = list.listRows(in: inputs.subgraph, environment: inputs.environment)
         // Lists are lazy: only rows near the visible area are built.
         let leading = HorizontalAlignment.leading
-        return inputs.makeLazyStack(axis: .vertical, crossGuide: (leading.key, leading.id), spacing: 2, list: rows, eagerLayout: inputs.constant(_VStackLayout(alignment: .leading, spacing: 2)))
+        return inputs.makeLazyStack(axis: .vertical, crossGuide: (leading.key, leading.id), spacing: 0, list: rows, eagerLayout: inputs.constant(_VStackLayout(alignment: .leading, spacing: 0)))
     }
 }
 
@@ -381,6 +522,26 @@ public struct Section<Parent: View, Content: View, Footer: View>: View {
         self.footer = footer()
     }
 
+    /// In lists, a section contributes its header, rows and footer as separate list elements.
+    public static func _makeViewList(view: _GraphValue<Self>, inputs: _ViewListInputs) -> _ViewListOutputs {
+        guard inputs.flattensSections else { return .unaryElement(view: view, inputs: inputs) }
+        let (hasHeader, hasFooter) = AnyAttribute.withoutDependencies { (view.attribute.value.header != nil, view.attribute.value.footer != nil) }
+        var nodes: [ViewList.Node] = []
+        func element<V: View>(_ role: ListElementRole, _ project: @escaping (Self) -> V) -> ViewList.Node {
+            var traits = ViewTraits()
+            traits[ListElementRoleKey.self] = Attribute(inputs.subgraph, value: role)
+            return .element(ViewListElement(traits: traits) { placement in
+                V._makeView(view: view.project(inputs) { project($0) }, inputs: inputs.instantiate(placement))
+            })
+        }
+        // Sections without a header are still separated (an empty spacer element).
+        if hasHeader { nodes.append(element(.header) { _ListSectionHeader(content: $0.header) }) } else { nodes.append(element(.sectionGap) { _ in EmptyView() }) }
+        let rows = Content._makeViewList(view: view.project(inputs) { $0.content }, inputs: inputs).list
+        nodes.append(.nested(.index(1), rows))
+        if hasFooter { nodes.append(element(.footer) { $0.footer }) }
+        return _ViewListOutputs(list: ViewList(nodes: nodes))
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if let header {
@@ -401,6 +562,18 @@ public struct Section<Parent: View, Content: View, Footer: View>: View {
             }
         }
         .padding(.bottom, listContext == nil ? 0 : 6)
+    }
+}
+
+/// Section header text style in lists (11pt semibold; secondary, tertiary in sidebars).
+struct _ListSectionHeader<Content: View>: View {
+    let content: Content
+    @Environment(\.listContext) private var context
+
+    var body: some View {
+        content
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(context?.style.isSidebar == true ? HierarchicalShapeStyle.tertiary : .secondary)
     }
 }
 

@@ -84,13 +84,24 @@ public final class ViewGraph: AttributeGraphDelegate {
             modifierContent: nil
         )
         presentations = PresentationRegistry(subgraph: rootSubgraph)
-        rootOutputs = Root._makeView(view: _GraphValue(root), inputs: inputs.requesting(NavigationTitleKey.self))
+        rootOutputs = Root._makeView(view: _GraphValue(root), inputs: inputs.requesting(NavigationTitleKey.self).requesting(ToolbarItemsKey.self).requesting(NavigationChromeKey.self))
         let titleAttribute = rootOutputs.preferences[NavigationTitleKey.self]
         let titleObserver = Attribute<String?>(rootSubgraph, isEqual: { $0 == $1 }) { titleAttribute?.value?.plainString }
         titleObserver.onChange = { [unowned self] title in
             enqueueAfterUpdate { [unowned self] in navigationTitle = title }
         }
         titleObserver.isEager = true
+
+        // Window toolbar (items from `.toolbar`, chrome from navigation containers).
+        let itemsAttribute = rootOutputs.preferences[ToolbarItemsKey.self]
+        let chromeAttribute = rootOutputs.preferences[NavigationChromeKey.self]
+        let toolbarObserver = Attribute<WindowToolbar>(rootSubgraph, isEqual: { $0 == $1 }) {
+            WindowToolbar(items: itemsAttribute?.value ?? [], chrome: chromeAttribute?.value ?? NavigationChrome())
+        }
+        toolbarObserver.onChange = { [unowned self] toolbar in
+            enqueueAfterUpdate { [unowned self] in windowToolbar = toolbar }
+        }
+        toolbarObserver.isEager = true
 
         // Presentation layer (sheets, alerts, popovers, menus) above the root, covering the window.
         let layerGeometry = Attribute<ViewGeometry>(rootSubgraph, isEqual: { $0 == $1 })
@@ -205,6 +216,16 @@ public final class ViewGraph: AttributeGraphDelegate {
     /// immediately delivers the current title.
     public var onNavigationTitleChange: ((String?) -> Void)? {
         didSet { onNavigationTitleChange?(navigationTitle) }
+    }
+
+    /// Called with the window toolbar (items and navigation chrome) whenever it changes; setting
+    /// it delivers the current toolbar.
+    public var onToolbarChange: ((WindowToolbar) -> Void)? {
+        didSet { onToolbarChange?(windowToolbar) }
+    }
+
+    public private(set) var windowToolbar = WindowToolbar() {
+        didSet { if windowToolbar != oldValue { onToolbarChange?(windowToolbar) } }
     }
 
     /// The root's current `.navigationTitle`.

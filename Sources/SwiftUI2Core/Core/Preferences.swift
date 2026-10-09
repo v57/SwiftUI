@@ -310,23 +310,60 @@ public struct _CoordinateSpaceModifier: ViewModifier {
 /// Named coordinate spaces visible to a view (linked list, innermost first).
 @MainActor
 final class CoordinateSpaces {
-    let name: AnyHashable
-    let origin: Attribute<CGPoint>
+    /// A named space (`.coordinateSpace(name:)`): its origin in the space it is declared in.
+    let name: AnyHashable?
+    let origin: Attribute<CGPoint>?
+    /// A scroll view boundary: added to points inside the scroll content to get points in the
+    /// space around the scroll view (scroll view origin minus content offset).
+    let scrollTransform: Attribute<CGPoint>?
     let parent: CoordinateSpaces?
 
     init(name: AnyHashable, origin: Attribute<CGPoint>, parent: CoordinateSpaces?) {
         self.name = name
         self.origin = origin
+        self.scrollTransform = nil
         self.parent = parent
     }
 
-    func origin(of name: AnyHashable) -> CGPoint? {
+    init(scrollTransform: Attribute<CGPoint>, parent: CoordinateSpaces?) {
+        self.name = nil
+        self.origin = nil
+        self.scrollTransform = scrollTransform
+        self.parent = parent
+    }
+
+    /// Offset converting a point in the current space to the named space (nil: unknown name).
+    func offset(to name: AnyHashable) -> CGPoint? {
+        var total = CGPoint.zero
         var current: CoordinateSpaces? = self
         while let space = current {
-            if space.name == name { return space.origin.value }
+            if let spaceName = space.name, spaceName == name, let origin = space.origin {
+                let point = origin.value
+                return CGPoint(x: total.x - point.x, y: total.y - point.y)
+            }
+            if let transform = space.scrollTransform {
+                let value = transform.value
+                total.x += value.x
+                total.y += value.y
+            }
             current = space.parent
         }
         return nil
+    }
+
+    /// Offset converting a point in the current space to the window (host) space.
+    func globalOffset() -> CGPoint {
+        var total = CGPoint.zero
+        var current: CoordinateSpaces? = self
+        while let space = current {
+            if let transform = space.scrollTransform {
+                let value = transform.value
+                total.x += value.x
+                total.y += value.y
+            }
+            current = space.parent
+        }
+        return total
     }
 }
 
