@@ -15,6 +15,8 @@ public struct ResolvedImage: Hashable, Sendable {
     public var pointSize: CGFloat
     public var weight: Font.Weight
     public var tint: Color.Resolved?
+    /// Symbol scale (`imageScale`); the point size stays the font's.
+    public var scale: Image.Scale = .medium
 }
 
 public struct Image: Equatable {
@@ -49,14 +51,9 @@ public struct Image: Equatable {
     }
 
     func resolve(in environment: EnvironmentValues) -> ResolvedImage {
-        var font = (environment.font ?? .defaultFont).resolve()
-        switch environment.imageScale {
-        case .small: font.size *= 0.8
-        case .large: font.size *= 1.3
-        case .medium: break
-        }
+        let font = (environment.font ?? .defaultFont).resolve()
         let tint: Color.Resolved? = isTemplate ? ForegroundStyle()._resolveColor(in: environment) : nil
-        return ResolvedImage(source: source, isResizable: isResizable, pointSize: font.size, weight: font.weight, tint: tint)
+        return ResolvedImage(source: source, isResizable: isResizable, pointSize: font.size, weight: font.weight, tint: tint, scale: environment.imageScale)
     }
 }
 

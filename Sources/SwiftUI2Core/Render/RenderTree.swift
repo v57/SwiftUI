@@ -179,6 +179,8 @@ public enum ControlKind: Hashable, Sendable {
     case `switch`
     case textField
     case slider
+    /// A field-style date picker showing the date and/or the time.
+    case datePicker(date: Bool, time: Bool)
 }
 
 public struct ControlMetrics: Hashable, Sendable {

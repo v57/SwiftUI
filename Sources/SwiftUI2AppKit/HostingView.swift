@@ -166,9 +166,8 @@ public enum AppKitAppRunner {
         }
         for description in descriptions where description.role == .main {
             let host = GraphHostingView(makeGraph: description.makeGraph)
-            let size = description.defaultSize ?? fittedSize(host)
             let window = NSWindow(
-                contentRect: CGRect(origin: .zero, size: size),
+                contentRect: CGRect(origin: .zero, size: CGSize(width: 900, height: 450)),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered,
                 defer: false
@@ -179,22 +178,32 @@ public enum AppKitAppRunner {
                 window?.title = title ?? baseTitle
             }
             window.contentView = host
-            // SwiftUI's `defaultSize` is the window frame (title bar included), not the content size.
+            // Like SwiftUI: the content's minimum size bounds the window, and the default frame is
+            // `defaultSize` or the content's ideal size (at least 900x450, title bar included).
+            let minimum = host.sizeThatFits(ProposedViewSize(width: 0, height: 0))
+            window.contentMinSize = minimum
+            let titleBar = window.frame.height - window.contentLayoutRect.height
+            let frameSize: CGSize
             if let size = description.defaultSize {
-                window.setFrame(CGRect(origin: .zero, size: size), display: false)
+                frameSize = size
+            } else {
+                let ideal = host.sizeThatFits(.unspecified)
+                frameSize = CGSize(width: max(ideal.width, 900), height: max(ideal.height + titleBar, 450))
             }
-            window.center()
+            // Centered in the screen's visible frame (NSWindow.center() places windows higher).
+            let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? .zero
+            let origin = CGPoint(x: (visible.midX - frameSize.width / 2).rounded(), y: (visible.midY - frameSize.height / 2).rounded())
+            window.setFrame(CGRect(origin: origin, size: frameSize), display: false)
+            // SwiftUI restores window frames between launches.
+            let autosaveName = "SwiftUI2.WindowGroup-\(description.title)-1"
+            window.setFrameUsingName(autosaveName)
+            window.setFrameAutosaveName(autosaveName)
             window.makeKeyAndOrderFront(nil)
             windows.append(window)
         }
         app.activate()
         app.run()
         exit(0)
-    }
-
-    private static func fittedSize(_ host: GraphHostingView) -> CGSize {
-        let ideal = host.sizeThatFits(.unspecified)
-        return CGSize(width: min(max(ideal.width, 320), 1200), height: min(max(ideal.height, 200), 900))
     }
 
     private static func makeMenu(hasSettings: Bool) -> NSMenu {

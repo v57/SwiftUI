@@ -62,5 +62,51 @@ struct AppKitBackendTests {
         // Stacks probe flexibility with an infinite proposal: it must measure like an ideal size.
         #expect(backend.measureText(text, proposal: ProposedViewSize(width: .infinity, height: nil)) == single)
     }
+
+    /// Frames of probed views (window coordinates) after a layout pass.
+    private func frames<V: View>(of view: V, size: CGSize = CGSize(width: 600, height: 400)) -> [String: CGRect] {
+        let box = FramesBox()
+        let host = NSHostingView(rootView: view.coordinateSpace(name: "root").onPreferenceChange(ProbeKey.self) { box.frames = $0 })
+        host.frame = CGRect(origin: .zero, size: size)
+        host.layoutSubtreeIfNeeded()
+        host.graph.update()
+        return box.frames
+    }
+
+    /// Spacing measured on macOS SwiftUI (see docs): text/text 0 (default font), text style leading,
+    /// font-dependent gaps between text and other views, 20pt bordered buttons.
+    @Test func textSpacingMatchesSwiftUI() {
+        let frames = frames(of: VStack {
+            Text("Hg").probeFrame("t1")
+            Text("Hg").probeFrame("t2")
+            Color.red.frame(width: 10, height: 10).probeFrame("c1")
+            Text("Hg").probeFrame("t3")
+            Text("Hg").font(.body).probeFrame("t4")
+            Button("B") {}.probeFrame("b1")
+        })
+        func gap(_ a: String, _ b: String) -> CGFloat { frames[b]!.minY - frames[a]!.maxY }
+        #expect(frames["t1"]!.height == 16)
+        #expect(gap("t1", "t2") == 0)
+        #expect(abs(gap("t2", "c1") - 8.15) < 0.01)
+        #expect(abs(gap("c1", "t3") - 4.74) < 0.01)
+        #expect(gap("t3", "t4") == 1)
+        #expect(abs(gap("t4", "b1") - 8.15) < 0.01)
+        #expect(frames["b1"]!.height == 20)
+    }
+}
+
+private final class FramesBox { var frames: [String: CGRect] = [:] }
+
+private struct ProbeKey: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) { value.merge(nextValue()) { $1 } }
+}
+
+private extension View {
+    func probeFrame(_ name: String) -> some View {
+        background(GeometryReader { proxy in
+            Color.clear.preference(key: ProbeKey.self, value: [name: proxy.frame(in: .named("root"))])
+        })
+    }
 }
 #endif

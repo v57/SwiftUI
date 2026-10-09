@@ -200,7 +200,7 @@ public struct _ZStackLayout: Layout, Equatable {
 @MainActor
 private func stackSpacing(_ subviews: LayoutSubviews, axis: Axis) -> ViewSpacing {
     guard let first = subviews.first, let last = subviews.last else { return .zero }
-    var result = ViewSpacing.zero
+    var result = ViewSpacing.empty
     for subview in subviews { result.formUnion(subview.spacing, edges: axis == .vertical ? .horizontal : .vertical) }
     result.formUnion(first.spacing, edges: axis == .vertical ? .top : .leading)
     result.formUnion(last.spacing, edges: axis == .vertical ? .bottom : .trailing)

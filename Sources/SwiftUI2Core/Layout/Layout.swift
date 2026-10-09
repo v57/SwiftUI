@@ -32,7 +32,7 @@ extension Layout {
     }
 
     public func spacing(subviews: Subviews, cache: inout Cache) -> ViewSpacing {
-        var result = ViewSpacing.zero
+        var result = ViewSpacing.empty
         for subview in subviews { result.formUnion(subview.spacing) }
         return subviews.isEmpty ? .zero : result
     }

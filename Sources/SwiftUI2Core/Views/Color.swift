@@ -111,6 +111,8 @@ public struct Color: Hashable, Sendable, CustomStringConvertible {
     public static let accentColor = Color(storage: .accent)
     static let separator = dynamic(rgb(0, 0, 0, 0.1), rgb(1, 1, 1, 0.1))
     static let controlBackground = dynamic(rgb(1, 1, 1), rgb(0.118, 0.118, 0.118))
+    static let segmentedTrack = dynamic(rgb(0, 0, 0, 0.06), rgb(1, 1, 1, 0.065))
+    static let segmentedSelection = dynamic(rgb(1, 1, 1), rgb(1, 1, 1, 0.33))
 }
 
 // MARK: - ShapeStyle

@@ -285,7 +285,11 @@ public struct _GeometryActionModifier<Value: Equatable>: ViewModifier {
             }
         }
         observer.isEager = true
-        return body(inputs)
+        // SwiftUI: content behind onGeometryChange is no longer a direct stack child (a Divider
+        // in it takes the default horizontal orientation).
+        var contentInputs = inputs
+        contentInputs.stackAxis = nil
+        return body(contentInputs)
     }
 }
 

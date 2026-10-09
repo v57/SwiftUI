@@ -400,7 +400,7 @@ public struct Menu<Label: View, Content: View>: View {
         Button {
             if let primaryAction { primaryAction() } else { isPresented = true }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 6.5) {
                 label
                 Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
             }

@@ -305,6 +305,16 @@ public struct ViewSpacing: Equatable, Sendable {
     public static let zero = ViewSpacing(top: 0, leading: 0, bottom: 0, trailing: 0)
     static let `default` = ViewSpacing(top: 8, leading: 8, bottom: 8, trailing: 8)
     static let spacer = ViewSpacing(top: 0, leading: 0, bottom: 0, trailing: 0, isSpacer: true)
+    /// Neutral start value for unions (no preference on any edge).
+    static let empty: ViewSpacing = {
+        var spacing = ViewSpacing.zero
+        let none = EdgeSpacing(value: nil, text: nil)
+        spacing.topEdge = none
+        spacing.leadingEdge = none
+        spacing.bottomEdge = none
+        spacing.trailingEdge = none
+        return spacing
+    }()
 
     public init() { self = .default }
 

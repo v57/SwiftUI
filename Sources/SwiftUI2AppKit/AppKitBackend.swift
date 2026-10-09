@@ -108,7 +108,10 @@ public final class AppKitBackend: RenderBackend {
     }
 
     public func imageSize(_ image: ResolvedImage) -> CGSize {
-        AppKitImages.image(image)?.size ?? CGSize(width: image.pointSize, height: image.pointSize)
+        guard let nsImage = AppKitImages.image(image) else { return CGSize(width: image.pointSize, height: image.pointSize) }
+        // SwiftUI sizes symbols by their alignment width and image height.
+        if case .system = image.source { return CGSize(width: nsImage.alignmentRect.width, height: nsImage.size.height) }
+        return nsImage.size
     }
 
     public func openURL(_ url: URL) {
@@ -149,10 +152,19 @@ public final class AppKitBackend: RenderBackend {
             // SwiftUI's bordered button frame is the 20pt bezel itself (8pt horizontal insets).
             default: return ControlMetrics(contentInsets: EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8), minSize: CGSize(width: 0, height: 20))
             }
-        case .checkbox: return ControlMetrics(minSize: CGSize(width: 16, height: 16))
+        case .checkbox: return ControlMetrics(minSize: CGSize(width: 14, height: 16))
         case .switch: return ControlMetrics(minSize: CGSize(width: 38, height: 22))
         case .textField: return ControlMetrics(minSize: CGSize(width: 0, height: 21), idealWidth: 96)
-        case .slider: return ControlMetrics(minSize: CGSize(width: 0, height: 21), idealWidth: 96)
+        case .slider: return ControlMetrics(minSize: CGSize(width: 0, height: 20), idealWidth: 0)
+        case let .datePicker(date, time):
+            // SwiftUI uses the field's intrinsic width (locale dependent) and is 24pt tall.
+            let picker = NSDatePicker()
+            picker.datePickerStyle = .textFieldAndStepper
+            var elements: NSDatePicker.ElementFlags = []
+            if date { elements.insert(.yearMonthDay) }
+            if time { elements.insert(.hourMinute) }
+            picker.datePickerElements = elements
+            return ControlMetrics(minSize: CGSize(width: picker.intrinsicContentSize.width, height: 24))
         }
     }
 }
@@ -231,7 +243,8 @@ enum AppKitImages {
     static func image(_ image: ResolvedImage) -> NSImage? {
         switch image.source {
         case .system(let name):
-            let configuration = NSImage.SymbolConfiguration(pointSize: image.pointSize, weight: NSFont.Weight(rawValue: CGFloat(image.weight.value)))
+            let scale: NSImage.SymbolScale = image.scale == .small ? .small : image.scale == .large ? .large : .medium
+            let configuration = NSImage.SymbolConfiguration(pointSize: image.pointSize, weight: NSFont.Weight(rawValue: CGFloat(image.weight.value)), scale: scale)
             return NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(configuration)
         case .named(let name):
             return NSImage(named: name)

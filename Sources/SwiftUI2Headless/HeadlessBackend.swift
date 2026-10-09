@@ -154,7 +154,8 @@ public final class HeadlessBackend: RenderBackend {
     public func firstBaseline(of text: ResolvedText) -> CGFloat { (text.font.size * 0.95).rounded() }
 
     public func imageSize(_ image: ResolvedImage) -> CGSize {
-        CGSize(width: (image.pointSize * 1.25).rounded(), height: (image.pointSize * 1.25).rounded())
+        let factor: CGFloat = image.scale == .small ? 0.8 : image.scale == .large ? 1.3 : 1
+        return CGSize(width: (image.pointSize * factor * 1.25).rounded(), height: (image.pointSize * factor * 1.25).rounded())
     }
 
     public func controlMetrics(_ control: ControlKind) -> ControlMetrics {
@@ -168,6 +169,7 @@ public final class HeadlessBackend: RenderBackend {
         case .switch: return ControlMetrics(minSize: CGSize(width: 38, height: 22))
         case .textField: return ControlMetrics(minSize: CGSize(width: 0, height: 22), idealWidth: 100)
         case .slider: return ControlMetrics(minSize: CGSize(width: 0, height: 20), idealWidth: 100)
+        case let .datePicker(date, time): return ControlMetrics(minSize: CGSize(width: date && time ? 170 : 100, height: 22))
         }
     }
 }

@@ -524,7 +524,7 @@ public struct Picker<Label: View, SelectionValue: Hashable, Content: View>: View
 
     public var body: some View {
         let context = SelectionContext.single(selection)
-        HStack(spacing: 8) {
+        HStack(alignment: style == .radioGroup || style == .inline ? .firstTextBaseline : .center, spacing: 8) {
             if !labelsHidden {
                 label
                 if isInForm { Spacer(minLength: 8) }
@@ -539,8 +539,7 @@ public struct Picker<Label: View, SelectionValue: Hashable, Content: View>: View
                         }
                     }
                 }, layout: AnyLayout(_SegmentedLayout()))
-                .padding(2)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color.gray.opacity(0.18)))
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.segmentedTrack))
             case .radioGroup, .inline:
                 _ListTransformView(content: content, transform: { list, inputs in
                     list.wrapped(in: inputs.subgraph) { traits, subgraph in
@@ -552,7 +551,7 @@ public struct Picker<Label: View, SelectionValue: Hashable, Content: View>: View
                 }, layout: isInForm ? AnyLayout(_HStackLayout(spacing: 12)) : AnyLayout(_VStackLayout(alignment: .leading, spacing: 4)))
             default:
                 Button { menuPresented = true } label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 7.5) {
                         _ListTransformView(content: content, transform: { list, inputs in
                             list.filtered(in: inputs.subgraph) { AnyHashable(selection.wrappedValue) }
                         }, layout: AnyLayout(_ZStackLayout(alignment: .leading)))
@@ -590,12 +589,13 @@ struct _SegmentModifier: ViewModifier {
     let isSelected: Bool
     let select: @MainActor () -> Void
     func body(content: Content) -> some View {
+        // macOS segmented control: 22pt tall segments, the selected one filled.
         content
-            .padding(.horizontal, 10)
-            .padding(.vertical, 3)
+            .padding(.horizontal, 7.25)
             .frame(maxWidth: .infinity)
-            .background(RoundedRectangle(cornerRadius: 5).fill(isSelected ? Color.controlBackground : Color.clear))
-            .shadow(color: .black.opacity(isSelected ? 0.15 : 0), radius: 1, y: 1)
+            .frame(height: 22)
+            .background(RoundedRectangle(cornerRadius: 6).fill(isSelected ? Color.segmentedSelection : Color.clear))
+            .contentShape(Rectangle())
             .onTapGesture(perform: select)
     }
 }
@@ -604,7 +604,7 @@ struct _RadioModifier: ViewModifier {
     let isSelected: Bool
     let select: @MainActor () -> Void
     func body(content: Content) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             ZStack {
                 Circle().strokeBorder(Color.gray, lineWidth: 1)
                 if isSelected { Circle().fill(Color.accentColor).padding(3) }

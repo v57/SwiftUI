@@ -277,9 +277,9 @@ public protocol LabelStyle {
 public struct TitleAndIconLabelStyle: LabelStyle {
     public init() {}
     public func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 6) {
+        HStack {
             configuration.icon
-            configuration.title.fontWeight(.bold)
+            configuration.title
         }
     }
 }
@@ -335,7 +335,7 @@ public struct Label<Title: View, Icon: View>: View {
         if let style {
             style.make(configuration)
         } else {
-            HStack(spacing: 6) {
+            HStack {
                 icon
                 title
             }
@@ -544,6 +544,7 @@ extension ProgressView {
 struct _LinearProgressBar: View {
     let fraction: Double
     var body: some View {
+        // macOS: an 18pt tall control with a 6pt bar, no ideal width.
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.gray.opacity(0.25))
@@ -552,6 +553,7 @@ struct _LinearProgressBar: View {
             }
         }
         .frame(height: 6)
+        .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, minHeight: 18, maxHeight: 18)
     }
 }
 
@@ -717,8 +719,12 @@ struct _DatePickerControl: View {
         inputs.makePlatformNode(content: content, actions: actions)
         let tracer = inputs.tracer
         let path = inputs.path
-        let width: CGFloat = AnyAttribute.withoutDependencies { view.attribute.value.components } == [.date, .hourAndMinute] ? 170 : 100
-        return _ViewOutputs(layout: inputs.makeLayoutAttribute { FixedLayoutComputer(size: CGSize(width: width, height: 22), path: path, tracer: tracer) })
+        let services = inputs.services
+        return _ViewOutputs(layout: inputs.makeLayoutAttribute {
+            let components = view.attribute.value.components
+            let kind = ControlKind.datePicker(date: components.contains(.date), time: components.contains(.hourAndMinute))
+            return FixedLayoutComputer(size: services.controlMetrics(kind).minSize, path: path, tracer: tracer)
+        })
     }
 }
 
@@ -767,7 +773,7 @@ struct _ColorWell: View {
         inputs.makePlatformNode(content: content, actions: actions)
         let tracer = inputs.tracer
         let path = inputs.path
-        return _ViewOutputs(layout: inputs.makeLayoutAttribute { FixedLayoutComputer(size: CGSize(width: 44, height: 22), path: path, tracer: tracer) })
+        return _ViewOutputs(layout: inputs.makeLayoutAttribute { FixedLayoutComputer(size: CGSize(width: 44, height: 23), path: path, tracer: tracer) })
     }
 }
 

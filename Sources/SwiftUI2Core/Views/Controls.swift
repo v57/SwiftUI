@@ -281,6 +281,7 @@ public struct _PlatformButton<Label: View>: View {
             if role == .destructive, env.buttonStyle != .borderedProminent {
                 env.foregroundStyle = AnyShapeStyle(Color.red)
             }
+            if env.font == nil, let font = Font.controlFont(env.controlSize) { env.font = font }
             return env
         }
         let label = Label._makeView(view: view.project(inputs) { $0.label }, inputs: labelInputs)
@@ -298,29 +299,36 @@ public struct _PlatformButton<Label: View>: View {
 }
 
 extension ControlMetrics {
+    /// Bordered controls at a control size (measured on macOS SwiftUI: mini 13pt tall with 5pt
+    /// insets, small 16/6, regular 20/8, large 28/8; extra large is drawn like regular).
     func scaled(for size: ControlSize) -> ControlMetrics {
+        guard minSize.height > 0 else { return self }
         var copy = self
         switch size {
         case .mini:
-            copy.minSize.height = max(0, minSize.height - 8)
-            copy.contentInsets.top = max(0, contentInsets.top - 2)
-            copy.contentInsets.bottom = max(0, contentInsets.bottom - 2)
+            copy.minSize.height = 13
+            copy.contentInsets = EdgeInsets(top: 1, leading: 5, bottom: 1, trailing: 5)
         case .small:
-            copy.minSize.height = max(0, minSize.height - 4)
-            copy.contentInsets.top = max(0, contentInsets.top - 1)
-            copy.contentInsets.bottom = max(0, contentInsets.bottom - 1)
+            copy.minSize.height = 16
+            copy.contentInsets = EdgeInsets(top: 1, leading: 6, bottom: 1, trailing: 6)
         case .large:
-            copy.minSize.height += 6
-            copy.contentInsets.leading += 4
-            copy.contentInsets.trailing += 4
-        case .extraLarge:
-            copy.minSize.height += 12
-            copy.contentInsets.leading += 8
-            copy.contentInsets.trailing += 8
-        case .regular:
+            copy.minSize.height = 28
+            copy.contentInsets = EdgeInsets(top: 6, leading: contentInsets.leading, bottom: 6, trailing: contentInsets.trailing)
+        case .regular, .extraLarge:
             break
         }
         return copy
+    }
+}
+
+extension Font {
+    /// The label font of controls at a control size when no font is set (`nil`: the default font).
+    static func controlFont(_ size: ControlSize) -> Font? {
+        switch size {
+        case .mini: .system(size: 9)
+        case .small: .system(size: 11)
+        default: nil
+        }
     }
 }
 
@@ -459,6 +467,8 @@ public struct Toggle<Label: View>: View {
     @Environment(\.toggleStyle) private var kind
     @Environment(\.labelsHidden) private var labelsHidden
     @Environment(\.isInForm) private var isInForm
+    @Environment(\.controlSize) private var controlSize
+    @Environment(\.font) private var font
 
     public init(isOn: Binding<Bool>, @ViewBuilder label: () -> Label) {
         self.isOn = isOn
@@ -471,7 +481,7 @@ public struct Toggle<Label: View>: View {
         } else if kind == .button {
             Button { isOn.wrappedValue.toggle() } label: { label }
                 .environment(\.buttonStyle, isOn.wrappedValue ? .borderedProminent : .bordered)
-        } else if kind == .switch || (kind == .automatic && isInForm) {
+        } else if isInForm && (kind == .switch || kind == .automatic) {
             HStack(spacing: 8) {
                 if !labelsHidden {
                     label
@@ -479,10 +489,16 @@ public struct Toggle<Label: View>: View {
                 }
                 _ToggleControl(isOn: isOn).environment(\.toggleStyle, .switch)
             }
-        } else {
-            HStack(spacing: 6) {
-                _ToggleControl(isOn: isOn)
+        } else if kind == .switch {
+            // Outside forms a switch hugs its label (measured on macOS SwiftUI).
+            HStack(spacing: 8) {
                 if !labelsHidden { label }
+                _ToggleControl(isOn: isOn)
+            }
+        } else {
+            HStack(spacing: controlSize == .small || controlSize == .mini ? 4 : 5) {
+                _ToggleControl(isOn: isOn)
+                if !labelsHidden { label.font(font ?? Font.controlFont(controlSize)) }
             }
         }
     }
@@ -528,8 +544,13 @@ public struct _ToggleControl: View {
         let tracer = inputs.tracer
         let path = inputs.path
         let layout = inputs.makeLayoutAttribute {
-            let kind: ControlKind = environment.value.toggleStyle == .switch ? .switch : .checkbox
-            return FixedLayoutComputer(size: services.controlMetrics(kind).minSize, path: path, tracer: tracer)
+            let env = environment.value
+            let kind: ControlKind = env.toggleStyle == .switch ? .switch : .checkbox
+            var size = services.controlMetrics(kind).minSize
+            if kind == .checkbox, env.controlSize == .small || env.controlSize == .mini {
+                size = CGSize(width: max(0, size.width - 2), height: max(0, size.height - 2))
+            }
+            return FixedLayoutComputer(size: size, path: path, tracer: tracer)
         }
         return _ViewOutputs(layout: layout)
     }
@@ -637,6 +658,16 @@ struct _TextInput: View {
         return _ViewOutputs(layout: inputs.makeLayoutAttribute {
             var metrics = services.controlMetrics(.textField)
             if kind == .editor { metrics.minSize.height = 40 }
+            // SwiftUI: a text field's ideal width is its prompt's width plus the bezel insets;
+            // secure fields have no ideal width.
+            let prompt = view.attribute.value.prompt
+            if kind == .field, !prompt.isEmpty {
+                let font = (environment.value.font ?? .defaultFont).resolve()
+                let promptText = ResolvedText(string: prompt, font: font, color: .init(red: 0, green: 0, blue: 0, opacity: 1), lineLimit: 1, alignment: .leading, strikethrough: false, underline: false)
+                metrics.idealWidth = services.measureText(promptText, proposal: .unspecified).width + 8
+            } else if kind == .secure {
+                metrics.idealWidth = 0
+            }
             return ControlLayoutComputer(metrics: metrics, flexibleHeight: kind == .editor, path: path, tracer: tracer)
         })
     }
