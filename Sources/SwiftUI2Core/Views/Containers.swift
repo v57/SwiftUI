@@ -117,10 +117,12 @@ public struct ScrollView<Content: View>: View {
     }
 }
 
-/// Scroll views are flexible along scrolling axes; content changes never affect the parent.
+/// Scroll views are flexible along their scrolling axes and take their content's size on the
+/// other axis (measured on macOS SwiftUI). Content changes affect the parent only when they change
+/// an answer the parent already got, so growth along the scrolling axis stays isolated.
 final class ScrollViewComputer: LayoutComputer {
     let axes: Axis.Set
-    let content: LayoutComputer
+    private(set) var content: LayoutComputer
 
     init(axes: Axis.Set, path: ViewPath, tracer: UpdateTracer, content: LayoutComputer) {
         self.axes = axes
@@ -129,15 +131,22 @@ final class ScrollViewComputer: LayoutComputer {
     }
 
     override func computeSize(_ proposal: ProposedViewSize) -> CGSize {
-        let ideal = content.sizeThatFits(ProposedViewSize(
+        let fitted = content.sizeThatFits(ProposedViewSize(
             width: axes.contains(.horizontal) ? nil : proposal.width,
             height: axes.contains(.vertical) ? nil : proposal.height
         ))
-        return CGSize(width: proposal.width ?? ideal.width, height: proposal.height ?? ideal.height)
+        return CGSize(
+            width: axes.contains(.horizontal) ? proposal.width ?? fitted.width : fitted.width,
+            height: axes.contains(.vertical) ? proposal.height ?? fitted.height : fitted.height
+        )
     }
 
     override func isEquivalent(to other: LayoutComputer) -> Bool {
-        (other as? ScrollViewComputer)?.axes == axes
+        guard let other = other as? ScrollViewComputer, other.axes == axes else { return false }
+        for (proposal, size) in other.answeredSizes where sizeThatFits(proposal) != size { return false }
+        // The previous computer stays in place; let it measure the current content from now on.
+        other.content = content
+        return true
     }
 }
 

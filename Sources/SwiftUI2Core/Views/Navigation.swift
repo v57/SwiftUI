@@ -147,33 +147,32 @@ public struct NavigationStack<Root: View>: View {
             destinations: destinations
         )
         // macOS: titles go to the window title and toolbar items (plus a back button) to the
-        // window toolbar; only the visible level contributes.
-        ZStack(alignment: .topLeading) {
+        // window toolbar; only the visible level contributes. Like SwiftUI, a stack without
+        // toolbar items keeps the plain title bar, and each level centers its content.
+        ZStack {
             level(0, content: AnyView(root), depth: depth)
             ForEach(Array(path.wrappedValue.enumerated()), id: \.offset) { index, value in
                 level(index + 1, content: destinations.view(for: value) ?? AnyView(Text("No destination for \(String(describing: value.base))")), depth: depth)
                     .environment(\.dismiss, DismissAction { if path.wrappedValue.count > index { path.wrappedValue.removeLast(path.wrappedValue.count - index) } })
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .transformPreference(ToolbarItemsKey.self) { items in
             guard depth > 0 else { return }
             let back = ToolbarButton(systemImage: "chevron.backward", help: "Back", action: { path.wrappedValue.removeLast() })
             items.insert(ToolbarEntry(id: "navigation.back", placement: .navigation, content: AnyView(EmptyView()), environment: EnvironmentValues(), button: back), at: 0)
         }
-        .transformPreference(NavigationChromeKey.self) { chrome in chrome.wantsToolbar = true }
         .environment(\.navigationContext, context)
     }
 
     private func level(_ index: Int, content: AnyView, depth: Int) -> some View {
         content
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(Color.controlBackground)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .opacity(index == depth ? 1 : 0)
             .allowsHitTesting(index == depth)
             .transformPreference(NavigationTitleKey.self) { if index != depth { $0 = nil } }
             .transformPreference(ToolbarItemsKey.self) { if index != depth { $0 = [] } }
-            .transition(.move(edge: .trailing))
+            .transition(.opacity)
     }
 }
 

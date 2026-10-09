@@ -141,6 +141,26 @@ struct LayoutTests {
         #expect(host.view(withText: "aaaa bbbb cccc")?.frame.height == 24)
     }
 
+    @Test func scrollViewTakesContentSizeAcrossItsAxis() throws {
+        // Measured on macOS SwiftUI: flexible along the scrolling axis only.
+        let host = TestHost(
+            HStack(alignment: .top, spacing: 0) {
+                ScrollView { Text("Body").font(.system(size: 10)) }
+                ScrollView(.horizontal) { Text("Wide").font(.system(size: 10)) }
+            },
+            size: CGSize(width: 300, height: 100)
+        )
+        let scrolls = host.allViews.filter { if case .scrollView = $0.content { true } else { false } }.map(\.frame.size)
+        #expect(scrolls == [CGSize(width: 20, height: 100), CGSize(width: 280, height: 12)])
+    }
+
+    @Test func navigationStackCentersRootWithoutToolbar() throws {
+        let host = TestHost(NavigationStack { Text("Body").font(.system(size: 10)).navigationTitle("Home") }, size: CGSize(width: 200, height: 100))
+        let text = try #require(host.view(withText: "Body"))
+        #expect(text.absoluteFrame.midX == 100 && text.absoluteFrame.midY == 50)
+        #expect(host.graph.windowToolbar.items.isEmpty && !host.graph.windowToolbar.chrome.wantsToolbar)
+    }
+
     @Test func flexibleFrameMaxWidthInfinity() throws {
         let host = TestHost(
             Text("hi").frame(maxWidth: .infinity, alignment: .leading).background(Color.red),

@@ -29,6 +29,9 @@ public class LayoutComputer {
 
     func computeSize(_ proposal: ProposedViewSize) -> CGSize { .zero }
 
+    /// The sizes this computer has answered so far (most recent proposals).
+    final var answeredSizes: [(ProposedViewSize, CGSize)] { sizeCache }
+
     /// Explicit value for an alignment guide, in the view's own coordinate space.
     func explicitAlignment(_ key: AlignmentKey, in size: CGSize) -> CGFloat? { nil }
 
