@@ -15,6 +15,18 @@ struct Highlight: ViewModifier {
     }
 }
 
+struct ModifierLimitReader: View {
+    @Environment(\.lineLimit) var limit
+    var body: some View { Text("limit \(limit ?? 0)") }
+}
+
+struct ConditionalLimit: ViewModifier {
+    let model: FormModel
+    func body(content: Content) -> some View {
+        if model.enabled { content.lineLimit(3) } else { content.lineLimit(5) }
+    }
+}
+
 @Observable
 final class FormModel {
     var name = ""
@@ -27,6 +39,42 @@ final class FormModel {
 @Suite(.serialized)
 struct ModifierAndControlTests {
     init() { Counter.reset() }
+
+    @Test func customModifierEnvironmentReachesContentInsideStacks() {
+        let model = FormModel()
+        let host = TestHost(VStack {
+            ModifierLimitReader().modifier(ConditionalLimit(model: model))
+            Text("sibling")
+        })
+        #expect(host.texts == ["limit 5", "sibling"])
+        model.enabled = true
+        host.flush()
+        #expect(host.texts == ["limit 3", "sibling"])
+    }
+
+    @Test func customModifierEnvironmentWithChangingElements() {
+        let model = FormModel()
+        model.value = 3
+        struct Screen: View {
+            let model: FormModel
+            var body: some View {
+                VStack {
+                    ForEach(0..<model.value, id: \.self) { _ in ModifierLimitReader() }
+                        .modifier(ConditionalLimit(model: model))
+                }
+            }
+        }
+        let host = TestHost(Screen(model: model))
+        #expect(host.texts == ["limit 5", "limit 5", "limit 5"])
+        // Removing the most recently made element rebinds the shared content environment.
+        model.value = 1
+        host.flush()
+        #expect(host.texts == ["limit 5"])
+        model.enabled = true
+        model.value = 2
+        host.flush()
+        #expect(host.texts == ["limit 3", "limit 3"])
+    }
 
     @Test func customModifierHasOwnStateAndWrapsContent() {
         let host = TestHost(Text("content").modifier(Highlight()))

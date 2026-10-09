@@ -56,6 +56,14 @@ public enum MenuItems {
         if let image = label as? Image, case .system(let name) = image.source { return ("", name) }
         if let any = label as? AnyView { return title(of: any.storage.anyView) }
         if let convertible = label as? _MenuLabelConvertible { return convertible._menuLabel }
+        // Stacks and tuples: the first child that has a title (like a pull-down button's label).
+        if let stack = label as? _StackContentReadable { return title(of: stack._stackContent) }
+        if let tuple = label as? _ChildrenReadable {
+            for child in tuple._children {
+                let found = title(of: child)
+                if !found.0.isEmpty || found.1 != nil { return found }
+            }
+        }
         return ("", nil)
     }
 }
@@ -184,6 +192,11 @@ func _taggedViews(_ view: any View) -> [(AnyHashable, any View)] {
 
 @MainActor protocol _TagReadable { var _tag: AnyHashable? { get }; var _untagged: any View { get } }
 @MainActor protocol _ChildrenReadable { var _children: [any View] { get } }
+@MainActor protocol _StackContentReadable { var _stackContent: any View { get } }
+
+extension HStack: _StackContentReadable { var _stackContent: any View { content } }
+extension VStack: _StackContentReadable { var _stackContent: any View { content } }
+extension ZStack: _StackContentReadable { var _stackContent: any View { content } }
 
 extension ModifiedContent: _TagReadable where Content: View, Modifier: ViewModifier {
     var _tag: AnyHashable? { (modifier as? _TraitWritingModifier<TagTraitKey>)?.value }

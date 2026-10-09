@@ -385,6 +385,8 @@ public struct Menu<Label: View, Content: View>: View {
     @State private var isPresented = false
     @Environment(\.menuIsBorderless) private var isBorderless
     @Environment(\.menuIndicatorVisibility) private var indicator
+    @Environment(\.buttonStyle) private var buttonStyle
+    @Environment(\.customButtonStyle) private var customStyle
 
     public init(@ViewBuilder content: () -> Content, @ViewBuilder label: () -> Label) {
         self.content = content()
@@ -402,17 +404,46 @@ public struct Menu<Label: View, Content: View>: View {
         Button {
             if let primaryAction { primaryAction() } else { isPresented = true }
         } label: {
-            HStack(spacing: 6.5) {
-                label
-                if indicator != .hidden {
-                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
-                }
-            }
+            menuLabel
         }
-        .modifier(_OptionalBorderless(isBorderless: isBorderless))
+        .modifier(_OptionalBorderless(isBorderless: isBorderless && customStyle == nil && buttonStyle != .plain))
         .modifier(_SheetModifier(isPresented: $isPresented, onDismiss: nil, content: {
             _MenuItems(content: content)
         }, kind: .menu))
+    }
+
+    /// macOS SwiftUI: with a plain or custom button style the menu is just its label, drawn by that
+    /// style; borderless buttons add the indicator; otherwise it is a pull-down button showing the
+    /// label's title and symbol, filling the proposed width (its label's own layout is ignored).
+    @ViewBuilder private var menuLabel: some View {
+        if customStyle != nil || buttonStyle == .plain {
+            label
+        } else if buttonStyle == .borderless && !isBorderless {
+            // Unlike borderless buttons, the menu's label keeps the primary color.
+            HStack(spacing: 9) {
+                label
+                if indicator != .hidden { _MenuIndicator() }
+            }
+            .foregroundStyle(.primary)
+        } else {
+            let (title, symbol) = MenuItems.title(of: label)
+            HStack(spacing: 0) {
+                if let symbol {
+                    SwiftUI2Core.Label(title, systemImage: symbol)
+                } else {
+                    Text(title)
+                }
+                Spacer(minLength: 6.5)
+                if indicator != .hidden { _MenuIndicator() }
+            }
+            .lineLimit(1)
+        }
+    }
+}
+
+struct _MenuIndicator: View {
+    var body: some View {
+        Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
     }
 }
 

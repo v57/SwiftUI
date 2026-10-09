@@ -34,16 +34,64 @@ extension ViewModifier {
     }
 
     /// In a list context a modifier applies to each element (like SwiftUI).
+    ///
+    /// The content list is built before the modifier's body runs, so it reads a proxy environment
+    /// that is rebound to the environment the body gives `content` (e.g. `content.lineLimit(3)`)
+    /// when an element is made. With several elements the most recently made one wins (their
+    /// bodies normally produce the same environment); when it goes away the proxy falls back to
+    /// the modifier's outer environment.
     public static func _makeViewList(modifier: _GraphValue<Self>, inputs: _ViewListInputs, body: @escaping @MainActor (_ViewListInputs) -> _ViewListOutputs) -> _ViewListOutputs {
-        let content = body(inputs)
+        let outer = inputs.environment
+        let proxy = Attribute<EnvironmentValues>(inputs.subgraph)
+        proxy.label = "modifier content environment \(inputs.path)"
+        proxy.setRule { outer.value }
+        let binding = _ContentEnvironmentBinding(outer: outer)
+        var contentListInputs = inputs
+        contentListInputs.environment = proxy
+        let content = body(contentListInputs)
         let list = content.list.mapElements(in: inputs.subgraph) { element in
             ViewListElement(traits: element.traits) { placement in
                 Self._makeView(modifier: modifier, inputs: inputs.instantiate(placement)) { contentInputs in
-                    element.make(contentInputs)
+                    let environment = contentInputs.environment
+                    if environment !== outer {
+                        binding.push(environment, proxy: proxy)
+                        contentInputs.subgraph.onDestroy { [weak proxy] in
+                            guard let proxy else { return }
+                            binding.remove(environment, proxy: proxy)
+                        }
+                    }
+                    return element.make(contentInputs)
                 }
             }
         }
         return _ViewListOutputs(list: list)
+    }
+}
+
+/// Environments of a modifier's live elements; the content proxy forwards the newest one (or the
+/// modifier's outer environment when there is none).
+@MainActor
+final class _ContentEnvironmentBinding {
+    let outer: Attribute<EnvironmentValues>
+    private var live: [Attribute<EnvironmentValues>] = []
+    init(outer: Attribute<EnvironmentValues>) { self.outer = outer }
+
+    func push(_ environment: Attribute<EnvironmentValues>, proxy: Attribute<EnvironmentValues>) {
+        if live.last === environment { return }
+        live.removeAll { $0 === environment }
+        live.append(environment)
+        bind(proxy)
+    }
+
+    func remove(_ environment: Attribute<EnvironmentValues>, proxy: Attribute<EnvironmentValues>) {
+        let wasCurrent = live.last === environment
+        live.removeAll { $0 === environment }
+        if wasCurrent { bind(proxy) }
+    }
+
+    private func bind(_ proxy: Attribute<EnvironmentValues>) {
+        let target = live.last ?? outer
+        proxy.setRule { target.value }
     }
 }
 
