@@ -142,6 +142,11 @@ public struct RenderActions {
     public var dragItem: (@MainActor () -> AnyObject?)?
     /// Tooltip (`.help`).
     public var toolTip: String?
+    /// Key presses (`onKeyPress`, `onExitCommand`, ...).
+    public var keyPress: (@MainActor (KeyPress) -> KeyPress.Result)?
+    /// Edit > Paste (`onPasteCommand`): accepted type identifiers and the handler.
+    public var pasteTypes: [String] = []
+    public var paste: (@MainActor ([AnyObject]) -> Void)?
     public init() {}
 }
 

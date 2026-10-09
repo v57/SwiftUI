@@ -383,6 +383,8 @@ public struct Menu<Label: View, Content: View>: View {
     let content: Content
     let primaryAction: (@MainActor () -> Void)?
     @State private var isPresented = false
+    @Environment(\.menuIsBorderless) private var isBorderless
+    @Environment(\.menuIndicatorVisibility) private var indicator
 
     public init(@ViewBuilder content: () -> Content, @ViewBuilder label: () -> Label) {
         self.content = content()
@@ -402,9 +404,12 @@ public struct Menu<Label: View, Content: View>: View {
         } label: {
             HStack(spacing: 6.5) {
                 label
-                Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                if indicator != .hidden {
+                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                }
             }
         }
+        .modifier(_OptionalBorderless(isBorderless: isBorderless))
         .modifier(_SheetModifier(isPresented: $isPresented, onDismiss: nil, content: {
             _MenuItems(content: content)
         }, kind: .menu))
@@ -471,5 +476,13 @@ struct _SecondaryClickModifier: PlatformEffectModifier {
 extension View {
     public func contextMenu<M: View>(@ViewBuilder menuItems: @escaping () -> M) -> some View {
         modifier(_ContextMenuModifier(menu: menuItems))
+    }
+}
+
+/// `.menuStyle(.borderlessButton)`: the menu's button has no bezel.
+struct _OptionalBorderless: ViewModifier {
+    let isBorderless: Bool
+    func body(content: Content) -> some View {
+        if isBorderless { content.buttonStyle(.borderless) } else { content }
     }
 }

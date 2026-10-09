@@ -5,7 +5,12 @@
 @_exported import Observation
 
 #if canImport(AppKit)
+// Like `import SwiftUI` on macOS, `import SwiftUI2` also gives access to AppKit.
+@_exported import AppKit
 @_exported import SwiftUI2AppKit
+#endif
+#if canImport(SwiftData)
+@_exported import SwiftUI2SwiftData
 #endif
 
 extension App {

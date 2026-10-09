@@ -34,7 +34,7 @@ final class WindowToolbarController: NSObject, NSToolbarDelegate {
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.stringValue = window.title
         spacerView.translatesAutoresizingMaskIntoConstraints = false
-        let width = spacerView.widthAnchor.constraint(equalToConstant: 0)
+        let width = spacerView.widthAnchor.constraint(equalToConstant: 1)
         width.isActive = true
         spacerView.heightAnchor.constraint(equalToConstant: 1).isActive = true
         spacerWidth = width
@@ -164,10 +164,12 @@ final class WindowToolbarController: NSObject, NSToolbarDelegate {
         if id == Self.title {
             item.view = titleLabel
             item.label = "Title"
+            item.isBordered = false
             return item
         }
         if id == Self.sidebarSpacer {
             item.view = spacerView
+            item.isBordered = false
             return item
         }
         if id == Self.toggleSidebar {

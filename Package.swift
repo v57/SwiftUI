@@ -28,11 +28,14 @@ let package = Package(
         .target(name: "SwiftUI2Core", dependencies: ["SwiftUI2Graph"]),
         .target(name: "SwiftUI2Headless", dependencies: ["SwiftUI2Core"]),
         .target(name: "SwiftUI2AppKit", dependencies: ["SwiftUI2Core"]),
+        // SwiftData's SwiftUI integration (@Query, .modelContainer) on Apple platforms.
+        .target(name: "SwiftUI2SwiftData", dependencies: ["SwiftUI2Core"]),
         .target(
             name: "SwiftUI2",
             dependencies: [
                 "SwiftUI2Core",
                 .target(name: "SwiftUI2AppKit", condition: .when(platforms: [.macOS])),
+                .target(name: "SwiftUI2SwiftData", condition: .when(platforms: [.macOS, .iOS])),
             ]
         ),
 

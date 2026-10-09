@@ -168,6 +168,8 @@ public struct _ViewListInputs {
     var animationScope: AnimationScope?
     /// Sections contribute their header, rows and footer as separate list elements (List).
     var flattensSections = false
+    /// Sections stay single (grouped) elements (Form).
+    var groupsSections = false
 
     func with(path component: String) -> _ViewListInputs {
         var copy = self

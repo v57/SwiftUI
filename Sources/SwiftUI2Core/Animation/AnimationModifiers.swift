@@ -197,6 +197,10 @@ public struct AnyTransition: Sendable {
         return AnyTransition(insertion: inserted, removal: removal)
     }
 
+    /// Blur-and-scale replace; blur is not rendered (Apple-specific effect), so it fades and scales.
+    public static var blurReplace: AnyTransition { .opacity.combined(with: .scale(scale: 0.8)) }
+    public static func blurReplace(_ config: BlurReplaceTransition.Configuration = .downUp) -> AnyTransition { blurReplace }
+
     public static func offset(_ offset: CGSize) -> AnyTransition { AnyTransition(Effect(offset: offset)) }
     public static func offset(x: CGFloat = 0, y: CGFloat = 0) -> AnyTransition { .offset(CGSize(width: x, height: y)) }
 
@@ -241,4 +245,8 @@ extension View {
     public func transition(_ transition: AnyTransition) -> some View {
         modifier(_TransitionModifier(transition: transition))
     }
+}
+
+public struct BlurReplaceTransition: Sendable {
+    public enum Configuration: Sendable { case downUp, upUp }
 }

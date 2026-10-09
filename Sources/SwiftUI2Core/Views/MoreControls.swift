@@ -20,6 +20,12 @@ public struct KeyEquivalent: Hashable, Sendable, ExpressibleByExtendedGraphemeCl
     public static let downArrow = KeyEquivalent("\u{F701}")
     public static let leftArrow = KeyEquivalent("\u{F702}")
     public static let rightArrow = KeyEquivalent("\u{F703}")
+    public static let deleteForward = KeyEquivalent("\u{7F}")
+    public static let home = KeyEquivalent("\u{F729}")
+    public static let end = KeyEquivalent("\u{F72B}")
+    public static let pageUp = KeyEquivalent("\u{F72C}")
+    public static let pageDown = KeyEquivalent("\u{F72D}")
+    public static let clear = KeyEquivalent("\u{F739}")
 }
 
 public struct EventModifiers: OptionSet, Hashable, Sendable {

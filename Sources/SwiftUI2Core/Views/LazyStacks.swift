@@ -104,14 +104,28 @@ extension ViewListID {
 @MainActor
 final class LazyStackState {
     let axis: Axis
-    let spacing: CGFloat
+    /// Explicit spacing; nil uses the views' own spacing (measured between built neighbours).
+    let fixedSpacing: CGFloat?
     var ids: [ViewListID] = []
     var index: [ViewListID: Int] = [:]
     var sizes: [ViewListID: CGFloat] = [:]
+    /// Spacing before an element (from its previous neighbour), once both were built.
+    var gaps: [ViewListID: CGFloat] = [:]
 
-    init(axis: Axis, spacing: CGFloat) {
+    init(axis: Axis, spacing: CGFloat?) {
         self.axis = axis
-        self.spacing = spacing
+        self.fixedSpacing = spacing
+    }
+
+    private var estimatedGap: CGFloat {
+        guard !gaps.isEmpty else { return 8 }
+        return gaps.values.reduce(0, +) / CGFloat(gaps.count)
+    }
+
+    /// Spacing between element `index - 1` and `index`.
+    func gap(before index: Int) -> CGFloat {
+        if let fixedSpacing { return fixedSpacing }
+        return gaps[ids[index]] ?? estimatedGap
     }
 
     var estimate: CGFloat {
@@ -127,9 +141,10 @@ final class LazyStackState {
         result.reserveCapacity(ids.count)
         var position: CGFloat = 0
         let estimate = self.estimate
-        for id in ids {
+        for (index, id) in ids.enumerated() {
+            if index > 0 { position += gap(before: index) }
             result.append(position)
-            position += (sizes[id] ?? estimate) + spacing
+            position += sizes[id] ?? estimate
         }
         return result
     }
@@ -137,7 +152,12 @@ final class LazyStackState {
     var totalLength: CGFloat {
         guard !ids.isEmpty else { return 0 }
         let estimate = self.estimate
-        return ids.reduce(CGFloat(0)) { $0 + (sizes[$1] ?? estimate) } + spacing * CGFloat(ids.count - 1)
+        var total: CGFloat = 0
+        for (index, id) in ids.enumerated() {
+            if index > 0 { total += gap(before: index) }
+            total += sizes[id] ?? estimate
+        }
+        return total
     }
 
     /// Indices intersecting `range` (stack-local coordinates along the axis).
@@ -173,11 +193,17 @@ final class LazyStackComputer: LayoutComputer {
 
     private func measure(cross: CGFloat?) -> [CGSize] {
         let axis = state.axis
-        return children.map { child in
+        let sizes = children.map { child in
             let size = child.computer.sizeThatFits(ProposedViewSize(main: nil, cross: cross, axis: axis))
             state.sizes[child.id] = size[axis]
             return size
         }
+        if state.fixedSpacing == nil {
+            for (previous, child) in zip(children, children.dropFirst()) where child.index == previous.index + 1 {
+                state.gaps[child.id] = previous.computer.spacing.distance(to: child.computer.spacing, along: axis)
+            }
+        }
+        return sizes
     }
 
     override func computeSize(_ proposal: ProposedViewSize) -> CGSize {
@@ -219,7 +245,7 @@ extension _ViewInputs {
         guard let viewport = scrollViewport else {
             return makeLayoutContainer(layout: eagerLayout, list: list)
         }
-        let state = LazyStackState(axis: axis, spacing: spacing ?? 8)
+        let state = LazyStackState(axis: axis, spacing: spacing)
         let geometry = self.geometry
         let host = self.host
         func range(_ viewport: CGRect) -> ClosedRange<CGFloat> {

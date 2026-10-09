@@ -68,7 +68,65 @@ open class GraphHostingView: NSView {
     }
 
     open override func keyDown(with event: NSEvent) {
+        if graph.handleKeyPress(Self.keyPress(event, phase: event.isARepeat ? .repeat : .down)) {
+            graph.update()
+            return
+        }
         if !performKeyEquivalent(with: event) { super.keyDown(with: event) }
+    }
+
+    open override func keyUp(with event: NSEvent) {
+        if graph.handleKeyPress(Self.keyPress(event, phase: .up)) {
+            graph.update()
+            return
+        }
+        super.keyUp(with: event)
+    }
+
+    /// Edit > Paste routed to `onPasteCommand` handlers.
+    @objc open func paste(_ sender: Any?) {
+        let pasteboard = NSPasteboard.general
+        let types = (pasteboard.types ?? []).map(\.rawValue)
+        let providers: [AnyObject] = (pasteboard.pasteboardItems ?? []).map { item in
+            let provider = NSItemProvider()
+            for type in item.types {
+                guard let data = item.data(forType: type) else { continue }
+                provider.registerDataRepresentation(forTypeIdentifier: type.rawValue, visibility: .all) { completion in
+                    completion(data, nil)
+                    return nil
+                }
+            }
+            return provider
+        }
+        if graph.handlePaste(providers, types: types) { graph.update() }
+    }
+
+    static func keyPress(_ event: NSEvent, phase: KeyPress.Phases) -> KeyPress {
+        var modifiers: EventModifiers = []
+        if event.modifierFlags.contains(.command) { modifiers.insert(.command) }
+        if event.modifierFlags.contains(.shift) { modifiers.insert(.shift) }
+        if event.modifierFlags.contains(.option) { modifiers.insert(.option) }
+        if event.modifierFlags.contains(.control) { modifiers.insert(.control) }
+        let characters = event.characters ?? ""
+        let key: KeyEquivalent
+        switch event.keyCode {
+        case 36, 76: key = .return
+        case 53: key = .escape
+        case 51: key = .delete
+        case 117: key = .deleteForward
+        case 48: key = .tab
+        case 49: key = .space
+        case 126: key = .upArrow
+        case 125: key = .downArrow
+        case 123: key = .leftArrow
+        case 124: key = .rightArrow
+        case 115: key = .home
+        case 119: key = .end
+        case 116: key = .pageUp
+        case 121: key = .pageDown
+        default: key = KeyEquivalent(event.charactersIgnoringModifiers?.lowercased().first ?? " ")
+        }
+        return KeyPress(key: key, characters: characters, modifiers: modifiers, phase: phase)
     }
 
     open override var acceptsFirstResponder: Bool { true }
@@ -179,6 +237,7 @@ public enum AppKitAppRunner {
                 window?.title = title ?? baseTitle
             }
             window.contentView = host
+            window.initialFirstResponder = host
             let toolbarController = WindowToolbarController(window: window, host: host)
             toolbarControllers.append(toolbarController)
             host.graph.onToolbarChange = { [weak toolbarController] toolbar in toolbarController?.update(toolbar) }

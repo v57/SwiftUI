@@ -156,7 +156,9 @@ extension View {
     public func kerning(_ kerning: CGFloat) -> some View { self }
     public func tracking(_ tracking: CGFloat) -> some View { self }
     public func textCase(_ textCase: Text.Case?) -> some View { self }
-    public func textSelection<S>(_ selectability: S) -> some View { self }
+    public func textSelection<S: TextSelectability>(_ selectability: S) -> some View {
+        environment(\.isTextSelectable, S.allowsSelection)
+    }
     public func symbolRenderingMode(_ mode: SymbolRenderingMode?) -> some View { self }
     public func symbolVariant(_ variant: SymbolVariants) -> some View { self }
     public func accessibilityLabel<S: StringProtocol>(_ label: S) -> some View { self }
@@ -189,7 +191,19 @@ public struct SafeAreaRegions: OptionSet, Sendable {
     public static let keyboard = SafeAreaRegions(rawValue: 2)
     public static let all: SafeAreaRegions = [.container, .keyboard]
 }
-public struct TextSelectability: Sendable {
-    public static let enabled = TextSelectability()
-    public static let disabled = TextSelectability()
+
+public protocol TextSelectability { static var allowsSelection: Bool { get } }
+public struct EnabledTextSelectability: TextSelectability { public static var allowsSelection: Bool { true } }
+public struct DisabledTextSelectability: TextSelectability { public static var allowsSelection: Bool { false } }
+extension TextSelectability where Self == EnabledTextSelectability { public static var enabled: EnabledTextSelectability { .init() } }
+extension TextSelectability where Self == DisabledTextSelectability { public static var disabled: DisabledTextSelectability { .init() } }
+
+struct TextSelectableKey: EnvironmentKey { static let defaultValue = false }
+
+extension EnvironmentValues {
+    /// `.textSelection(.enabled)`: text can be selected and copied.
+    public var isTextSelectable: Bool {
+        get { self[TextSelectableKey.self] }
+        set { self[TextSelectableKey.self] = newValue }
+    }
 }

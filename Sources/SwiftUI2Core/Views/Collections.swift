@@ -501,12 +501,25 @@ public struct Form<Content: View>: View {
 
     public var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) { content }
+            _FormStack(content: content)
                 .frame(maxWidth: 640, alignment: .leading)
                 .padding(20)
                 .frame(maxWidth: .infinity)
         }
         .environment(\.listContext, ListContext(selection: nil, isForm: true))
+    }
+}
+
+/// The form's sections, stacked (each section stays one grouped element).
+struct _FormStack<Content: View>: View {
+    let content: Content
+    var body: Never { primitiveBody(Self.self) }
+
+    static func _makeView(view: _GraphValue<Self>, inputs: _ViewInputs) -> _ViewOutputs {
+        var listInputs = inputs.listInputs
+        listInputs.groupsSections = true
+        let list = Content._makeViewList(view: view.project(inputs) { $0.content }, inputs: listInputs).list
+        return inputs.makeUnary(list: list, layout: _VStackLayout(alignment: .leading, spacing: 16))
     }
 }
 
@@ -524,7 +537,21 @@ public struct Section<Parent: View, Content: View, Footer: View>: View {
 
     /// In lists, a section contributes its header, rows and footer as separate list elements.
     public static func _makeViewList(view: _GraphValue<Self>, inputs: _ViewListInputs) -> _ViewListOutputs {
-        guard inputs.flattensSections else { return .unaryElement(view: view, inputs: inputs) }
+        // Forms draw each section as a group; elsewhere (lists, stacks) a section contributes
+        // its header, content and footer as separate children.
+        if inputs.groupsSections { return .unaryElement(view: view, inputs: inputs) }
+        if !inputs.flattensSections {
+            let (hasHeader, hasFooter) = AnyAttribute.withoutDependencies { (view.attribute.value.header != nil, view.attribute.value.footer != nil) }
+            var nodes: [ViewList.Node] = []
+            if hasHeader {
+                nodes.append(.nested(.index(0), Parent?._makeViewList(view: view.project(inputs) { $0.header }, inputs: inputs).list))
+            }
+            nodes.append(.nested(.index(1), Content._makeViewList(view: view.project(inputs) { $0.content }, inputs: inputs).list))
+            if hasFooter {
+                nodes.append(.nested(.index(2), Footer?._makeViewList(view: view.project(inputs) { $0.footer }, inputs: inputs).list))
+            }
+            return _ViewListOutputs(list: ViewList(nodes: nodes))
+        }
         let (hasHeader, hasFooter) = AnyAttribute.withoutDependencies { (view.attribute.value.header != nil, view.attribute.value.footer != nil) }
         var nodes: [ViewList.Node] = []
         func element<V: View>(_ role: ListElementRole, _ project: @escaping (Self) -> V) -> ViewList.Node {
@@ -1254,14 +1281,18 @@ struct _ViewThatFitsLayout: Layout, Equatable {
 
 extension View {
     public func searchable(text: Binding<String>, placement: SearchFieldPlacement = .automatic, prompt: Text? = nil) -> some View {
+        // macOS 26 search field: a 28pt capsule above the content (measured in a sidebar).
         VStack(spacing: 0) {
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField(prompt?.plainString ?? "Search", text: text).textFieldStyle(.plain)
             }
-            .padding(6)
-            .background(RoundedRectangle(cornerRadius: 6).fill(Color.gray.opacity(0.15)))
-            .padding(8)
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .background(Capsule().fill(Color.searchFieldFill))
+            .padding(.horizontal, 10)
+            .padding(.top, 9)
+            .padding(.bottom, 12)
             self
         }
     }

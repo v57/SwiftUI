@@ -255,6 +255,34 @@ public final class ViewGraph: AttributeGraphDelegate {
         return visit(renderer.root)
     }
 
+    /// Routes a key press to `onKeyPress` handlers, innermost (last in tree order) first. Returns
+    /// true if a handler handled it.
+    @discardableResult
+    public func handleKeyPress(_ press: KeyPress) -> Bool {
+        var handlers: [@MainActor (KeyPress) -> KeyPress.Result] = []
+        func visit(_ node: RenderNode) {
+            if let handler = node.actions.keyPress { handlers.append(handler) }
+            for child in node.children { visit(child) }
+        }
+        visit(renderer.root)
+        for handler in handlers.reversed() where handler(press) == .handled { return true }
+        return false
+    }
+
+    /// Edit > Paste: offers the providers to the innermost `onPasteCommand` handler.
+    @discardableResult
+    public func handlePaste(_ providers: [AnyObject], types: [String]) -> Bool {
+        var handler: (@MainActor ([AnyObject]) -> Void)?
+        func visit(_ node: RenderNode) {
+            if let paste = node.actions.paste, !Set(node.actions.pasteTypes).isDisjoint(with: types) { handler = paste }
+            for child in node.children { visit(child) }
+        }
+        visit(renderer.root)
+        guard let handler else { return false }
+        handler(providers)
+        return true
+    }
+
     /// Destroys the hierarchy (runs onDisappear, removes platform views).
     public func tearDown() {
         guard !isTornDown else { return }

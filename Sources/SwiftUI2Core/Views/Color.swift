@@ -115,6 +115,7 @@ public struct Color: Hashable, Sendable, CustomStringConvertible {
     static let sidebarBackground = dynamic(rgb(0, 0, 0, 0), rgb(1, 1, 1, 0))
     static let listSelection = dynamic(rgb(0, 0, 0, 0.1), rgb(1, 1, 1, 0.12))
     static let listBorder = dynamic(rgb(0, 0, 0, 0.15), rgb(1, 1, 1, 0.3))
+    static let searchFieldFill = dynamic(rgb(0, 0, 0, 0.06), rgb(1, 1, 1, 0.1))
     static let splitDivider = dynamic(rgb(0, 0, 0, 0.12), rgb(0, 0, 0, 1))
     static let segmentedTrack = dynamic(rgb(0, 0, 0, 0.06), rgb(1, 1, 1, 0.065))
     static let segmentedSelection = dynamic(rgb(1, 1, 1), rgb(1, 1, 1, 0.33))
@@ -247,4 +248,35 @@ extension ShapeStyle where Self == Color {
     public static var gray: Color { Color.gray }
     public static var black: Color { Color.black }
     public static var clear: Color { Color.clear }
+}
+
+// MARK: - Hierarchical levels of any style (`.background.secondary`, `.tint.tertiary`, ...)
+
+public struct _ShapeStyleLevel<Base: ShapeStyle>: ShapeStyle {
+    let base: Base
+    let level: Int
+
+    public func _resolvePaint(in environment: EnvironmentValues) -> ResolvedPaint {
+        if base is BackgroundStyle {
+            // macOS secondary/tertiary system backgrounds.
+            let levels = [Color.controlBackground, Color.secondaryBackground, Color.tertiaryBackground, Color.tertiaryBackground]
+            return .color(levels[min(level, levels.count - 1)].resolve(in: environment))
+        }
+        let factors: [Float] = [1, 0.5, 0.3, 0.18, 0.1]
+        var color = base._resolvePaint(in: environment).color
+        color.opacity *= factors[min(level, factors.count - 1)]
+        return .color(color)
+    }
+}
+
+extension ShapeStyle {
+    public var secondary: _ShapeStyleLevel<Self> { _ShapeStyleLevel(base: self, level: 1) }
+    public var tertiary: _ShapeStyleLevel<Self> { _ShapeStyleLevel(base: self, level: 2) }
+    public var quaternary: _ShapeStyleLevel<Self> { _ShapeStyleLevel(base: self, level: 3) }
+    public var quinary: _ShapeStyleLevel<Self> { _ShapeStyleLevel(base: self, level: 4) }
+}
+
+extension Color {
+    static let secondaryBackground = dynamic(rgb(0.965, 0.965, 0.965), rgb(0.157, 0.157, 0.157))
+    static let tertiaryBackground = dynamic(rgb(0.925, 0.925, 0.925), rgb(0.2, 0.2, 0.2))
 }
