@@ -133,9 +133,23 @@ public final class AppKitBackend: RenderBackend {
 
     public func imageSize(_ image: ResolvedImage) -> CGSize {
         guard let nsImage = AppKitImages.image(image) else { return CGSize(width: image.pointSize, height: image.pointSize) }
-        // SwiftUI sizes symbols by their alignment width and image height.
-        if case .system = image.source { return CGSize(width: nsImage.alignmentRect.width, height: nsImage.size.height) }
+        if case .system = image.source {
+            // SwiftUI sizes symbols by their vector glyph's content bounds (pixel-rounded); NSImage
+            // rounds its size up to whole points.
+            if let bounds = Self.symbolContentBounds(nsImage) { return bounds.size }
+            return CGSize(width: nsImage.alignmentRect.width, height: nsImage.size.height)
+        }
         return nsImage.size
+    }
+
+    /// Content bounds of a symbol image's vector glyph (not exposed publicly; read defensively).
+    static func symbolContentBounds(_ image: NSImage) -> CGRect? {
+        guard let rep = image.representations.first, rep.responds(to: NSSelectorFromString("vectorGlyph")),
+              let glyph = rep.value(forKey: "vectorGlyph") as? NSObject,
+              glyph.responds(to: NSSelectorFromString("contentBounds")),
+              let value = glyph.value(forKey: "contentBounds") as? NSValue else { return nil }
+        let bounds = value.rectValue
+        return bounds.width > 0 && bounds.height > 0 ? bounds : nil
     }
 
     public func openURL(_ url: URL) {
