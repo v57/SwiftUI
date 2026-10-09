@@ -155,6 +155,22 @@ extension View {
         environment(\.lineLimit, number)
     }
 
+    public func lineLimit(_ limit: ClosedRange<Int>) -> some View {
+        environment(\.lineLimit, limit.upperBound).environment(\.minimumLineLimit, limit.lowerBound)
+    }
+
+    public func lineLimit(_ limit: PartialRangeFrom<Int>) -> some View {
+        environment(\.lineLimit, nil).environment(\.minimumLineLimit, limit.lowerBound)
+    }
+
+    public func lineLimit(_ limit: PartialRangeThrough<Int>) -> some View {
+        environment(\.lineLimit, limit.upperBound).environment(\.minimumLineLimit, nil)
+    }
+
+    public func lineLimit(_ limit: Int, reservesSpace: Bool) -> some View {
+        environment(\.lineLimit, limit).environment(\.minimumLineLimit, reservesSpace ? limit : nil)
+    }
+
     public func multilineTextAlignment(_ alignment: TextAlignment) -> some View {
         environment(\.multilineTextAlignment, alignment)
     }

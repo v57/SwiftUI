@@ -214,6 +214,8 @@ extension Image {
 // MARK: - Colors from / to AppKit
 
 extension Color {
+    public init(_ nsColor: NSColor) { self.init(nsColor: nsColor) }
+
     /// A color from an AppKit color; dynamic system colors keep their light and dark values.
     public init(nsColor: NSColor) {
         func resolve(_ name: NSAppearance.Name) -> Color.Resolved {

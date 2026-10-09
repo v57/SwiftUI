@@ -149,6 +149,7 @@ struct TintKey: EnvironmentKey { static let defaultValue: Color? = nil }
 struct ColorSchemeKey: EnvironmentKey { static let defaultValue: ColorScheme = .light }
 struct IsEnabledKey: EnvironmentKey { static let defaultValue = true }
 struct LineLimitKey: EnvironmentKey { static let defaultValue: Int? = nil }
+struct MinimumLineLimitKey: EnvironmentKey { static let defaultValue: Int? = nil }
 struct MultilineTextAlignmentKey: EnvironmentKey { static let defaultValue: TextAlignment = .leading }
 struct LayoutDirectionKey: EnvironmentKey { static let defaultValue: LayoutDirection = .leftToRight }
 struct ButtonStyleKey: EnvironmentKey { static let defaultValue: ButtonStyleKind = .automatic }
@@ -174,6 +175,13 @@ extension EnvironmentValues {
     public var lineLimit: Int? {
         get { self[LineLimitKey.self] }
         set { self[LineLimitKey.self] = newValue }
+    }
+
+    /// Lower bound of `lineLimit(_: ClosedRange<Int>)` / `lineLimit(_:reservesSpace:)`: vertical
+    /// text fields reserve at least this many lines.
+    var minimumLineLimit: Int? {
+        get { self[MinimumLineLimitKey.self] }
+        set { self[MinimumLineLimitKey.self] = newValue }
     }
 
     public var multilineTextAlignment: TextAlignment {

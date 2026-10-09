@@ -85,7 +85,7 @@ public enum ScrollIndicatorVisibility: Sendable { case automatic, visible, hidde
 extension View {
     public func scrollDisabled(_ disabled: Bool) -> some View { environment(\.scrollDisabled, disabled) }
     public func scrollIndicators(_ visibility: ScrollIndicatorVisibility, axes: Axis.Set = [.vertical, .horizontal]) -> some View { self }
-    public func scrollDismissesKeyboard<M>(_ mode: M) -> some View { self }
+    public func scrollDismissesKeyboard(_ mode: ScrollDismissesKeyboardMode) -> some View { self }
 }
 
 extension ViewListID {
@@ -422,3 +422,5 @@ extension View {
 }
 
 public enum ScrollPhase: Sendable { case idle, tracking, interacting, decelerating, animating }
+
+public enum ScrollDismissesKeyboardMode: Sendable { case automatic, immediately, interactively, never }

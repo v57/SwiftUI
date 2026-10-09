@@ -163,6 +163,31 @@ struct AnimationTests {
         #expect(abs(view.presentation.offset.width + 50) < 0.5)
     }
 
+    @Test func customTransitionProtocolUsesPhaseEffects() {
+        struct Shrink: Transition {
+            func body(content: Content, phase: TransitionPhase) -> some View {
+                content.scaleEffect(phase.isIdentity ? 1 : 0.5).opacity(phase.isIdentity ? 1 : 0)
+                    .blur(radius: phase == .didDisappear ? 8 : 0)
+            }
+        }
+        struct Screen: View {
+            let model: AnimModel
+            var body: some View {
+                if model.show { Text("hello").transition(Shrink()) }
+            }
+        }
+        let model = AnimModel()
+        model.show = false
+        let host = TestHost(Screen(model: model))
+        withAnimation(.linear(duration: 1)) { model.show = true }
+        host.flush()
+        let presentation = host.view(withText: "hello")?.presentation
+        #expect(presentation?.opacity == 0)
+        #expect(presentation?.scale == CGSize(width: 0.5, height: 0.5))
+        host.finishAnimations()
+        #expect(host.view(withText: "hello")?.presentation.isIdentity == true)
+    }
+
     @Test func animatableViewBodyRunsPerFrame() {
         struct Screen: View {
             let model: AnimModel

@@ -183,6 +183,58 @@ struct InteractionTests {
         #expect(host.graph.windowToolbar.items.isEmpty)
     }
 
+    @Test func navigationDestinationItemPushesAndClears() {
+        struct Screen: View {
+            @State var item: Int?
+            var body: some View {
+                NavigationStack {
+                    Button("Show 3") { item = 3 }
+                        .navigationDestination(item: $item) { value in
+                            Text("Item \(value)")
+                        }
+                    Text(item.map { "selected \($0)" } ?? "none")
+                }
+            }
+        }
+        let host = TestHost(Screen())
+        #expect(!host.texts.contains("Item 3"))
+        host.tap("Show 3")
+        #expect(host.texts.contains("Item 3"))
+        #expect(host.texts.contains("selected 3"))
+        // Popping the pushed level clears the binding.
+        host.graph.windowToolbar.items.first { $0.placement == .navigation }?.button?.action()
+        host.flush()
+        host.finishAnimations()
+        #expect(!host.texts.contains("Item 3"))
+        #expect(host.texts.contains("none"))
+    }
+
+    @Test func verticalTextFieldGrowsWithinLineLimit() {
+        struct Screen: View {
+            @Bindable var model: InteractionModel
+            var body: some View {
+                TextField("Prompt", text: $model.flavor, axis: .vertical)
+                    .lineLimit(3...5)
+                    .font(.system(size: 10))
+                    .frame(width: 200)
+            }
+        }
+        let model = InteractionModel()
+        model.flavor = ""
+        let host = TestHost(Screen(model: model))
+        func height() -> CGFloat? {
+            host.allViews.first { if case .textField = $0.content { true } else { false } }?.frame.height
+        }
+        // Headless metrics: 12pt lines, 22pt single-line field (10pt of bezel insets).
+        #expect(height() == CGFloat(3 * 12 + 10))
+        model.flavor = "1\n2\n3\n4"
+        host.flush()
+        #expect(height() == CGFloat(4 * 12 + 10))
+        model.flavor = "1\n2\n3\n4\n5\n6\n7"
+        host.flush()
+        #expect(height() == CGFloat(5 * 12 + 10))
+    }
+
     @Test func tabViewSwitchesContent() {
         struct Screen: View {
             @Bindable var model: InteractionModel

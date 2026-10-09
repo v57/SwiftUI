@@ -257,6 +257,8 @@ extension View {
     }
 
     public func safeAreaPadding(_ edges: Edge.Set = .all, _ length: CGFloat? = nil) -> some View { padding(edges, length) }
+    public func safeAreaPadding(_ length: CGFloat) -> some View { padding(.all, length) }
+    public func safeAreaPadding(_ insets: EdgeInsets) -> some View { padding(insets) }
 
     /// Masks with a shape (alpha masks of arbitrary views need compositing support and are ignored).
     public func mask<M: View>(alignment: Alignment = .center, @ViewBuilder _ mask: () -> M) -> some View {
@@ -298,6 +300,9 @@ extension View {
     public func dynamicTypeSize<T>(_ size: T) -> some View { self }
     public func monospaced(_ isActive: Bool = true) -> some View {
         transformEnvironment(\.font) { font in if isActive { font = (font ?? .body).monospaced() } }
+    }
+    public func monospacedDigit() -> some View {
+        transformEnvironment(\.font) { font in font = (font ?? .body).monospacedDigit() }
     }
 }
 
@@ -353,8 +358,10 @@ public struct _ReceiveModifier<P: Publisher>: ViewModifier where P.Failure == Ne
 }
 
 /// The view a phase animator's content closure receives.
-public struct PlaceholderContentView<Value: View>: View {
-    let content: Value
+/// Stand-in for the modified view in `phaseAnimator` / `Transition` bodies.
+public struct PlaceholderContentView<Value>: View {
+    let content: AnyView
+    init(content: some View) { self.content = AnyView(content) }
     public var body: some View { content }
 }
 

@@ -125,6 +125,14 @@ public final class AppKitBackend: RenderBackend {
         NSWorkspace.shared.open(url)
     }
 
+    public func share(_ items: [Any]) {
+        guard let root = rootHandle as? NSView, let window = root.window else { return }
+        // Anchored at the pointer, which is over the share control that was just clicked.
+        let point = root.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        let picker = NSSharingServicePicker(items: items)
+        picker.show(relativeTo: NSRect(origin: point, size: CGSize(width: 1, height: 1)), of: root, preferredEdge: .minY)
+    }
+
     public func presentFileDialog(_ request: FileDialogRequest, completion: @escaping @MainActor ([URL]?) -> Void) {
         let types = request.contentTypes.compactMap { UTType($0) }
         let panel: NSSavePanel

@@ -223,11 +223,11 @@ extension Button where Label == Text {
 }
 
 extension Button where Label == SwiftUI2Core.Label<Text, Image> {
-    public init(_ title: String, systemImage: String, action: @escaping @MainActor () -> Void) {
+    public init<S: StringProtocol>(_ title: S, systemImage: String, action: @escaping @MainActor () -> Void) {
         self.init(action: action) { SwiftUI2Core.Label(title, systemImage: systemImage) }
     }
 
-    public init(_ title: String, systemImage: String, role: ButtonRole?, action: @escaping @MainActor () -> Void) {
+    public init<S: StringProtocol>(_ title: S, systemImage: String, role: ButtonRole?, action: @escaping @MainActor () -> Void) {
         self.init(role: role, action: action) { SwiftUI2Core.Label(title, systemImage: systemImage) }
     }
 }
@@ -516,7 +516,7 @@ extension Toggle where Label == Text {
 }
 
 extension Toggle where Label == SwiftUI2Core.Label<Text, Image> {
-    public init(_ title: String, systemImage: String, isOn: Binding<Bool>) {
+    public init<S: StringProtocol>(_ title: S, systemImage: String, isOn: Binding<Bool>) {
         self.init(isOn: isOn) { SwiftUI2Core.Label(title, systemImage: systemImage) }
     }
 }
@@ -619,7 +619,7 @@ extension View {
 
 /// Shared platform text input (single line, secure or multi-line).
 struct _TextInput: View {
-    enum Kind: Hashable { case field, secure, editor }
+    enum Kind: Hashable { case field, secure, editor, verticalField }
     let text: Binding<String>
     let prompt: String
     let kind: Kind
@@ -637,7 +637,7 @@ struct _TextInput: View {
                 text: field.text.wrappedValue, placeholder: field.prompt, isEnabled: env.isEnabled,
                 font: (env.font ?? .body).resolve(), isSecure: field.kind == .secure, isMultiline: field.kind == .editor,
                 style: env.textFieldStyle, wantsFocus: env.focusRequest?.isFocused() ?? false,
-                color: ForegroundStyle()._resolveColor(in: env)
+                color: ForegroundStyle()._resolveColor(in: env), wraps: field.kind == .verticalField
             ))
         }
         let viewAttribute = view.attribute
@@ -658,6 +658,18 @@ struct _TextInput: View {
         let path = inputs.path
         return _ViewOutputs(layout: inputs.makeLayoutAttribute {
             var metrics = services.controlMetrics(.textField)
+            if kind == .verticalField {
+                let env = environment.value
+                // The rendered content carries the (observed) current text.
+                guard case .textField(let field) = content.value else { return ControlLayoutComputer(metrics: metrics, path: path, tracer: tracer) }
+                let font = field.font
+                let black = Color.Resolved(red: 0, green: 0, blue: 0, opacity: 1)
+                let text = ResolvedText(string: field.text.isEmpty ? field.placeholder : field.text, font: font, color: black, lineLimit: env.lineLimit, alignment: .leading, strikethrough: false, underline: false)
+                let line = ResolvedText(string: "X", font: font, color: black, lineLimit: 1, alignment: .leading, strikethrough: false, underline: false)
+                return VerticalTextFieldLayoutComputer(
+                    metrics: metrics, text: text, lineHeight: services.measureText(line, proposal: .unspecified).height,
+                    minimumLines: env.minimumLineLimit ?? 1, services: services, path: path, tracer: tracer)
+            }
             if kind == .editor { metrics.minSize.height = 40 }
             // SwiftUI: a text field's ideal width is its prompt's width plus the bezel insets;
             // secure fields have no ideal width.
@@ -674,9 +686,40 @@ struct _TextInput: View {
     }
 }
 
+/// A text field that wraps and grows vertically, between the `lineLimit` range bounds.
+final class VerticalTextFieldLayoutComputer: LayoutComputer {
+    let metrics: ControlMetrics
+    let text: ResolvedText
+    let lineHeight: CGFloat
+    let minimumLines: Int
+    let services: PlatformServices
+    init(metrics: ControlMetrics, text: ResolvedText, lineHeight: CGFloat, minimumLines: Int, services: PlatformServices, path: ViewPath, tracer: UpdateTracer) {
+        self.metrics = metrics
+        self.text = text
+        self.lineHeight = lineHeight
+        self.minimumLines = minimumLines
+        self.services = services
+        super.init(path: path, tracer: tracer)
+    }
+    override func computeSize(_ proposal: ProposedViewSize) -> CGSize {
+        var width = max(metrics.minSize.width, proposal.width ?? metrics.idealWidth)
+        if !width.isFinite { width = metrics.idealWidth }
+        // The bezel adds the same insets as for a single-line field.
+        let insets = CGSize(width: 8, height: max(0, metrics.minSize.height - lineHeight))
+        let measured = services.measureText(text, proposal: ProposedViewSize(width: max(0, width - insets.width), height: nil)).height
+        let height = max(measured, CGFloat(minimumLines) * lineHeight)
+        return CGSize(width: width, height: max(metrics.minSize.height, (height + insets.height).rounded(.up)))
+    }
+    override func isEquivalent(to other: LayoutComputer) -> Bool {
+        guard let other = other as? VerticalTextFieldLayoutComputer else { return false }
+        return other.metrics == metrics && other.text == text && other.lineHeight == lineHeight && other.minimumLines == minimumLines
+    }
+}
+
 public struct TextField<Label: View>: View {
     let text: Binding<String>
     let prompt: String
+    var axis: Axis = .horizontal
     @Environment(\.isInForm) private var isInForm
     @Environment(\.labelsHidden) private var labelsHidden
 
@@ -690,7 +733,7 @@ public struct TextField<Label: View>: View {
                     .frame(maxWidth: 240)
             }
         } else {
-            _TextInput(text: text, prompt: prompt, kind: .field)
+            _TextInput(text: text, prompt: prompt, kind: axis == .vertical ? .verticalField : .field)
         }
     }
 }
@@ -714,6 +757,19 @@ extension TextField where Label == Text {
     public init<S: StringProtocol>(_ title: S, text: Binding<String>, axis: Axis) {
         self.text = text
         self.prompt = String(title)
+        self.axis = axis
+    }
+
+    public init(_ titleKey: LocalizedStringKey, text: Binding<String>, axis: Axis) {
+        self.text = text
+        self.prompt = titleKey.key
+        self.axis = axis
+    }
+
+    public init<S: StringProtocol>(_ title: S, text: Binding<String>, prompt: Text?, axis: Axis) {
+        self.text = text
+        self.prompt = prompt?.plainString ?? String(title)
+        self.axis = axis
     }
 
     public init<S: StringProtocol, F: ParseableFormatStyle>(_ title: S, value: Binding<F.FormatInput>, format: F) where F.FormatOutput == String {

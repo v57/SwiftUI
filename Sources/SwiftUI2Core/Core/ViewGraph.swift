@@ -55,6 +55,7 @@ public final class ViewGraph: AttributeGraphDelegate {
         proposal = Attribute(rootSubgraph, value: proposedSize, isEqual: { $0 == $1 })
         var rootEnvironment = environment
         rootEnvironment.openURL = OpenURLAction { [weak backend] url in backend?.openURL(url) }
+        rootEnvironment._share = ShareAction { [weak backend] items in backend?.share(items) }
         rootEnvironment._fileDialogs = FileDialogPresenter { [weak backend] request, completion in
             if let backend { backend.presentFileDialog(request, completion: completion) } else { completion(nil) }
         }

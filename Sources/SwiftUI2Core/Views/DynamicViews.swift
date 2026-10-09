@@ -231,6 +231,31 @@ extension ForEach {
     }
 }
 
+/// An element binding with its identity (`ForEach($items)`).
+public struct _BoundElement<Element, ID: Hashable> {
+    public let binding: Binding<Element>
+    public let id: ID
+}
+
+extension ForEach where Content: View {
+    /// `ForEach($items) { $item in ... }`: element bindings into a mutable collection.
+    @MainActor
+    public init<C: MutableCollection & RandomAccessCollection>(_ data: Binding<C>, @ViewBuilder content: @escaping (Binding<C.Element>) -> Content) where C.Element: Identifiable, Data == [_BoundElement<C.Element, C.Element.ID>], ID == C.Element.ID {
+        let elements = data.wrappedValue.indices.map { index in
+            _BoundElement(binding: Binding(get: { data.wrappedValue[index] }, set: { data.wrappedValue[index] = $0 }), id: data.wrappedValue[index].id)
+        }
+        self.init(_unchecked: elements, id: \.id, content: { content($0.binding) })
+    }
+
+    @MainActor
+    public init<C: MutableCollection & RandomAccessCollection>(_ data: Binding<C>, id: KeyPath<C.Element, ID>, @ViewBuilder content: @escaping (Binding<C.Element>) -> Content) where Data == [_BoundElement<C.Element, ID>] {
+        let elements = data.wrappedValue.indices.map { index in
+            _BoundElement(binding: Binding(get: { data.wrappedValue[index] }, set: { data.wrappedValue[index] = $0 }), id: data.wrappedValue[index][keyPath: id])
+        }
+        self.init(_unchecked: elements, id: \.id, content: { content($0.binding) })
+    }
+}
+
 extension ForEach: View where Content: View {
     public init(_ data: Data, @ViewBuilder content: @escaping (Data.Element) -> Content) where Data.Element: Identifiable, ID == Data.Element.ID {
         self.data = data

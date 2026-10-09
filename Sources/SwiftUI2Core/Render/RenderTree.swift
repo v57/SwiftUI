@@ -70,6 +70,8 @@ public struct ResolvedTextField: Equatable, Sendable {
     /// Requested focus state from `@FocusState` (backends make the field first responder).
     public var wantsFocus = false
     public var color: Color.Resolved = Color.Resolved(red: 0, green: 0, blue: 0)
+    /// Vertical-axis text field: a bezeled field whose text wraps.
+    public var wraps = false
 }
 
 public struct ResolvedSlider: Equatable, Sendable {
@@ -222,11 +224,14 @@ public protocol RenderBackend: PlatformServices {
     func openURL(_ url: URL)
     /// Shows a native open/save panel; `completion` gets the chosen URLs, or nil when cancelled.
     func presentFileDialog(_ request: FileDialogRequest, completion: @escaping @MainActor ([URL]?) -> Void)
+    /// Shows the platform share sheet (`ShareLink`) for URLs, strings or other platform items.
+    func share(_ items: [Any])
 }
 
 extension RenderBackend {
     public func setPresentation(of view: AnyObject, node: RenderNode) {}
     public func openURL(_ url: URL) {}
+    public func share(_ items: [Any]) {}
     public func presentFileDialog(_ request: FileDialogRequest, completion: @escaping @MainActor ([URL]?) -> Void) {
         completion(nil)
     }

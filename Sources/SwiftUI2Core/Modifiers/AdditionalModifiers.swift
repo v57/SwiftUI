@@ -7,6 +7,8 @@ import CoreGraphics
 // the ones with visible behavior on macOS (inspector, onOpenURL, backgroundStyle, ...) are
 // implemented.
 
+public enum SymbolVariableValueMode: Sendable { case color, draw }
+public enum SymbolColorRenderingMode: Sendable { case flat, gradient }
 public enum SearchPresentationToolbarBehavior: Sendable { case automatic, avoidHidingContent }
 public enum PresentationSizing: Sendable { case automatic, form, page, fitted }
 public enum ContentMarginPlacement: Sendable { case automatic, scrollContent, scrollIndicators }
@@ -112,6 +114,9 @@ extension View {
     public func scrollIndicatorsFlash<V: Equatable>(trigger value: V) -> some View { self }
     public func scrollEdgeEffectStyle(_ style: ScrollEdgeEffectStyle?, for edges: Edge.Set) -> some View { self }
     public func backgroundExtensionEffect() -> some View { self }
+    public func flipsForRightToLeftLayoutDirection(_ enabled: Bool) -> some View { self }
+    public func symbolVariableValueMode(_ mode: SymbolVariableValueMode?) -> some View { self }
+    public func symbolColorRenderingMode(_ mode: SymbolColorRenderingMode?) -> some View { self }
 
     /// The style `.background` / `BackgroundStyle` resolves to inside this view.
     public func backgroundStyle<S: ShapeStyle>(_ style: S) -> some View {

@@ -58,6 +58,15 @@ public struct Image: Equatable {
         isTemplate = true
     }
 
+    /// Variable-value symbols are drawn at full value.
+    public init(systemName: String, variableValue: Double?) {
+        self.init(systemName: systemName)
+    }
+
+    public init(_ name: String, variableValue: Double?, bundle: Bundle? = nil) {
+        self.init(name)
+    }
+
     public init(_ name: String) {
         source = .named(name)
         isTemplate = false

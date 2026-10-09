@@ -340,6 +340,11 @@ final class TextFieldNodeView: FlippedView, PlatformNodeView, NSTextFieldDelegat
             field.placeholderString = model.placeholder
             field.isEnabled = model.isEnabled
             field.font = AppKitText.font(model.font)
+            if (field.cell?.wraps ?? false) != model.wraps {
+                field.cell?.wraps = model.wraps
+                field.cell?.isScrollable = !model.wraps
+                field.lineBreakMode = model.wraps ? .byWordWrapping : .byClipping
+            }
             switch model.style {
             case .plain:
                 field.isBordered = false

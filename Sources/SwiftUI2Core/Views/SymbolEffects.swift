@@ -155,3 +155,26 @@ extension EnvironmentValues {
         set { self[LegibilityWeightKey.self] = newValue }
     }
 }
+
+// MARK: - Focus / search state in the environment
+
+struct IsFocusedKey: EnvironmentKey { static let defaultValue = false }
+struct IsSearchingKey: EnvironmentKey { static let defaultValue = false }
+struct IsFocusEffectEnabledKey: EnvironmentKey { static let defaultValue = true }
+
+extension EnvironmentValues {
+    /// Whether the nearest focusable ancestor has focus.
+    public var isFocused: Bool {
+        get { self[IsFocusedKey.self] }
+        set { self[IsFocusedKey.self] = newValue }
+    }
+    /// Whether the enclosing searchable is being searched.
+    public var isSearching: Bool {
+        get { self[IsSearchingKey.self] }
+        set { self[IsSearchingKey.self] = newValue }
+    }
+    public var isFocusEffectEnabled: Bool {
+        get { self[IsFocusEffectEnabledKey.self] }
+        set { self[IsFocusEffectEnabledKey.self] = newValue }
+    }
+}

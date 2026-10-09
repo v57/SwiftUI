@@ -11,6 +11,12 @@ public struct Font: Hashable, Sendable {
     }
 
     public enum Design: Hashable, Sendable { case `default`, serif, rounded, monospaced }
+    public struct Width: Hashable, Sendable {
+        public let value: CGFloat
+        public init(_ value: CGFloat) { self.value = value }
+        public static let compressed = Width(-0.3), condensed = Width(-0.2), standard = Width(0), expanded = Width(0.2)
+    }
+    public func width(_ width: Width) -> Font { self }
 
     public struct Weight: Hashable, Sendable {
         public let value: Double
@@ -236,6 +242,7 @@ public struct Text: Equatable {
         case tracking(CGFloat)
         case baselineOffset(CGFloat)
         case background(Color?)
+        case design(Font.Design)
     }
 
     var storage: Storage
@@ -285,6 +292,8 @@ public struct Text: Equatable {
 
     public enum Case: Sendable { case uppercase, lowercase }
 
+    public func fontDesign(_ design: Font.Design?) -> Text { adding(.design(design ?? .default)) }
+    public func fontWidth(_ width: Font.Width?) -> Text { self }
     public func kerning(_ kerning: CGFloat) -> Text { adding(.tracking(kerning)) }
     public func tracking(_ tracking: CGFloat) -> Text { adding(.tracking(tracking)) }
     public func baselineOffset(_ offset: CGFloat) -> Text { adding(.baselineOffset(offset)) }
@@ -383,6 +392,7 @@ public struct Text: Equatable {
             case .tracking(let value): tracking = value
             case .baselineOffset(let value): baselineOffset = value
             case .background(let value): background = value?.resolve(in: environment)
+            case .design(let design): font.design = design
             }
         }
         var resolvedColor = color ?? ForegroundStyle()._resolveColor(in: environment)

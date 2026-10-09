@@ -77,7 +77,9 @@ final class NavigationDestinations {
 @MainActor
 struct NavigationContext {
     let push: @MainActor (AnyHashable) -> Void
-    let pushView: @MainActor (AnyView) -> Void
+    let pushView: @MainActor (AnyView) -> AnyHashable
+    /// Pops the given path element and everything above it (no-op once it is gone).
+    let pop: @MainActor (AnyHashable) -> Void
     let destinations: NavigationDestinations
 }
 
@@ -136,6 +138,11 @@ public struct NavigationStack<Root: View>: View {
                 let id = AnyHashable(_DirectDestinationID(id: directCounter))
                 destinations.direct[id] = view
                 path.wrappedValue.append(id)
+                return id
+            },
+            pop: { id in
+                guard let index = path.wrappedValue.firstIndex(of: id) else { return }
+                path.wrappedValue.removeLast(path.wrappedValue.count - index)
             },
             destinations: destinations
         )
@@ -190,7 +197,7 @@ public struct NavigationLink<Label: View, Destination: View>: View {
 
     public var body: some View {
         Button {
-            if let value { context?.push(value) } else if let destination { context?.pushView(AnyView(destination)) }
+            if let value { context?.push(value) } else if let destination { _ = context?.pushView(AnyView(destination)) }
         } label: {
             // macOS list rows show no disclosure chevron.
             HStack {
@@ -246,7 +253,52 @@ extension View {
     }
 
     public func navigationDestination<V: View>(isPresented: Binding<Bool>, @ViewBuilder destination: () -> V) -> some View {
-        sheet(isPresented: isPresented) { [content = destination()] in content }
+        let content = destination()
+        let item = Binding<Bool?>(get: { isPresented.wrappedValue ? true : nil }, set: { isPresented.wrappedValue = $0 != nil })
+        return modifier(_PresentedDestinationModifier(item: item, destination: { _ in content }))
+    }
+
+    public func navigationDestination<D: Hashable, C: View>(item: Binding<D?>, @ViewBuilder destination: @escaping (D) -> C) -> some View {
+        modifier(_PresentedDestinationModifier(item: item, destination: destination))
+    }
+}
+
+/// `navigationDestination(isPresented:)` / `(item:)`: pushes onto the enclosing stack while the
+/// binding is set, pops when it is cleared, and clears it when the pushed level is popped.
+struct _PresentedDestinationModifier<D: Hashable, C: View>: ViewModifier {
+    let item: Binding<D?>
+    let destination: (D) -> C
+    @Environment(\.navigationContext) private var context
+    @State private var pushed: AnyHashable?
+
+    func body(content: Content) -> some View {
+        let item = self.item
+        let destination = self.destination
+        content
+            .onChange(of: item.wrappedValue != nil, initial: true) { _, presented in
+                guard let context else { return }
+                if presented, pushed == nil {
+                    pushed = context.pushView(AnyView(_PresentedDestination(item: item, destination: destination)))
+                } else if !presented, let id = pushed {
+                    pushed = nil
+                    context.pop(id)
+                }
+            }
+            .sheet(isPresented: Binding(get: { context == nil && item.wrappedValue != nil }, set: { if !$0 { item.wrappedValue = nil } })) {
+                _PresentedDestination(item: item, destination: destination)
+            }
+    }
+}
+
+struct _PresentedDestination<D: Hashable, C: View>: View {
+    let item: Binding<D?>
+    let destination: (D) -> C
+
+    var body: some View {
+        let item = self.item
+        if let value = item.wrappedValue {
+            destination(value).onDisappear { item.wrappedValue = nil }
+        }
     }
 }
 

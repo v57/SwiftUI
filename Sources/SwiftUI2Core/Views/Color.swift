@@ -156,7 +156,32 @@ public struct Color: Hashable, Sendable, CustomStringConvertible {
 /// Mirrors `SwiftUI.ShapeStyle`. Styles resolve to a color in an environment (gradients and
 /// materials are on the roadmap).
 public protocol ShapeStyle: Sendable {
+    /// Custom styles resolve to another style for an environment (`func resolve(in:) -> Color`).
+    associatedtype Resolved: ShapeStyle = _UnresolvedShapeStyle
+    func resolve(in environment: EnvironmentValues) -> Resolved
     func _resolvePaint(in environment: EnvironmentValues) -> ResolvedPaint
+}
+
+/// Placeholder `Resolved` type of the built-in styles (they resolve directly to paint).
+public struct _UnresolvedShapeStyle: ShapeStyle {
+    public typealias Resolved = _UnresolvedShapeStyle
+    public func resolve(in environment: EnvironmentValues) -> _UnresolvedShapeStyle { self }
+    public func _resolvePaint(in environment: EnvironmentValues) -> ResolvedPaint { .color(Color.Resolved(red: 0, green: 0, blue: 0, opacity: 0)) }
+}
+
+extension ShapeStyle where Resolved == _UnresolvedShapeStyle {
+    public func resolve(in environment: EnvironmentValues) -> _UnresolvedShapeStyle { _UnresolvedShapeStyle() }
+}
+
+extension ShapeStyle {
+    public func _resolvePaint(in environment: EnvironmentValues) -> ResolvedPaint {
+        resolve(in: environment)._resolvePaint(in: environment)
+    }
+}
+
+extension Color.Resolved: ShapeStyle {
+    public typealias Resolved = _UnresolvedShapeStyle
+    public func _resolvePaint(in environment: EnvironmentValues) -> ResolvedPaint { .color(self) }
 }
 
 /// A resolved fill: a solid color or a gradient.
