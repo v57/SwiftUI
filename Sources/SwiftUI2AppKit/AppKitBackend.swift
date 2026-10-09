@@ -251,9 +251,20 @@ enum AppKitImages {
         case .system(let name):
             let scale: NSImage.SymbolScale = image.scale == .small ? .small : image.scale == .large ? .large : .medium
             let configuration = NSImage.SymbolConfiguration(pointSize: image.pointSize, weight: NSFont.Weight(rawValue: CGFloat(image.weight.value)), scale: scale)
-            return NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(configuration)
+            // Symbol variants that don't exist for a symbol fall back to the closest base name.
+            var candidate = name
+            var symbol = NSImage(systemSymbolName: candidate, accessibilityDescription: nil)
+            while symbol == nil, let dot = candidate.lastIndex(of: ".") {
+                candidate = String(candidate[..<dot])
+                symbol = NSImage(systemSymbolName: candidate, accessibilityDescription: nil)
+            }
+            return symbol?.withSymbolConfiguration(configuration)
         case .named(let name):
             return NSImage(named: name)
+        case .platform(let platform):
+            if let image = platform.object as? NSImage { return image }
+            let cgImage = platform.object as! CGImage
+            return NSImage(cgImage: cgImage, size: platform.size)
         }
     }
 }

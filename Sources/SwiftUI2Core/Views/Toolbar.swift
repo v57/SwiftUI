@@ -107,7 +107,28 @@ public struct WindowToolbar: Equatable {
 
 // MARK: - Items
 
-public struct ToolbarItem<ID, Content: View>: View {
+/// Mirrors `SwiftUI.ToolbarContent`: toolbar items built with `@ToolbarContentBuilder`.
+@MainActor @preconcurrency
+public protocol ToolbarContent {
+    associatedtype Body: ToolbarContent
+    @ToolbarContentBuilder var body: Body { get }
+    func _toolbarItems(into items: inout [(ToolbarItemPlacement, any View)])
+}
+
+extension ToolbarContent {
+    public func _toolbarItems(into items: inout [(ToolbarItemPlacement, any View)]) {
+        body._toolbarItems(into: &items)
+    }
+}
+
+/// Customizable toolbar content (`.toolbar(id:)`) is treated like plain toolbar content.
+public typealias CustomizableToolbarContent = ToolbarContent
+
+extension Never: ToolbarContent {
+    public func _toolbarItems(into items: inout [(ToolbarItemPlacement, any View)]) {}
+}
+
+public struct ToolbarItem<ID, Content: View>: ToolbarContent {
     let placement: ToolbarItemPlacement
     let content: Content
     public init(placement: ToolbarItemPlacement = .automatic, @ViewBuilder content: () -> Content) where ID == () {
@@ -118,27 +139,87 @@ public struct ToolbarItem<ID, Content: View>: View {
         self.placement = placement
         self.content = content()
     }
-    public var body: some View { content }
+    public var body: Never { fatalError("ToolbarItem has no body") }
+
+    public func _toolbarItems(into items: inout [(ToolbarItemPlacement, any View)]) {
+        // A missing (nil / empty) item is not shown at all.
+        var inner: [(ToolbarItemPlacement, any View)] = []
+        _collectToolbarItems(content, placement: placement, into: &inner)
+        if !inner.isEmpty { items.append((placement, content)) }
+    }
 }
 
-public struct ToolbarItemGroup<Content: View>: View {
+public struct ToolbarItemGroup<Content: View>: ToolbarContent {
     let placement: ToolbarItemPlacement
     let content: Content
     public init(placement: ToolbarItemPlacement = .automatic, @ViewBuilder content: () -> Content) {
         self.placement = placement
         self.content = content()
     }
-    public var body: some View { HStack { content } }
+    public var body: Never { fatalError("ToolbarItemGroup has no body") }
+
+    public func _toolbarItems(into items: inout [(ToolbarItemPlacement, any View)]) {
+        _collectToolbarItems(content, placement: placement, into: &items)
+    }
 }
 
 /// Fixed or flexible space between toolbar items (macOS 26 `ToolbarSpacer`).
-public struct ToolbarSpacer: View {
+public struct ToolbarSpacer: ToolbarContent {
     public enum Sizing: Sendable { case fixed, flexible }
     public init(_ sizing: Sizing = .fixed, placement: ToolbarItemPlacement = .automatic) {}
-    public var body: some View { EmptyView() }
+    public var body: Never { fatalError("ToolbarSpacer has no body") }
+    public func _toolbarItems(into items: inout [(ToolbarItemPlacement, any View)]) {}
 }
 
-/// Splits toolbar content into items.
+public struct _TupleToolbarContent: ToolbarContent {
+    let parts: [@MainActor (inout [(ToolbarItemPlacement, any View)]) -> Void]
+    public var body: Never { fatalError() }
+    public func _toolbarItems(into items: inout [(ToolbarItemPlacement, any View)]) { for part in parts { part(&items) } }
+}
+
+public struct _EmptyToolbarContent: ToolbarContent {
+    public var body: Never { fatalError() }
+    public func _toolbarItems(into items: inout [(ToolbarItemPlacement, any View)]) {}
+}
+
+extension Optional: ToolbarContent where Wrapped: ToolbarContent {
+    public var body: Never { fatalError() }
+    public func _toolbarItems(into items: inout [(ToolbarItemPlacement, any View)]) { self?._toolbarItems(into: &items) }
+}
+
+extension _ConditionalContent: ToolbarContent where TrueContent: ToolbarContent, FalseContent: ToolbarContent {
+    public var body: Never { fatalError() }
+    public func _toolbarItems(into items: inout [(ToolbarItemPlacement, any View)]) {
+        switch storage {
+        case .trueContent(let content): content._toolbarItems(into: &items)
+        case .falseContent(let content): content._toolbarItems(into: &items)
+        }
+    }
+}
+
+extension Group: ToolbarContent where Content: ToolbarContent {
+    public var body: Never { fatalError() }
+    public init(@ToolbarContentBuilder content: () -> Content) { self.content = content() }
+    public func _toolbarItems(into items: inout [(ToolbarItemPlacement, any View)]) { content._toolbarItems(into: &items) }
+}
+
+@resultBuilder @MainActor
+public enum ToolbarContentBuilder {
+    public static func buildExpression<C: ToolbarContent>(_ content: C) -> C { content }
+    public static func buildBlock() -> _EmptyToolbarContent { _EmptyToolbarContent() }
+    public static func buildBlock<C: ToolbarContent>(_ content: C) -> C { content }
+    public static func buildBlock<each C: ToolbarContent>(_ content: repeat each C) -> _TupleToolbarContent {
+        var parts: [@MainActor (inout [(ToolbarItemPlacement, any View)]) -> Void] = []
+        repeat parts.append({ items in (each content)._toolbarItems(into: &items) })
+        return _TupleToolbarContent(parts: parts)
+    }
+    public static func buildOptional<C: ToolbarContent>(_ content: C?) -> C? { content }
+    public static func buildEither<T: ToolbarContent, F: ToolbarContent>(first: T) -> _ConditionalContent<T, F> { _ConditionalContent(storage: .trueContent(first)) }
+    public static func buildEither<T: ToolbarContent, F: ToolbarContent>(second: F) -> _ConditionalContent<T, F> { _ConditionalContent(storage: .falseContent(second)) }
+    public static func buildLimitedAvailability<C: ToolbarContent>(_ content: C) -> C { content }
+}
+
+/// Splits view-built toolbar content into items.
 @MainActor
 protocol _ToolbarItemsProvider {
     func _toolbarItems(placement: ToolbarItemPlacement, into items: inout [(ToolbarItemPlacement, any View)])
@@ -148,23 +229,8 @@ protocol _ToolbarItemsProvider {
 func _collectToolbarItems(_ view: any View, placement: ToolbarItemPlacement, into items: inout [(ToolbarItemPlacement, any View)]) {
     if let provider = view as? _ToolbarItemsProvider {
         provider._toolbarItems(placement: placement, into: &items)
-    } else if !(view is EmptyView), !(view is ToolbarSpacer) {
+    } else if !(view is EmptyView) {
         items.append((placement, view))
-    }
-}
-
-extension ToolbarItem: _ToolbarItemsProvider {
-    func _toolbarItems(placement: ToolbarItemPlacement, into items: inout [(ToolbarItemPlacement, any View)]) {
-        // A missing (nil / empty) item is not shown at all.
-        var inner: [(ToolbarItemPlacement, any View)] = []
-        _collectToolbarItems(content, placement: self.placement, into: &inner)
-        if !inner.isEmpty { items.append((self.placement, content)) }
-    }
-}
-
-extension ToolbarItemGroup: _ToolbarItemsProvider {
-    func _toolbarItems(placement: ToolbarItemPlacement, into items: inout [(ToolbarItemPlacement, any View)]) {
-        _collectToolbarItems(content, placement: self.placement, into: &items)
     }
 }
 
@@ -264,14 +330,14 @@ extension _EnvironmentKeyWritingModifier: _EnvironmentApplying {
 
 // MARK: - .toolbar
 
-struct _ToolbarModifier<Items: View>: ViewModifier {
-    let items: Items
+struct _ToolbarModifier: ViewModifier {
+    let collect: @MainActor (inout [(ToolbarItemPlacement, any View)]) -> Void
     let site: Int
     @Environment(\.self) private var environment
 
     func body(content: Content) -> some View {
         var collected: [(ToolbarItemPlacement, any View)] = []
-        _collectToolbarItems(items, placement: .automatic, into: &collected)
+        collect(&collected)
         let entries = collected.enumerated().map { index, item in
             ToolbarEntry(
                 id: "\(site).\(index)", placement: item.0, content: AnyView(erasing: item.1), environment: environment,
@@ -288,10 +354,17 @@ struct _ToolbarModifier<Items: View>: ViewModifier {
 extension View {
     public func toolbar<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         toolbarSiteCounter += 1
-        return modifier(_ToolbarModifier(items: content(), site: toolbarSiteCounter))
+        let items = content()
+        return modifier(_ToolbarModifier(collect: { _collectToolbarItems(items, placement: .automatic, into: &$0) }, site: toolbarSiteCounter))
     }
 
-    public func toolbar<Content: View>(id: String, @ViewBuilder content: () -> Content) -> some View {
+    public func toolbar<Content: ToolbarContent>(@ToolbarContentBuilder content: () -> Content) -> some View {
+        toolbarSiteCounter += 1
+        let items = content()
+        return modifier(_ToolbarModifier(collect: { items._toolbarItems(into: &$0) }, site: toolbarSiteCounter))
+    }
+
+    public func toolbar<Content: ToolbarContent>(id: String, @ToolbarContentBuilder content: () -> Content) -> some View {
         toolbar(content: content)
     }
 

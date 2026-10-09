@@ -791,10 +791,10 @@ extension Slider {
         self.maximumLabel = nil
     }
 
-    public init<V: BinaryFloatingPoint, Min: View, Max: View>(value: Binding<V>, in bounds: ClosedRange<V> = 0...1, @ViewBuilder label: () -> Label, @ViewBuilder minimumValueLabel: () -> Min, @ViewBuilder maximumValueLabel: () -> Max) where V.Stride: BinaryFloatingPoint {
+    public init<V: BinaryFloatingPoint, Min: View, Max: View>(value: Binding<V>, in bounds: ClosedRange<V> = 0...1, step: V.Stride? = nil, @ViewBuilder label: () -> Label, @ViewBuilder minimumValueLabel: () -> Min, @ViewBuilder maximumValueLabel: () -> Max) where V.Stride: BinaryFloatingPoint {
         self.value = Binding(get: { Double(value.wrappedValue) }, set: { value.wrappedValue = V($0) })
         self.range = Double(bounds.lowerBound)...Double(bounds.upperBound)
-        self.step = nil
+        self.step = step.map { Double($0) }
         self.label = label()
         self.minimumLabel = AnyView(minimumValueLabel())
         self.maximumLabel = AnyView(maximumValueLabel())

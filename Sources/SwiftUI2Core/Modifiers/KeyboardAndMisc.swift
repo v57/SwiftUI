@@ -143,7 +143,7 @@ struct _PasteCommandModifier: PlatformEffectModifier {
 // MARK: - Transferable drag & drop
 
 #if canImport(CoreTransferable)
-private struct TransferableDropHandler<T: Transferable>: _DropHandler {
+struct TransferableDropHandler<T: Transferable>: _DropHandler {
     let action: @MainActor ([T], CGPoint) -> Bool
     let isTargeted: @MainActor (Bool) -> Void
     func targeted(_ value: Bool) { isTargeted(value) }
@@ -332,5 +332,31 @@ struct _ScrollPositionModifier<ID: Hashable>: ViewModifier {
                 guard let newValue else { return }
                 ScrollViewProxy(box: box).scrollTo(newValue, anchor: anchor)
             }
+    }
+}
+
+// MARK: - Text decoration for all contained text
+
+struct TextStrikethroughKey: EnvironmentKey { static let defaultValue = false }
+struct TextUnderlineKey: EnvironmentKey { static let defaultValue = false }
+
+extension EnvironmentValues {
+    var textStrikethrough: Bool {
+        get { self[TextStrikethroughKey.self] }
+        set { self[TextStrikethroughKey.self] = newValue }
+    }
+    var textUnderline: Bool {
+        get { self[TextUnderlineKey.self] }
+        set { self[TextUnderlineKey.self] = newValue }
+    }
+}
+
+extension View {
+    public func strikethrough(_ isActive: Bool = true, pattern: Text.LineStyle.Pattern = .solid, color: Color? = nil) -> some View {
+        environment(\.textStrikethrough, isActive)
+    }
+
+    public func underline(_ isActive: Bool = true, pattern: Text.LineStyle.Pattern = .solid, color: Color? = nil) -> some View {
+        environment(\.textUnderline, isActive)
     }
 }

@@ -189,3 +189,53 @@ extension NSApplicationDelegateAdaptor where DelegateType: ObservableObject {
     public var projectedValue: ObservedObject<DelegateType>.Wrapper { ObservedObject(wrappedValue: wrappedValue).projectedValue }
 }
 #endif
+
+#if canImport(AppKit)
+// MARK: - Images from AppKit / Core Graphics
+
+extension Image {
+    public init(nsImage: NSImage) {
+        self.init(_platformImage: PlatformImage(object: nsImage, size: nsImage.size))
+    }
+
+    public init(_ cgImage: CGImage, scale: CGFloat, orientation: Image.Orientation = .up, label: Text) {
+        let size = CGSize(width: CGFloat(cgImage.width) / scale, height: CGFloat(cgImage.height) / scale)
+        self.init(_platformImage: PlatformImage(object: cgImage, size: size))
+    }
+
+    public init(decorative cgImage: CGImage, scale: CGFloat, orientation: Image.Orientation = .up) {
+        let size = CGSize(width: CGFloat(cgImage.width) / scale, height: CGFloat(cgImage.height) / scale)
+        self.init(_platformImage: PlatformImage(object: cgImage, size: size))
+    }
+}
+#endif
+
+#if canImport(AppKit)
+// MARK: - Colors from / to AppKit
+
+extension Color {
+    /// A color from an AppKit color; dynamic system colors keep their light and dark values.
+    public init(nsColor: NSColor) {
+        func resolve(_ name: NSAppearance.Name) -> Color.Resolved {
+            var resolved = Color.Resolved(red: 0, green: 0, blue: 0, opacity: 1)
+            NSAppearance(named: name)?.performAsCurrentDrawingAppearance {
+                let rgb = nsColor.usingColorSpace(.sRGB) ?? .black
+                resolved = Color.Resolved(red: Float(rgb.redComponent), green: Float(rgb.greenComponent), blue: Float(rgb.blueComponent), opacity: Float(rgb.alphaComponent))
+            }
+            return resolved
+        }
+        self.init(_light: resolve(.aqua), dark: resolve(.darkAqua))
+    }
+}
+
+extension NSColor {
+    /// An AppKit color for a SwiftUI2 color (resolved for the current appearance).
+    public convenience init(_ color: Color) {
+        var environment = EnvironmentValues()
+        let isDark = NSAppearance.currentDrawing().bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        environment.colorScheme = isDark ? .dark : .light
+        let resolved = color.resolve(in: environment)
+        self.init(srgbRed: CGFloat(resolved.red), green: CGFloat(resolved.green), blue: CGFloat(resolved.blue), alpha: CGFloat(resolved.opacity))
+    }
+}
+#endif

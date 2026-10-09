@@ -39,6 +39,36 @@ public struct Color: Hashable, Sendable, CustomStringConvertible {
         self.init(red: white, green: white, blue: white, opacity: opacity)
     }
 
+    public enum RGBColorSpace: Hashable, Sendable { case sRGB, sRGBLinear, displayP3 }
+
+    /// A color in a color space, converted to sRGB (Display P3 colors are mapped, not clipped
+    /// beyond the sRGB gamut).
+    public init(_ colorSpace: RGBColorSpace, red: Double, green: Double, blue: Double, opacity: Double = 1) {
+        func linear(_ v: Double) -> Double { v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4) }
+        func gamma(_ v: Double) -> Double { let c = min(max(v, 0), 1); return c <= 0.0031308 ? c * 12.92 : 1.055 * pow(c, 1 / 2.4) - 0.055 }
+        switch colorSpace {
+        case .sRGB:
+            self.init(red: red, green: green, blue: blue, opacity: opacity)
+        case .sRGBLinear:
+            self.init(red: gamma(red), green: gamma(green), blue: gamma(blue), opacity: opacity)
+        case .displayP3:
+            let (r, g, b) = (linear(red), linear(green), linear(blue))
+            let sr = 1.2249 * r - 0.2247 * g + 0.0000 * b
+            let sg = -0.0420 * r + 1.0419 * g + 0.0000 * b
+            let sb = -0.0197 * r - 0.0786 * g + 1.0979 * b
+            self.init(red: gamma(sr), green: gamma(sg), blue: gamma(sb), opacity: opacity)
+        }
+    }
+
+    public init(_ colorSpace: RGBColorSpace, white: Double, opacity: Double = 1) {
+        self.init(colorSpace, red: white, green: white, blue: white, opacity: opacity)
+    }
+
+    /// A color with separate light and dark appearance values (backends build platform colors).
+    public init(_light light: Resolved, dark: Resolved) {
+        storage = .dynamic(light: light, dark: dark)
+    }
+
     public init(hue: Double, saturation: Double, brightness: Double, opacity: Double = 1) {
         let h = (hue - floor(hue)) * 6
         let c = brightness * saturation
@@ -83,11 +113,11 @@ public struct Color: Hashable, Sendable, CustomStringConvertible {
         }
     }
 
-    private static func rgb(_ r: Double, _ g: Double, _ b: Double, _ a: Double = 1) -> Resolved {
+    static func rgb(_ r: Double, _ g: Double, _ b: Double, _ a: Double = 1) -> Resolved {
         Resolved(red: Float(r), green: Float(g), blue: Float(b), opacity: Float(a))
     }
 
-    private static func dynamic(_ light: Resolved, _ dark: Resolved) -> Color { Color(storage: .dynamic(light: light, dark: dark)) }
+    static func dynamic(_ light: Resolved, _ dark: Resolved) -> Color { Color(storage: .dynamic(light: light, dark: dark)) }
 
     // macOS system colors (light / dark).
     public static let clear = Color(red: 0, green: 0, blue: 0, opacity: 0)

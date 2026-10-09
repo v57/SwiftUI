@@ -7,6 +7,8 @@ public struct ResolvedImage: Hashable, Sendable {
     public enum Source: Hashable, Sendable {
         case system(String)
         case named(String)
+        /// A platform image object (NSImage, CGImage, ...) created by a backend initializer.
+        case platform(PlatformImage)
     }
 
     public var source: Source
@@ -19,8 +21,33 @@ public struct ResolvedImage: Hashable, Sendable {
     public var scale: Image.Scale = .medium
 }
 
+/// An opaque platform image with its intrinsic size (compared by identity).
+public struct PlatformImage: Hashable, @unchecked Sendable {
+    public let object: AnyObject
+    public let size: CGSize
+
+    public init(object: AnyObject, size: CGSize) {
+        self.object = object
+        self.size = size
+    }
+
+    public static func == (lhs: PlatformImage, rhs: PlatformImage) -> Bool { lhs.object === rhs.object }
+    public func hash(into hasher: inout Hasher) { hasher.combine(ObjectIdentifier(object)) }
+}
+
 public struct Image: Equatable {
     public enum Scale: Hashable, Sendable { case small, medium, large }
+    public enum Interpolation: Hashable, Sendable { case none, low, medium, high }
+    public enum Orientation: UInt8, Hashable, Sendable { case up, upMirrored, down, downMirrored, left, leftMirrored, right, rightMirrored }
+
+    /// An image from a platform image object (backends provide typed initializers).
+    public init(_platformImage image: PlatformImage) {
+        source = .platform(image)
+        isTemplate = false
+    }
+
+    public func interpolation(_ interpolation: Interpolation) -> Image { self }
+    public func antialiased(_ isAntialiased: Bool) -> Image { self }
 
     var source: ResolvedImage.Source
     var isResizable = false
@@ -53,6 +80,12 @@ public struct Image: Equatable {
     func resolve(in environment: EnvironmentValues) -> ResolvedImage {
         let font = (environment.font ?? .defaultFont).resolve()
         let tint: Color.Resolved? = isTemplate ? ForegroundStyle()._resolveColor(in: environment) : nil
+        var source = self.source
+        if case .system(let name) = source, !environment.symbolVariants.names.isEmpty {
+            // "wifi" + .slash → "wifi.slash" (backends fall back to the base name if missing).
+            let missing = environment.symbolVariants.names.filter { !name.split(separator: ".").contains(Substring($0)) }
+            if !missing.isEmpty { source = .system(([name] + missing).joined(separator: ".")) }
+        }
         return ResolvedImage(source: source, isResizable: isResizable, pointSize: font.size, weight: font.weight, tint: tint, scale: environment.imageScale)
     }
 }

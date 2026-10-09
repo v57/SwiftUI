@@ -36,6 +36,12 @@ func makeWritingEnvironment<Value>(
     }
 }
 
+/// A key path with the value to write there (compared field by field for cut-off).
+struct _KeyedValue<Value> {
+    let keyPath: WritableKeyPath<EnvironmentValues, Value>
+    let value: Value
+}
+
 public struct _EnvironmentKeyWritingModifier<Value>: ViewModifier, EnvironmentModifier {
     public var keyPath: WritableKeyPath<EnvironmentValues, Value>
     public var value: Value
@@ -47,10 +53,11 @@ public struct _EnvironmentKeyWritingModifier<Value>: ViewModifier, EnvironmentMo
 
     public typealias Body = Never
 
+    // The modifier is only read in rules: its value may depend on layout (e.g. a font sized
+    // from a GeometryReader proxy), which doesn't exist while the graph is being built.
     static func makeEnvironment(modifier: Attribute<Self>, environment: Attribute<EnvironmentValues>, subgraph: Subgraph) -> Attribute<EnvironmentValues> {
-        let keyPath = AnyAttribute.withoutDependencies { modifier.value.keyPath }
-        return makeWritingEnvironment(parent: environment, subgraph: subgraph, value: { modifier.value.value }) { environment, value in
-            environment[keyPath: keyPath] = value
+        makeWritingEnvironment(parent: environment, subgraph: subgraph, value: { _KeyedValue(keyPath: modifier.value.keyPath, value: modifier.value.value) }) { environment, entry in
+            environment[keyPath: entry.keyPath] = entry.value
         }
     }
 }
@@ -61,13 +68,13 @@ public struct _EnvironmentTransformModifier<Value>: ViewModifier, EnvironmentMod
     public typealias Body = Never
 
     static func makeEnvironment(modifier: Attribute<Self>, environment: Attribute<EnvironmentValues>, subgraph: Subgraph) -> Attribute<EnvironmentValues> {
-        let keyPath = AnyAttribute.withoutDependencies { modifier.value.keyPath }
-        return makeWritingEnvironment(parent: environment, subgraph: subgraph, value: {
-            var value = environment.value[keyPath: keyPath]
-            modifier.value.transform(&value)
-            return value
-        }) { environment, value in
-            environment[keyPath: keyPath] = value
+        makeWritingEnvironment(parent: environment, subgraph: subgraph, value: {
+            let current = modifier.value
+            var value = environment.value[keyPath: current.keyPath]
+            current.transform(&value)
+            return _KeyedValue(keyPath: current.keyPath, value: value)
+        }) { environment, entry in
+            environment[keyPath: entry.keyPath] = entry.value
         }
     }
 }
@@ -160,7 +167,7 @@ extension View {
         environment(\.isTextSelectable, S.allowsSelection)
     }
     public func symbolRenderingMode(_ mode: SymbolRenderingMode?) -> some View { self }
-    public func symbolVariant(_ variant: SymbolVariants) -> some View { self }
+    public func symbolVariant(_ variant: SymbolVariants) -> some View { environment(\.symbolVariants, variant) }
     public func accessibilityLabel<S: StringProtocol>(_ label: S) -> some View { self }
     public func accessibilityLabel(_ label: Text) -> some View { self }
     public func accessibilityHint<S: StringProtocol>(_ hint: S) -> some View { self }
@@ -176,12 +183,29 @@ extension View {
 }
 
 public enum SymbolRenderingMode: Sendable { case monochrome, multicolor, hierarchical, palette }
-public struct SymbolVariants: Sendable {
-    public static let none = SymbolVariants()
-    public static let fill = SymbolVariants()
-    public static let circle = SymbolVariants()
-    public static let square = SymbolVariants()
-    public static let slash = SymbolVariants()
+struct SymbolVariantsKey: EnvironmentKey { static let defaultValue = SymbolVariants.none }
+
+extension EnvironmentValues {
+    public var symbolVariants: SymbolVariants {
+        get { self[SymbolVariantsKey.self] }
+        set { self[SymbolVariantsKey.self] = newValue }
+    }
+}
+
+public struct SymbolVariants: Hashable, Sendable {
+    let names: [String]
+    public static let none = SymbolVariants(names: [])
+    public static let fill = SymbolVariants(names: ["fill"])
+    public static let circle = SymbolVariants(names: ["circle"])
+    public static let square = SymbolVariants(names: ["square"])
+    public static let rectangle = SymbolVariants(names: ["rectangle"])
+    public static let slash = SymbolVariants(names: ["slash"])
+    public var fill: SymbolVariants { SymbolVariants(names: names + ["fill"]) }
+    public var circle: SymbolVariants { SymbolVariants(names: names + ["circle"]) }
+    public var square: SymbolVariants { SymbolVariants(names: names + ["square"]) }
+    public var rectangle: SymbolVariants { SymbolVariants(names: names + ["rectangle"]) }
+    public var slash: SymbolVariants { SymbolVariants(names: names + ["slash"]) }
+    public func contains(_ other: SymbolVariants) -> Bool { other.names.allSatisfy(names.contains) }
 }
 public enum AccessibilityChildBehavior: Sendable { case ignore, contain, combine }
 public struct SafeAreaRegions: OptionSet, Sendable {

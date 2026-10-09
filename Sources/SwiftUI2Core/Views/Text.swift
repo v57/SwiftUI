@@ -335,8 +335,8 @@ public struct Text: Equatable {
     private func resolveStyle(in environment: EnvironmentValues, modifiers: [Modifier]) -> ResolvedText {
         var font = environment.font ?? .defaultFont
         var color: Color.Resolved? = nil
-        var strikethrough = false
-        var underline = false
+        var strikethrough = environment.textStrikethrough
+        var underline = environment.textUnderline
         for modifier in modifiers {
             switch modifier {
             case .font(let value): font = value ?? .defaultFont
@@ -360,5 +360,19 @@ public struct Text: Equatable {
             strikethrough: strikethrough,
             underline: underline
         )
+    }
+}
+
+extension Text {
+    /// Mirrors `Text.LineStyle` (patterns are drawn solid).
+    public struct LineStyle: Hashable, Sendable {
+        public enum Pattern: Hashable, Sendable { case solid, dot, dash, dashDot, dashDotDot }
+        public var pattern: Pattern
+        public var color: Color?
+        public init(pattern: Pattern = .solid, color: Color? = nil) {
+            self.pattern = pattern
+            self.color = color
+        }
+        public static let single = LineStyle()
     }
 }

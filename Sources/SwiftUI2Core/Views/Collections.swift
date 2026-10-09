@@ -52,6 +52,10 @@ struct SelectionContext {
     let isSelected: @MainActor (AnyHashable?) -> Bool
     let select: @MainActor (AnyHashable?) -> Void
     let id: ObjectIdentifier?
+    /// The selected values (context menus act on them).
+    var current: @MainActor () -> [AnyHashable] = { [] }
+    /// Command-click: adds or removes a value (multiple selection only).
+    var toggle: (@MainActor (AnyHashable) -> Void)?
 
     static func single<V: Hashable>(_ binding: Binding<V>) -> SelectionContext {
         SelectionContext(
@@ -60,7 +64,8 @@ struct SelectionContext {
                 if let value = tag?.base as? V { binding.wrappedValue = value }
                 else if let unwrapped = (tag?.base as Any?).flatMap({ $0 as? V }) { binding.wrappedValue = unwrapped }
             },
-            id: nil
+            id: nil,
+            current: { [AnyHashable(binding.wrappedValue)] }
         )
     }
 
@@ -68,15 +73,21 @@ struct SelectionContext {
         SelectionContext(
             isSelected: { tag in binding.wrappedValue.map { selectionMatches(AnyHashable($0), tag) } ?? false },
             select: { tag in binding.wrappedValue = tag?.base as? V },
-            id: nil
+            id: nil,
+            current: { binding.wrappedValue.map { [AnyHashable($0)] } ?? [] }
         )
     }
 
     static func multiple<V: Hashable>(_ binding: Binding<Set<V>>) -> SelectionContext {
         SelectionContext(
             isSelected: { tag in (tag?.base as? V).map { binding.wrappedValue.contains($0) } ?? false },
-            select: { tag in if let value = tag?.base as? V { binding.wrappedValue = [value] } },
-            id: nil
+            select: { tag in binding.wrappedValue = (tag?.base as? V).map { [$0] } ?? [] },
+            id: nil,
+            current: { binding.wrappedValue.map { AnyHashable($0) } },
+            toggle: { tag in
+                guard let value = tag.base as? V else { return }
+                if binding.wrappedValue.contains(value) { binding.wrappedValue.remove(value) } else { binding.wrappedValue.insert(value) }
+            }
         )
     }
 }
@@ -720,6 +731,13 @@ public struct Picker<Label: View, SelectionValue: Hashable, Content: View>: View
         self.selection = selection
         self.content = content()
         self.label = label()
+    }
+
+    /// The older label-first form (`Picker(selection:label:content:)`).
+    public init(selection: Binding<SelectionValue>, label: Label, @ViewBuilder content: () -> Content) {
+        self.selection = selection
+        self.content = content()
+        self.label = label
     }
 
     public var body: some View {
