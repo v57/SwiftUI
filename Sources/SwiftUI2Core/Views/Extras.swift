@@ -309,6 +309,7 @@ public struct ContentTransition: Sendable {
     public static let interpolate = ContentTransition()
     public static func numericText(countsDown: Bool = false) -> ContentTransition { ContentTransition() }
     public static let symbolEffect = ContentTransition()
+    public static func symbolEffect<E: SymbolEffect>(_ effect: E, options: SymbolEffectOptions = .default) -> ContentTransition { ContentTransition() }
 }
 public struct RedactionReasons: OptionSet, Sendable {
     public let rawValue: Int

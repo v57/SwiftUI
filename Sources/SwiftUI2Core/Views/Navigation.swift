@@ -5,6 +5,14 @@ import CoreGraphics
 
 // MARK: - Titles & toolbars (preferences)
 
+/// The window subtitle (`navigationSubtitle`).
+public struct NavigationSubtitleKey: PreferenceKey {
+    public static var defaultValue: String? { nil }
+    public static func reduce(value: inout String?, nextValue: () -> String?) {
+        if let next = nextValue() { value = next }
+    }
+}
+
 public struct NavigationTitleKey: PreferenceKey {
     public static var defaultValue: Text? { nil }
     public static func reduce(value: inout Text?, nextValue: () -> Text?) {
@@ -25,7 +33,9 @@ extension View {
     public func navigationTitle(_ title: Text) -> some View { preference(key: NavigationTitleKey.self, value: title) }
     public func navigationTitle<S: StringProtocol>(_ title: S) -> some View { preference(key: NavigationTitleKey.self, value: Text(title)) }
     public func navigationTitle(_ titleKey: LocalizedStringKey) -> some View { preference(key: NavigationTitleKey.self, value: Text(titleKey)) }
-    public func navigationSubtitle<S: StringProtocol>(_ subtitle: S) -> some View { self }
+    public func navigationSubtitle<S: StringProtocol>(_ subtitle: S) -> some View { preference(key: NavigationSubtitleKey.self, value: String(subtitle)) }
+    public func navigationSubtitle(_ subtitle: Text) -> some View { preference(key: NavigationSubtitleKey.self, value: subtitle.plainString) }
+    public func navigationSubtitle(_ subtitleKey: LocalizedStringKey) -> some View { preference(key: NavigationSubtitleKey.self, value: subtitleKey.key) }
     public func navigationBarTitleDisplayMode(_ mode: NavigationBarItem.TitleDisplayMode) -> some View { self }
     public func navigationBarBackButtonHidden(_ hidden: Bool = true) -> some View { self }
 

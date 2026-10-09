@@ -53,7 +53,7 @@ public struct _ConditionalContent<TrueContent, FalseContent> {
 
     public let storage: Storage
 
-    init(storage: Storage) { self.storage = storage }
+    public init(storage: Storage) { self.storage = storage }
 }
 
 extension _ConditionalContent: View where TrueContent: View, FalseContent: View {
@@ -146,6 +146,8 @@ class AnyViewStorageBase {
     init(type: any View.Type) { self.type = type }
     func makeViewList(view: _GraphValue<AnyView>, inputs: _ViewListInputs) -> ViewList { fatalError() }
     func isIdentical(to other: AnyViewStorageBase) -> Bool { false }
+    /// The erased view.
+    var anyView: any View { fatalError() }
 }
 
 @MainActor
@@ -155,6 +157,8 @@ final class AnyViewStorage<V: View>: AnyViewStorageBase {
         self.view = view
         super.init(type: V.self)
     }
+
+    override var anyView: any View { view }
 
     override func makeViewList(view: _GraphValue<AnyView>, inputs: _ViewListInputs) -> ViewList {
         let last = LastValue<V>()
@@ -216,6 +220,15 @@ public struct ForEach<Data: RandomAccessCollection, ID: Hashable, Content> {
     public var data: Data
     public var content: (Data.Element) -> Content
     let identify: (Data.Element) -> ID
+}
+
+extension ForEach {
+    /// For content protocols defined outside the core (charts, ...).
+    public init(_unchecked data: Data, id: KeyPath<Data.Element, ID>, content: @escaping (Data.Element) -> Content) {
+        self.data = data
+        self.content = content
+        self.identify = { $0[keyPath: id] }
+    }
 }
 
 extension ForEach: View where Content: View {

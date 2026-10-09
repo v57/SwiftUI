@@ -12,6 +12,7 @@ public final class AppKitBackend: RenderBackend {
     public var rootHandle: AnyObject { rootView }
 
     public init(rootView: NSView) {
+        if TextAttributes.platformBridge == nil { AppKitTextAttributeBridge.install() }
         self.rootView = rootView
     }
 
@@ -217,6 +218,9 @@ enum AppKitText {
             ]
             if run.strikethrough { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
             if run.underline { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
+            if run.tracking != 0 { attributes[.kern] = run.tracking }
+            if run.baselineOffset != 0 { attributes[.baselineOffset] = run.baselineOffset }
+            if let background = run.background { attributes[.backgroundColor] = NSColor(background) }
             result.append(NSAttributedString(string: run.string, attributes: attributes))
         }
         return result

@@ -84,13 +84,20 @@ public final class ViewGraph: AttributeGraphDelegate {
             modifierContent: nil
         )
         presentations = PresentationRegistry(subgraph: rootSubgraph)
-        rootOutputs = Root._makeView(view: _GraphValue(root), inputs: inputs.requesting(NavigationTitleKey.self).requesting(ToolbarItemsKey.self).requesting(NavigationChromeKey.self))
+        rootOutputs = Root._makeView(view: _GraphValue(root), inputs: inputs.requesting(NavigationTitleKey.self).requesting(NavigationSubtitleKey.self).requesting(ToolbarItemsKey.self).requesting(NavigationChromeKey.self))
         let titleAttribute = rootOutputs.preferences[NavigationTitleKey.self]
         let titleObserver = Attribute<String?>(rootSubgraph, isEqual: { $0 == $1 }) { titleAttribute?.value?.plainString }
         titleObserver.onChange = { [unowned self] title in
             enqueueAfterUpdate { [unowned self] in navigationTitle = title }
         }
         titleObserver.isEager = true
+
+        let subtitleAttribute = rootOutputs.preferences[NavigationSubtitleKey.self]
+        let subtitleObserver = Attribute<String?>(rootSubgraph, isEqual: { $0 == $1 }) { subtitleAttribute?.value }
+        subtitleObserver.onChange = { [unowned self] subtitle in
+            enqueueAfterUpdate { [unowned self] in navigationSubtitle = subtitle }
+        }
+        subtitleObserver.isEager = true
 
         // Window toolbar (items from `.toolbar`, chrome from navigation containers).
         let itemsAttribute = rootOutputs.preferences[ToolbarItemsKey.self]
@@ -226,6 +233,15 @@ public final class ViewGraph: AttributeGraphDelegate {
 
     public private(set) var windowToolbar = WindowToolbar() {
         didSet { if windowToolbar != oldValue { onToolbarChange?(windowToolbar) } }
+    }
+
+    /// Called with the root's `.navigationSubtitle` (the window subtitle).
+    public var onNavigationSubtitleChange: ((String?) -> Void)? {
+        didSet { onNavigationSubtitleChange?(navigationSubtitle) }
+    }
+
+    public private(set) var navigationSubtitle: String? {
+        didSet { if navigationSubtitle != oldValue { onNavigationSubtitleChange?(navigationSubtitle) } }
     }
 
     /// The root's current `.navigationTitle`.

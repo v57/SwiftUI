@@ -239,3 +239,59 @@ extension NSColor {
     }
 }
 #endif
+
+#if canImport(AppKit)
+extension View {
+    /// AppKit content types (`.password`, `.username`, `.oneTimeCode`).
+    public func textContentType(_ type: NSTextContentType?) -> some View { self }
+}
+#endif
+
+#if canImport(AppKit)
+/// Reads AppKit's attributed-string keys for `Text(AttributedString)`.
+enum AppKitTextAttributeBridge {
+    static func install() {
+        TextAttributes.platformBridge = { substring in
+            var styles: [TextAttributes.PlatformStyle] = []
+            let runs = substring.runs
+            guard let run = runs.first else { return styles }
+            if run[SwiftUI2TextAttributes.UnderlineStyleAttribute.self] != nil || run[AttributeScopes.AppKitAttributes.UnderlineStyleAttribute.self] != nil { styles.append(.underline) }
+            if run[SwiftUI2TextAttributes.StrikethroughStyleAttribute.self] != nil || run[AttributeScopes.AppKitAttributes.StrikethroughStyleAttribute.self] != nil { styles.append(.strikethrough) }
+            if let tracking = run[SwiftUI2TextAttributes.TrackingAttribute.self] ?? run[SwiftUI2TextAttributes.KerningAttribute.self] ?? run[AttributeScopes.AppKitAttributes.TrackingAttribute.self] ?? run[AttributeScopes.AppKitAttributes.KernAttribute.self] { styles.append(.tracking(tracking)) }
+            if let offset = run[SwiftUI2TextAttributes.BaselineOffsetAttribute.self] ?? run[AttributeScopes.AppKitAttributes.BaselineOffsetAttribute.self] { styles.append(.baselineOffset(offset)) }
+            return styles
+        }
+    }
+}
+#endif
+
+#if canImport(AppKit)
+// MARK: - Attributed string keys that also exist in the SDK's SwiftUI scope
+
+/// Declared here (a module importing AppKit) so they take precedence over the SDK's SwiftUI
+/// attribute keys that AppKit makes visible but SwiftUI2 apps cannot link.
+public enum SwiftUI2TextAttributes {
+    public enum TrackingAttribute: AttributedStringKey { public typealias Value = CGFloat; public static let name = "SwiftUI2.Tracking" }
+    public enum KerningAttribute: AttributedStringKey { public typealias Value = CGFloat; public static let name = "SwiftUI2.Kerning" }
+    public enum BaselineOffsetAttribute: AttributedStringKey { public typealias Value = CGFloat; public static let name = "SwiftUI2.BaselineOffset" }
+    public enum UnderlineStyleAttribute: AttributedStringKey { public typealias Value = Text.LineStyle; public static let name = "SwiftUI2.UnderlineStyle" }
+    public enum StrikethroughStyleAttribute: AttributedStringKey { public typealias Value = Text.LineStyle; public static let name = "SwiftUI2.StrikethroughStyle" }
+}
+
+extension AttributeScopes {
+    public struct SwiftUI2AppKitAttributes: AttributeScope {
+        public let tracking: SwiftUI2TextAttributes.TrackingAttribute
+        public let kern: SwiftUI2TextAttributes.KerningAttribute
+        public let baselineOffset: SwiftUI2TextAttributes.BaselineOffsetAttribute
+        public let underlineStyle: SwiftUI2TextAttributes.UnderlineStyleAttribute
+        public let strikethroughStyle: SwiftUI2TextAttributes.StrikethroughStyleAttribute
+        public let swiftUI2: SwiftUI2Attributes
+    }
+}
+
+extension AttributeDynamicLookup {
+    public subscript<T: AttributedStringKey>(dynamicMember keyPath: KeyPath<AttributeScopes.SwiftUI2AppKitAttributes, T>) -> T {
+        self[T.self]
+    }
+}
+#endif

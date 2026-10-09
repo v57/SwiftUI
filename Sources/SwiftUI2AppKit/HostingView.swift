@@ -25,6 +25,28 @@ open class GraphHostingView: NSView {
         graph.update()
     }
 
+    private var keyObservers: [NSObjectProtocol] = []
+
+    open override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        keyObservers.forEach(NotificationCenter.default.removeObserver)
+        keyObservers = []
+        guard let window else { return }
+        // \.appearsActive follows the window's key state.
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            keyObservers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.updateAppearsActive() }
+            })
+        }
+        updateAppearsActive()
+    }
+
+    private func updateAppearsActive() {
+        let active = window?.isKeyWindow ?? true
+        graph.setEnvironment { $0.appearsActive = active }
+        graph.update()
+    }
+
     open override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         applyAppearance()
@@ -213,93 +235,160 @@ public enum AppKitAppRunner {
         AppRuntime.runner = { descriptions in run(descriptions) }
     }
 
+    /// Open windows with the scene and presented value they came from.
+    private struct OpenWindow {
+        weak var window: NSWindow?
+        let sceneIndex: Int
+        let value: AnyHashable?
+    }
+    static var scenes: [WindowDescription] = []
+    private static var openWindows: [OpenWindow] = []
+    private static var menuBar: MenuBarController?
+
     static func run(_ descriptions: [WindowDescription]) -> Never {
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
         let delegate = AppDelegate()
         self.delegate = delegate
         app.delegate = delegate
-        app.mainMenu = makeMenu(hasSettings: descriptions.contains { $0.role == .settings })
+        scenes = descriptions
         for description in descriptions where description.role == .settings {
             delegate.settings = description
         }
-        for description in descriptions where description.role == .main {
-            let host = GraphHostingView(makeGraph: description.makeGraph)
-            let window = NSWindow(
-                contentRect: CGRect(origin: .zero, size: CGSize(width: 900, height: 450)),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                backing: .buffered,
-                defer: false
-            )
-            window.title = description.title.isEmpty ? ProcessInfo.processInfo.processName : description.title
-            let baseTitle = window.title
-            host.graph.onNavigationTitleChange = { [weak window] title in
-                window?.title = title ?? baseTitle
-            }
-            window.contentView = host
-            window.initialFirstResponder = host
-            let toolbarController = WindowToolbarController(window: window, host: host)
-            toolbarControllers.append(toolbarController)
-            host.graph.onToolbarChange = { [weak toolbarController] toolbar in toolbarController?.update(toolbar) }
-            // Like SwiftUI: the content's minimum size bounds the window, and the default frame is
-            // `defaultSize` or the content's ideal size (at least 900x450, title bar included).
-            let minimum = host.sizeThatFits(ProposedViewSize(width: 0, height: 0))
-            window.contentMinSize = minimum
-            let titleBar = window.frame.height - window.contentLayoutRect.height
-            let frameSize: CGSize
-            if let size = description.defaultSize {
-                frameSize = size
-            } else {
-                let ideal = host.sizeThatFits(.unspecified)
-                frameSize = CGSize(width: max(ideal.width, 900), height: max(ideal.height + titleBar, 450))
-            }
-            // Centered in the screen's visible frame (NSWindow.center() places windows higher).
-            let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? .zero
-            let origin = CGPoint(x: (visible.midX - frameSize.width / 2).rounded(), y: (visible.midY - frameSize.height / 2).rounded())
-            window.setFrame(CGRect(origin: origin, size: frameSize), display: false)
-            // SwiftUI restores window frames between launches.
-            let autosaveName = "SwiftUI2.WindowGroup-\(description.title)-1"
-            window.setFrameUsingName(autosaveName)
-            window.setFrameAutosaveName(autosaveName)
-            window.makeKeyAndOrderFront(nil)
-            windows.append(window)
+        let menuBar = MenuBarController(
+            appName: ProcessInfo.processInfo.processName,
+            hasSettings: descriptions.contains { $0.role == .settings },
+            hasWindowGroup: descriptions.contains { $0.opensAtLaunch && !$0.isSingle },
+            settingsTarget: delegate
+        )
+        self.menuBar = menuBar
+        app.mainMenu = menuBar.makeMainMenu()
+        AppRuntime.openWindow = { id, value in open(id: id, value: value) }
+        AppRuntime.dismissWindow = { id, value in dismiss(id: id, value: value) }
+        // Like SwiftUI, the first window scene opens at launch.
+        if let first = descriptions.firstIndex(where: { $0.opensAtLaunch }) {
+            makeWindow(sceneIndex: first, value: nil)
         }
         app.activate()
         app.run()
         exit(0)
     }
 
-    private static func makeMenu(hasSettings: Bool) -> NSMenu {
-        let menu = NSMenu()
-        let appItem = NSMenuItem()
-        menu.addItem(appItem)
-        let appMenu = NSMenu()
-        if hasSettings {
-            let settings = NSMenuItem(title: "Settings…", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
-            settings.target = delegate
-            appMenu.addItem(settings)
-            appMenu.addItem(.separator())
+    /// `openWindow(id:value:)`: focuses a window already showing the value, otherwise opens one.
+    static func open(id: String?, value: AnyHashable?) {
+        let index = scenes.firstIndex { scene in
+            guard scene.role == .main else { return false }
+            if let id { return scene.id == id }
+            guard let value, let type = scene.valueType else { return false }
+            return Swift.type(of: value.base) == type
         }
-        appMenu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        appItem.submenu = appMenu
-        let editItem = NSMenuItem()
-        menu.addItem(editItem)
-        let editMenu = NSMenu(title: "Edit")
-        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        editItem.submenu = editMenu
-        return menu
+        guard let index else { return }
+        if let existing = openWindows.first(where: { $0.window != nil && $0.sceneIndex == index && (scenes[index].isSingle || ($0.value == value && value != nil)) })?.window {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+        makeWindow(sceneIndex: index, value: value)
+    }
+
+    static func dismiss(id: String?, value: AnyHashable?) {
+        for entry in openWindows {
+            guard let window = entry.window else { continue }
+            let scene = scenes[entry.sceneIndex]
+            let idMatches = id.map { scene.id == $0 } ?? true
+            let valueMatches = value.map { entry.value == $0 } ?? true
+            if idMatches && valueMatches { window.close() }
+        }
+    }
+
+    @discardableResult
+    static func makeWindow(sceneIndex: Int, value: AnyHashable?) -> NSWindow {
+        let description = scenes[sceneIndex]
+        let host = GraphHostingView(makeGraph: { backend in description.makeGraphForValue(backend, value) })
+        let window = NSWindow(
+            contentRect: CGRect(origin: .zero, size: CGSize(width: 900, height: 450)),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.title = description.title.isEmpty ? ProcessInfo.processInfo.processName : description.title
+        let baseTitle = window.title
+        host.graph.onNavigationTitleChange = { [weak window] title in
+            window?.title = title ?? baseTitle
+        }
+        host.graph.onNavigationSubtitleChange = { [weak window] subtitle in
+            window?.subtitle = subtitle ?? ""
+        }
+        host.graph.setEnvironment { environment in
+            environment.dismissWindow = DismissWindowAction(_current: { [weak window] in window?.close() })
+        }
+        window.contentView = host
+        window.initialFirstResponder = host
+        let toolbarController = WindowToolbarController(window: window, host: host)
+        toolbarControllers.append(toolbarController)
+        host.graph.onToolbarChange = { [weak toolbarController] toolbar in toolbarController?.update(toolbar) }
+        // Like SwiftUI: the content's minimum size bounds the window, and the default frame is
+        // `defaultSize` or the content's ideal size (at least 900x450, title bar included).
+        let minimum = host.sizeThatFits(ProposedViewSize(width: 0, height: 0))
+        window.contentMinSize = minimum
+        let titleBar = window.frame.height - window.contentLayoutRect.height
+        let frameSize: CGSize
+        if let size = description.defaultSize {
+            frameSize = size
+        } else {
+            let ideal = host.sizeThatFits(.unspecified)
+            frameSize = CGSize(width: max(ideal.width, 900), height: max(ideal.height + titleBar, 450))
+        }
+        // Centered in the screen's visible frame (NSWindow.center() places windows higher);
+        // further windows cascade.
+        let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? .zero
+        let cascade = CGFloat(openWindows.filter { $0.window?.isVisible == true }.count) * 22
+        let origin = CGPoint(x: (visible.midX - frameSize.width / 2).rounded() + cascade, y: (visible.midY - frameSize.height / 2).rounded() - cascade)
+        window.setFrame(CGRect(origin: origin, size: frameSize), display: false)
+        // SwiftUI restores window frames between launches.
+        let autosaveName = "SwiftUI2.WindowGroup-\(description.id ?? description.title)-\(value.map { "\($0)" } ?? "1")"
+        window.setFrameUsingName(autosaveName)
+        window.setFrameAutosaveName(autosaveName)
+        window.makeKeyAndOrderFront(nil)
+        windows.append(window)
+        openWindows.removeAll { $0.window == nil }
+        openWindows.append(OpenWindow(window: window, sceneIndex: sceneIndex, value: value))
+        return window
     }
 
     final class AppDelegate: NSObject, NSApplicationDelegate {
         var settings: WindowDescription?
         private var settingsWindow: NSWindow?
 
+        // SwiftUI keeps WindowGroup apps running when the last window closes.
         func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
             MainActor.assumeIsolated {
-                AppKitAppRunner.userDelegate?.applicationShouldTerminateAfterLastWindowClosed?(sender) ?? true
+                AppKitAppRunner.userDelegate?.applicationShouldTerminateAfterLastWindowClosed?(sender) ?? false
+            }
+        }
+
+        /// URLs opened in the app (custom schemes, Open With): `onOpenURL` handlers first.
+        func application(_ application: NSApplication, open urls: [URL]) {
+            MainActor.assumeIsolated {
+                if AppRuntime.handleOpenURLs(urls) { return }
+                AppKitAppRunner.userDelegate?.application?(application, open: urls)
+            }
+        }
+
+        /// Dock icon click with no windows: reopen the main window (like SwiftUI).
+        func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+            MainActor.assumeIsolated {
+                if let custom = AppKitAppRunner.userDelegate?.applicationShouldHandleReopen?(sender, hasVisibleWindows: flag) { return custom }
+                if !flag, let first = AppKitAppRunner.scenes.firstIndex(where: { $0.opensAtLaunch }) {
+                    AppKitAppRunner.makeWindow(sceneIndex: first, value: nil)
+                }
+                return true
+            }
+        }
+
+        @MainActor @objc func newWindow(_ sender: Any?) {
+            if let first = AppKitAppRunner.scenes.firstIndex(where: { $0.opensAtLaunch }) {
+                AppKitAppRunner.makeWindow(sceneIndex: first, value: nil)
             }
         }
 

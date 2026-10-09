@@ -390,3 +390,29 @@ struct _HelpModifier: PlatformEffectModifier {
         return actions
     }
 }
+
+// MARK: - @ContentBuilder
+
+/// The unified content builder (macOS 27 SDK): builds views or toolbar content, chosen by the
+/// declared result type.
+@resultBuilder @MainActor
+public enum ContentBuilder {
+    // Toolbar content.
+    public static func buildExpression<C: ToolbarContent>(_ content: C) -> C { content }
+    public static func buildBlock<C: ToolbarContent>(_ content: C) -> C { content }
+    public static func buildBlock<each C: ToolbarContent>(_ content: repeat each C) -> _TupleToolbarContent {
+        ToolbarContentBuilder.buildBlock(repeat each content)
+    }
+    public static func buildOptional<C: ToolbarContent>(_ content: C?) -> C? { content }
+    public static func buildEither<T: ToolbarContent, F: ToolbarContent>(first: T) -> _ConditionalContent<T, F> { _ConditionalContent(storage: .trueContent(first)) }
+    public static func buildEither<T: ToolbarContent, F: ToolbarContent>(second: F) -> _ConditionalContent<T, F> { _ConditionalContent(storage: .falseContent(second)) }
+
+    // Views.
+    public static func buildExpression<V: View>(_ content: V) -> V { content }
+    public static func buildBlock() -> EmptyView { EmptyView() }
+    public static func buildBlock<V: View>(_ content: V) -> V { content }
+    public static func buildBlock<each V: View>(_ content: repeat each V) -> TupleView<(repeat each V)> { TupleView((repeat each content)) }
+    public static func buildOptional<V: View>(_ content: V?) -> V? { content }
+    public static func buildEither<T: View, F: View>(first: T) -> _ConditionalContent<T, F> { _ConditionalContent(storage: .trueContent(first)) }
+    public static func buildEither<T: View, F: View>(second: F) -> _ConditionalContent<T, F> { _ConditionalContent(storage: .falseContent(second)) }
+}

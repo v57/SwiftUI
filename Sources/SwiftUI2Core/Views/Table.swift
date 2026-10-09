@@ -196,13 +196,13 @@ extension ForEach: TableRowContent where Content: TableRowContent {
 }
 
 extension ForEach where Content: TableRowContent {
-    public init(_ data: Data, @TableRowBuilder<Content.TableRowValue> content: @escaping (Data.Element) -> Content) where Data.Element: Identifiable, ID == Data.Element.ID {
+    public init(_ data: Data, @_TableRowContentBuilder content: @escaping (Data.Element) -> Content) where Data.Element: Identifiable, ID == Data.Element.ID {
         self.data = data
         self.content = content
         self.identify = { $0.id }
     }
 
-    public init(_ data: Data, id: KeyPath<Data.Element, ID>, @TableRowBuilder<Content.TableRowValue> content: @escaping (Data.Element) -> Content) {
+    public init(_ data: Data, id: KeyPath<Data.Element, ID>, @_TableRowContentBuilder content: @escaping (Data.Element) -> Content) {
         self.data = data
         self.content = content
         self.identify = { $0[keyPath: id] }
@@ -229,6 +229,16 @@ public enum TableRowBuilder<Value: Identifiable> {
     public static func buildOptional<C: TableRowContent>(_ content: C?) -> C? { content }
     public static func buildEither<T: TableRowContent, F: TableRowContent>(first: T) -> _ConditionalContent<T, F> { _ConditionalContent(storage: .trueContent(first)) }
     public static func buildEither<T: TableRowContent, F: TableRowContent>(second: F) -> _ConditionalContent<T, F> { _ConditionalContent(storage: .falseContent(second)) }
+}
+
+/// Row builder whose value type comes from the rows themselves (ForEach content).
+@resultBuilder @MainActor
+public enum _TableRowContentBuilder {
+    public static func buildExpression<C: TableRowContent>(_ content: C) -> C { content }
+    public static func buildBlock<C: TableRowContent>(_ content: C) -> C { content }
+    public static func buildOptional<C: TableRowContent>(_ content: C?) -> C? { content }
+    public static func buildEither<T: TableRowContent, F: TableRowContent>(first: T) -> _ConditionalContent<T, F> where T.TableRowValue == F.TableRowValue { _ConditionalContent(storage: .trueContent(first)) }
+    public static func buildEither<T: TableRowContent, F: TableRowContent>(second: F) -> _ConditionalContent<T, F> where T.TableRowValue == F.TableRowValue { _ConditionalContent(storage: .falseContent(second)) }
 }
 
 // MARK: - Styles and modifiers

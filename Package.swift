@@ -1,4 +1,5 @@
 // swift-tools-version: 6.2
+import CompilerPluginSupport
 import PackageDescription
 
 // Layering (see ARCHITECTURE.md):
@@ -17,17 +18,31 @@ let package = Package(
     products: [
         .library(name: "SwiftUI2", targets: ["SwiftUI2"]),
         .library(name: "SwiftUI2Core", targets: ["SwiftUI2Core"]),
+        .library(name: "SwiftUI2Charts", targets: ["SwiftUI2Charts"]),
         .library(name: "SwiftUI2Headless", targets: ["SwiftUI2Headless"]),
         .executable(name: "parity-recorder", targets: ["parity-recorder"]),
         .executable(name: "ReferenceApp", targets: ["ReferenceApp"]),
         .executable(name: "Demo", targets: ["Demo"]),
         .executable(name: "ReferenceApp2", targets: ["ReferenceApp2"]),
     ],
+    dependencies: [
+        // Macros (@Entry, #Preview).
+        .package(url: "https://github.com/swiftlang/swift-syntax", "600.0.0"..<"700.0.0"),
+    ],
     targets: [
         .target(name: "SwiftUI2Graph"),
-        .target(name: "SwiftUI2Core", dependencies: ["SwiftUI2Graph"]),
+        .macro(
+            name: "SwiftUI2Macros",
+            dependencies: [
+                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+                .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
+            ]
+        ),
+        .target(name: "SwiftUI2Core", dependencies: ["SwiftUI2Graph", "SwiftUI2Macros"]),
         .target(name: "SwiftUI2Headless", dependencies: ["SwiftUI2Core"]),
         .target(name: "SwiftUI2AppKit", dependencies: ["SwiftUI2Core"]),
+        // A Swift Charts subset (import SwiftUI2Charts instead of Charts).
+        .target(name: "SwiftUI2Charts", dependencies: ["SwiftUI2Core"]),
         // SwiftData's SwiftUI integration (@Query, .modelContainer) on Apple platforms.
         .target(name: "SwiftUI2SwiftData", dependencies: ["SwiftUI2Core"]),
         .target(

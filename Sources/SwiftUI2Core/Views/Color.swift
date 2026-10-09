@@ -194,13 +194,21 @@ public struct ForegroundStyle: ShapeStyle, Hashable {
 public struct HierarchicalShapeStyle: ShapeStyle, Hashable {
     let level: Int
     public func _resolvePaint(in environment: EnvironmentValues) -> ResolvedPaint {
-        // Relative to the current foreground style (unless that is itself hierarchical).
-        var base = Color.primary.resolve(in: environment)
+        // Explicit levels (`foregroundStyle(_:_:_:)`) win.
+        let levels = environment.foregroundStyleLevels
+        if level < levels.count { return levels[level]._resolvePaint(in: environment) }
+        // macOS label colors: primary .85, secondary .5 (.55 dark), tertiary .26 (.25 dark),
+        // quaternary .1; a custom foreground style is scaled by the same ratios.
+        let isDark = environment.colorScheme == .dark
+        let alphas: [Float] = isDark ? [0.85, 0.55, 0.25, 0.1] : [0.85, 0.5, 0.26, 0.1]
+        let alpha = alphas[min(level, alphas.count - 1)]
         if let style = environment.foregroundStyle, !(style.base is HierarchicalShapeStyle) {
-            base = style._resolveColor(in: environment)
+            var base = style._resolveColor(in: environment)
+            base.opacity *= alpha / alphas[0]
+            return .color(base)
         }
-        let factors: [Float] = [1, 0.6, 0.35, 0.2]
-        base.opacity *= factors[min(level, factors.count - 1)]
+        var base = Color.primary.resolve(in: environment)
+        base.opacity = alpha
         return .color(base)
     }
 
@@ -224,7 +232,10 @@ public struct SeparatorShapeStyle: ShapeStyle, Hashable {
 
 public struct BackgroundStyle: ShapeStyle, Hashable {
     public init() {}
-    public func _resolvePaint(in environment: EnvironmentValues) -> ResolvedPaint { .color(Color.controlBackground.resolve(in: environment)) }
+    public func _resolvePaint(in environment: EnvironmentValues) -> ResolvedPaint {
+        if let custom = environment.backgroundStyle, !(custom.base is BackgroundStyle) { return custom._resolvePaint(in: environment) }
+        return .color(Color.controlBackground.resolve(in: environment))
+    }
 }
 
 extension ShapeStyle where Self == SeparatorShapeStyle { public static var separator: SeparatorShapeStyle { .init() } }

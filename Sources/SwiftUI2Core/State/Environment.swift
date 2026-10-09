@@ -90,6 +90,7 @@ public struct Environment<Value>: DynamicProperty {
         case .installed(let attribute):
             return attribute.value
         case .reader(let reader):
+            if let ambient = EnvironmentValues.ambient { return reader(ambient) }
             runtimeWarning("Accessing Environment's value outside of being installed on a View. This will always read the default value.")
             return reader(EnvironmentValues())
         }
@@ -208,5 +209,29 @@ extension EnvironmentValues {
     var toggleStyle: ToggleStyleKind {
         get { self[ToggleStyleKey.self] }
         set { self[ToggleStyleKey.self] = newValue }
+    }
+}
+
+// MARK: - Macros
+
+@attached(accessor) @attached(peer, names: prefixed(__Key_))
+public macro Entry() = #externalMacro(module: "SwiftUI2Macros", type: "EntryMacro")
+
+@freestanding(declaration)
+public macro Preview(_ name: String? = nil, body: @escaping @MainActor () -> Any) = #externalMacro(module: "SwiftUI2Macros", type: "PreviewMacro")
+
+@freestanding(declaration)
+public macro Preview(_ name: String? = nil, traits: Any..., body: @escaping @MainActor () -> Any) = #externalMacro(module: "SwiftUI2Macros", type: "PreviewMacro")
+
+extension EnvironmentValues {
+    /// Environment seen by uninstalled `@Environment` properties (menu bar commands).
+    @MainActor static var ambient: EnvironmentValues?
+
+    @MainActor
+    static func withAmbient<R>(_ environment: EnvironmentValues, _ body: () -> R) -> R {
+        let previous = ambient
+        ambient = environment
+        defer { ambient = previous }
+        return body()
     }
 }

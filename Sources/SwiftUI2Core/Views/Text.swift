@@ -180,6 +180,10 @@ public struct ResolvedText: Hashable, Sendable {
     public var alignment: TextAlignment
     public var strikethrough: Bool
     public var underline: Bool
+    /// Extra space between characters (`tracking` / `kerning`).
+    public var tracking: CGFloat = 0
+    public var baselineOffset: CGFloat = 0
+    public var background: Color.Resolved? = nil
     /// Styled runs for concatenated text (`Text + Text`); empty for uniformly styled text.
     public var runs: [Run] = []
 
@@ -189,22 +193,29 @@ public struct ResolvedText: Hashable, Sendable {
         public var color: Color.Resolved
         public var strikethrough: Bool
         public var underline: Bool
+        public var tracking: CGFloat = 0
+        public var baselineOffset: CGFloat = 0
+        public var background: Color.Resolved? = nil
     }
 
     /// The runs to draw (a single run for uniform text).
     public var effectiveRuns: [Run] {
-        runs.isEmpty ? [Run(string: string, font: font, color: color, strikethrough: strikethrough, underline: underline)] : runs
+        runs.isEmpty ? [Run(string: string, font: font, color: color, strikethrough: strikethrough, underline: underline, tracking: tracking, baselineOffset: baselineOffset, background: background)] : runs
     }
 
     /// The part of the text that affects measurement.
-    var layoutKey: TextLayoutKey { TextLayoutKey(string: string, font: font, lineLimit: lineLimit, runFonts: runs.map(\.font)) }
+    var layoutKey: TextLayoutKey {
+        TextLayoutKey(string: string, font: font, lineLimit: lineLimit, tracking: tracking, runFonts: runs.map(\.font), runTracking: runs.map(\.tracking))
+    }
 }
 
 struct TextLayoutKey: Hashable {
     var string: String
     var font: Font.Resolved
     var lineLimit: Int?
+    var tracking: CGFloat = 0
     var runFonts: [Font.Resolved] = []
+    var runTracking: [CGFloat] = []
 }
 
 public struct Text: Equatable {
@@ -222,6 +233,9 @@ public struct Text: Equatable {
         case strikethrough(Bool)
         case underline(Bool)
         case monospacedDigit
+        case tracking(CGFloat)
+        case baselineOffset(CGFloat)
+        case background(Color?)
     }
 
     var storage: Storage
@@ -271,9 +285,25 @@ public struct Text: Equatable {
 
     public enum Case: Sendable { case uppercase, lowercase }
 
-    public func kerning(_ kerning: CGFloat) -> Text { self }
-    public func tracking(_ tracking: CGFloat) -> Text { self }
-    public func baselineOffset(_ offset: CGFloat) -> Text { self }
+    public func kerning(_ kerning: CGFloat) -> Text { adding(.tracking(kerning)) }
+    public func tracking(_ tracking: CGFloat) -> Text { adding(.tracking(tracking)) }
+    public func baselineOffset(_ offset: CGFloat) -> Text { adding(.baselineOffset(offset)) }
+
+    /// Styled text from an attributed string (font, colors, underline, strikethrough, tracking).
+    public init(_ attributedContent: AttributedString) {
+        var parts: [Text] = []
+        for run in attributedContent.runs {
+            var part = Text(verbatim: String(attributedContent[run.range].characters))
+            if let font = run[TextAttributes.FontAttribute.self] { part = part.font(font) }
+            if let color = run[TextAttributes.ForegroundColorAttribute.self] { part = part.foregroundColor(color) }
+            if let color = run[TextAttributes.BackgroundColorAttribute.self] { part.modifiers.append(.background(color)) }
+            // Platform scopes (AppKit's tracking, underline, ...) are read by the backend.
+            if let bridge = TextAttributes.platformBridge { part.modifiers += bridge(attributedContent[run.range]).map(\.modifier) }
+            parts.append(part)
+        }
+        storage = parts.count == 1 ? parts[0].storage : .concatenated(parts)
+        modifiers = parts.count == 1 ? parts[0].modifiers : []
+    }
 
     func withModifiers(_ modifiers: [Modifier]) -> Text {
         var copy = self
@@ -307,7 +337,7 @@ public struct Text: Equatable {
 
     init(storage: Storage) { self.storage = storage }
 
-    var plainString: String {
+    public var plainString: String {
         switch storage {
         case .verbatim(let string): return string
         case .concatenated(let parts): return parts.map(\.plainString).joined()
@@ -337,6 +367,9 @@ public struct Text: Equatable {
         var color: Color.Resolved? = nil
         var strikethrough = environment.textStrikethrough
         var underline = environment.textUnderline
+        var tracking: CGFloat = 0
+        var baselineOffset: CGFloat = 0
+        var background: Color.Resolved?
         for modifier in modifiers {
             switch modifier {
             case .font(let value): font = value ?? .defaultFont
@@ -347,6 +380,9 @@ public struct Text: Equatable {
             case .strikethrough(let value): strikethrough = value
             case .underline(let value): underline = value
             case .monospacedDigit: font = font.monospacedDigit()
+            case .tracking(let value): tracking = value
+            case .baselineOffset(let value): baselineOffset = value
+            case .background(let value): background = value?.resolve(in: environment)
             }
         }
         var resolvedColor = color ?? ForegroundStyle()._resolveColor(in: environment)
@@ -358,7 +394,10 @@ public struct Text: Equatable {
             lineLimit: environment.lineLimit,
             alignment: environment.multilineTextAlignment,
             strikethrough: strikethrough,
-            underline: underline
+            underline: underline,
+            tracking: tracking,
+            baselineOffset: baselineOffset,
+            background: background
         )
     }
 }
@@ -374,5 +413,51 @@ extension Text {
             self.color = color
         }
         public static let single = LineStyle()
+    }
+}
+
+// MARK: - AttributedString attributes
+
+/// The attribute scope `Text(AttributedString)` understands (`container.font = ...`,
+/// `container.foregroundColor = ...`).
+public enum TextAttributes {
+    public enum FontAttribute: AttributedStringKey { public typealias Value = Font; public static let name = "SwiftUI2.Font" }
+    public enum ForegroundColorAttribute: AttributedStringKey { public typealias Value = Color; public static let name = "SwiftUI2.ForegroundColor" }
+    public enum BackgroundColorAttribute: AttributedStringKey { public typealias Value = Color; public static let name = "SwiftUI2.BackgroundColor" }
+
+    /// Text styling a backend reads from its platform attribute scope.
+    public enum PlatformStyle: Sendable {
+        case underline, strikethrough
+        case tracking(CGFloat)
+        case baselineOffset(CGFloat)
+
+        var modifier: Text.Modifier {
+            switch self {
+            case .underline: .underline(true)
+            case .strikethrough: .strikethrough(true)
+            case .tracking(let value): .tracking(value)
+            case .baselineOffset(let value): .baselineOffset(value)
+            }
+        }
+    }
+
+    /// Installed by backends (attributes whose value types the platform scopes already declare).
+    nonisolated(unsafe) public static var platformBridge: ((AttributedSubstring) -> [PlatformStyle])?
+}
+
+extension AttributeScopes {
+    public struct SwiftUI2Attributes: AttributeScope {
+        public let font: TextAttributes.FontAttribute
+        public let foregroundColor: TextAttributes.ForegroundColorAttribute
+        public let backgroundColor: TextAttributes.BackgroundColorAttribute
+        public let foundation: FoundationAttributes
+    }
+
+    public var swiftUI2: SwiftUI2Attributes.Type { SwiftUI2Attributes.self }
+}
+
+extension AttributeDynamicLookup {
+    public subscript<T: AttributedStringKey>(dynamicMember keyPath: KeyPath<AttributeScopes.SwiftUI2Attributes, T>) -> T {
+        self[T.self]
     }
 }

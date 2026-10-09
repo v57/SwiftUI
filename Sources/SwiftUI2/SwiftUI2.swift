@@ -3,6 +3,12 @@
 @_exported import Foundation
 @_exported import SwiftUI2Core
 @_exported import Observation
+#if canImport(CoreTransferable)
+@_exported import CoreTransferable
+#endif
+#if canImport(UniformTypeIdentifiers)
+@_exported import UniformTypeIdentifiers
+#endif
 
 #if canImport(AppKit)
 // Like `import SwiftUI` on macOS, `import SwiftUI2` also gives access to AppKit.

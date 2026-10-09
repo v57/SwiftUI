@@ -102,6 +102,17 @@ public struct ScrollView<Content: View>: View {
         let layout = inputs.makeLayoutAttribute {
             ScrollViewComputer(axes: axes.value, path: path, tracer: tracer, content: contentLayout.value)
         }
+        // onScrollGeometryChange: observers get the live geometry after each update.
+        let host = inputs.host
+        let geometryReporter = Attribute<ScrollGeometry>(inputs.subgraph, isEqual: { $0 == $1 }) {
+            ScrollGeometry(contentOffset: offset.value, contentSize: contentGeometry.value.size, contentInsets: EdgeInsets(), containerSize: geometry.value.size)
+        }
+        geometryReporter.onChange = { scrollGeometry in
+            let observers = AnyAttribute.withoutDependencies { environment.value.scrollGeometryObservers }
+            guard !observers.isEmpty else { return }
+            host.enqueueAfterUpdate { for observer in observers { observer.update(scrollGeometry) } }
+        }
+        geometryReporter.isEager = AnyAttribute.withoutDependencies { !environment.value.scrollGeometryObservers.isEmpty }
         return _ViewOutputs(layout: layout, preferences: contentOutputs.preferences)
     }
 }

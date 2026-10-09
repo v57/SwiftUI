@@ -240,6 +240,14 @@ extension FocusState.Binding: _GraphComparable {
 }
 
 extension View {
+    /// Focus of the `searchable` field.
+    public func searchFocused(_ condition: FocusState<Bool>.Binding) -> some View {
+        environment(\.searchFocusRequest, FocusRequest(
+            isFocused: { condition.wrappedValue },
+            setFocused: { if condition.wrappedValue != $0 { condition.wrappedValue = $0 } }
+        ))
+    }
+
     public func focused(_ condition: FocusState<Bool>.Binding) -> some View {
         environment(\.focusRequest, FocusRequest(
             isFocused: { condition.wrappedValue },
@@ -933,5 +941,26 @@ extension DisclosureGroup where Label == Text {
 
     public init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content) {
         self.init(content: content) { Text(title) }
+    }
+}
+
+struct SearchFocusRequestKey: EnvironmentKey { static let defaultValue: FocusRequest? = nil }
+
+extension EnvironmentValues {
+    var searchFocusRequest: FocusRequest? {
+        get { self[SearchFocusRequestKey.self] }
+        set { self[SearchFocusRequestKey.self] = newValue }
+    }
+}
+
+/// The searchable field (picks up `searchFocused`).
+struct _SearchFieldInput: View {
+    let prompt: String
+    let text: Binding<String>
+    @Environment(\.searchFocusRequest) private var focus
+
+    var body: some View {
+        TextField(prompt, text: text).textFieldStyle(.plain)
+            .environment(\.focusRequest, focus)
     }
 }

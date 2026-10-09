@@ -486,3 +486,89 @@ struct _OptionalBorderless: ViewModifier {
         if isBorderless { content.buttonStyle(.borderless) } else { content }
     }
 }
+
+// MARK: - Legacy Alert / ActionSheet values
+
+/// Mirrors the pre-iOS 15 `Alert` value (shown with the modern alert presentation).
+public struct Alert {
+    public struct Button {
+        enum Role { case `default`, cancel, destructive }
+        let label: Text
+        let role: Role
+        let action: (@MainActor () -> Void)?
+
+        public static func `default`(_ label: Text, action: (@MainActor () -> Void)? = {}) -> Button { Button(label: label, role: .default, action: action) }
+        public static func cancel(_ label: Text, action: (@MainActor () -> Void)? = {}) -> Button { Button(label: label, role: .cancel, action: action) }
+        public static func cancel(_ action: (@MainActor () -> Void)? = {}) -> Button { Button(label: Text("Cancel"), role: .cancel, action: action) }
+        public static func destructive(_ label: Text, action: (@MainActor () -> Void)? = {}) -> Button { Button(label: label, role: .destructive, action: action) }
+    }
+
+    let title: Text
+    let message: Text?
+    let buttons: [Button]
+
+    public init(title: Text, message: Text? = nil, dismissButton: Button? = nil) {
+        self.title = title
+        self.message = message
+        self.buttons = [dismissButton ?? .default(Text("OK"))]
+    }
+
+    public init(title: Text, message: Text? = nil, primaryButton: Button, secondaryButton: Button) {
+        self.title = title
+        self.message = message
+        self.buttons = [primaryButton, secondaryButton]
+    }
+
+    @MainActor @ViewBuilder var actions: some View {
+        ForEach(buttons.indices, id: \.self) { index in
+            let button = buttons[index]
+            SwiftUI2Core.Button(role: button.role == .cancel ? .cancel : button.role == .destructive ? .destructive : nil) {
+                button.action?()
+            } label: {
+                button.label
+            }
+        }
+    }
+}
+
+public struct ActionSheet {
+    let alert: Alert
+    public init(title: Text, message: Text? = nil, buttons: [Alert.Button] = [.cancel()]) {
+        var alert = Alert(title: title, message: message)
+        alert = Alert(title: title, message: message, buttons: buttons)
+        self.alert = alert
+    }
+}
+
+extension Alert {
+    init(title: Text, message: Text?, buttons: [Button]) {
+        self.title = title
+        self.message = message
+        self.buttons = buttons
+    }
+}
+
+extension View {
+    public func alert(isPresented: Binding<Bool>, content: () -> Alert) -> some View {
+        let alert = content()
+        return self.alert(alert.title, isPresented: isPresented) {
+            alert.actions
+        } message: {
+            if let message = alert.message { message }
+        }
+    }
+
+    public func alert<Item: Identifiable>(item: Binding<Item?>, content: @escaping (Item) -> Alert) -> some View {
+        let isPresented = Binding<Bool>(get: { item.wrappedValue != nil }, set: { if !$0 { item.wrappedValue = nil } })
+        let alert = item.wrappedValue.map(content)
+        return self.alert(alert?.title ?? Text(""), isPresented: isPresented) {
+            if let alert { alert.actions }
+        } message: {
+            if let message = alert?.message { message }
+        }
+    }
+
+    public func actionSheet(isPresented: Binding<Bool>, content: () -> ActionSheet) -> some View {
+        alert(isPresented: isPresented) { content().alert }
+    }
+}

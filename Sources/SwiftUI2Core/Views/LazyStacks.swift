@@ -354,3 +354,71 @@ public struct LazyHStack<Content: View>: View {
         return inputs.makeLazyStack(axis: .horizontal, crossGuide: (alignment.key, alignment.id), spacing: spacing, list: list.list, eagerLayout: layout.attribute)
     }
 }
+
+// MARK: - Scroll geometry
+
+/// Mirrors `SwiftUI.ScrollGeometry`.
+public struct ScrollGeometry: Equatable, Sendable {
+    public var contentOffset: CGPoint
+    public var contentSize: CGSize
+    public var contentInsets: EdgeInsets
+    public var containerSize: CGSize
+    public var visibleRect: CGRect { CGRect(origin: contentOffset, size: containerSize) }
+    public var bounds: CGRect { CGRect(origin: contentOffset, size: containerSize) }
+}
+
+/// One `onScrollGeometryChange` registration (called after updates when its value changes).
+@MainActor
+final class ScrollGeometryObserver {
+    let update: @MainActor (ScrollGeometry) -> Void
+    init(update: @escaping @MainActor (ScrollGeometry) -> Void) { self.update = update }
+}
+
+struct ScrollGeometryObserversKey: EnvironmentKey { static let defaultValue: [ScrollGeometryObserver] = [] }
+
+extension EnvironmentValues {
+    var scrollGeometryObservers: [ScrollGeometryObserver] {
+        get { self[ScrollGeometryObserversKey.self] }
+        set { self[ScrollGeometryObserversKey.self] = newValue }
+    }
+}
+
+extension ScrollGeometryObserver: _GraphComparable {
+    nonisolated static func _isIdentical(_ lhs: ScrollGeometryObserver, _ rhs: ScrollGeometryObserver) -> Bool { lhs === rhs }
+}
+
+struct _ScrollGeometryChangeModifier<T: Equatable>: ViewModifier {
+    let transform: (ScrollGeometry) -> T
+    let action: @MainActor (T, T) -> Void
+    @State private var box = Box()
+
+    @MainActor final class Box {
+        var last: T?
+        var transform: ((ScrollGeometry) -> T)?
+        var action: (@MainActor (T, T) -> Void)?
+        lazy var observer = ScrollGeometryObserver { [unowned self] geometry in
+            guard let transform else { return }
+            let value = transform(geometry)
+            let old = last
+            last = value
+            if let old, old != value { action?(old, value) } else if old == nil { action?(value, value) }
+        }
+    }
+
+    func body(content: Content) -> some View {
+        box.transform = transform
+        box.action = action
+        let observer = box.observer
+        return content.transformEnvironment(\.scrollGeometryObservers) { $0.append(observer) }
+    }
+}
+
+extension View {
+    public func onScrollGeometryChange<T: Equatable>(for type: T.Type, of transform: @escaping (ScrollGeometry) -> T, action: @escaping @MainActor (_ oldValue: T, _ newValue: T) -> Void) -> some View {
+        modifier(_ScrollGeometryChangeModifier(transform: transform, action: action))
+    }
+
+    public func onScrollPhaseChange(_ action: @escaping @MainActor (ScrollPhase, ScrollPhase) -> Void) -> some View { self }
+}
+
+public enum ScrollPhase: Sendable { case idle, tracking, interacting, decelerating, animating }

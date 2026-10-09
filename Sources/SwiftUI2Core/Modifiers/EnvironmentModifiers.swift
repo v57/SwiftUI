@@ -129,6 +129,20 @@ extension View {
         environment(\.foregroundStyle, AnyShapeStyle(style))
     }
 
+    public func foregroundStyle<S1: ShapeStyle, S2: ShapeStyle>(_ primary: S1, _ secondary: S2) -> some View {
+        transformEnvironment(\.self) { environment in
+            environment.foregroundStyle = AnyShapeStyle(primary)
+            environment.foregroundStyleLevels = [AnyShapeStyle(primary), AnyShapeStyle(secondary)]
+        }
+    }
+
+    public func foregroundStyle<S1: ShapeStyle, S2: ShapeStyle, S3: ShapeStyle>(_ primary: S1, _ secondary: S2, _ tertiary: S3) -> some View {
+        transformEnvironment(\.self) { environment in
+            environment.foregroundStyle = AnyShapeStyle(primary)
+            environment.foregroundStyleLevels = [AnyShapeStyle(primary), AnyShapeStyle(secondary), AnyShapeStyle(tertiary)]
+        }
+    }
+
     public func foregroundColor(_ color: Color?) -> some View {
         environment(\.foregroundStyle, color.map { AnyShapeStyle($0) })
     }
@@ -229,5 +243,43 @@ extension EnvironmentValues {
     public var isTextSelectable: Bool {
         get { self[TextSelectableKey.self] }
         set { self[TextSelectableKey.self] = newValue }
+    }
+}
+
+// MARK: - Appearance environment
+
+/// Sidebar icon size (System Settings › Appearance).
+public enum SidebarRowSize: Hashable, Sendable, CaseIterable { case small, medium, large }
+public enum BackgroundProminence: Hashable, Sendable { case standard, increased }
+
+struct ForegroundStyleLevelsKey: EnvironmentKey { static let defaultValue: [AnyShapeStyle] = [] }
+struct SidebarRowSizeKey: EnvironmentKey { static let defaultValue = SidebarRowSize.medium }
+struct BackgroundProminenceKey: EnvironmentKey { static let defaultValue = BackgroundProminence.standard }
+struct AppearsActiveKey: EnvironmentKey { static let defaultValue = true }
+
+extension EnvironmentValues {
+    var foregroundStyleLevels: [AnyShapeStyle] {
+        get { self[ForegroundStyleLevelsKey.self] }
+        set { self[ForegroundStyleLevelsKey.self] = newValue }
+    }
+    public var sidebarRowSize: SidebarRowSize {
+        get { self[SidebarRowSizeKey.self] }
+        set { self[SidebarRowSizeKey.self] = newValue }
+    }
+    public var backgroundProminence: BackgroundProminence {
+        get { self[BackgroundProminenceKey.self] }
+        set { self[BackgroundProminenceKey.self] = newValue }
+    }
+    /// Whether the window is key (backends update it).
+    public var appearsActive: Bool {
+        get { self[AppearsActiveKey.self] }
+        set { self[AppearsActiveKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// Deprecated form of `.environment(\.colorScheme, ...)`.
+    public func colorScheme(_ colorScheme: ColorScheme) -> some View {
+        environment(\.colorScheme, colorScheme)
     }
 }

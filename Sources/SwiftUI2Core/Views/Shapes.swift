@@ -517,3 +517,23 @@ public struct ContainerRelativeShape: InsettableShape {
     public func path(in rect: CGRect) -> Path { Path(roundedRect: rect, cornerRadius: 8) }
     public func inset(by amount: CGFloat) -> _InsetShape<ContainerRelativeShape> { _InsetShape(base: self, inset: amount) }
 }
+
+// MARK: - Filled shape + stroke (`fill(...).stroke(...)`, macOS 14)
+
+extension _ShapeView {
+    public func stroke<S2: ShapeStyle>(_ content: S2, lineWidth: CGFloat = 1, antialiased: Bool = true) -> some View {
+        overlay { shape.stroke(content, lineWidth: lineWidth) }
+    }
+
+    public func stroke<S2: ShapeStyle>(_ content: S2, style strokeStyle: StrokeStyle, antialiased: Bool = true) -> some View {
+        overlay { shape.stroke(content, style: strokeStyle) }
+    }
+
+    public func strokeBorder<S2: ShapeStyle>(_ content: S2 = .foreground, lineWidth: CGFloat = 1, antialiased: Bool = true) -> some View {
+        overlay { shape.strokeBorder(content, lineWidth: lineWidth) }
+    }
+
+    public func strokeBorder<S2: ShapeStyle>(_ content: S2 = .foreground, style strokeStyle: StrokeStyle, antialiased: Bool = true) -> some View {
+        overlay { shape.strokeBorder(content, style: strokeStyle) }
+    }
+}

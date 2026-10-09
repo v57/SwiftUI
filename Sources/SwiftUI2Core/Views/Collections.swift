@@ -1303,7 +1303,7 @@ extension View {
         VStack(spacing: 0) {
             HStack(spacing: 5) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField(prompt?.plainString ?? "Search", text: text).textFieldStyle(.plain)
+                _SearchFieldInput(prompt: prompt?.plainString ?? "Search", text: text)
             }
             .padding(.horizontal, 10)
             .frame(height: 28)
