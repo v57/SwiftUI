@@ -95,6 +95,13 @@ class UnaryLayoutComputer: LayoutComputer {
     /// Default: same modifier parameters and the same child.
     func hasSameParameters(as other: LayoutComputer) -> Bool { false }
 
+    /// Whether `other` places the same child in the same way (cuts off placement work).
+    final func isSamePlacement(as other: LayoutComputer) -> Bool {
+        if other === self { return true }
+        guard let other = other as? UnaryLayoutComputer, type(of: other) == type(of: self), other.child === child else { return false }
+        return hasSameParameters(as: other)
+    }
+
     override func isEquivalent(to other: LayoutComputer) -> Bool {
         guard let other = other as? UnaryLayoutComputer, type(of: other) == type(of: self) else { return false }
         return other.child === child && hasSameParameters(as: other)
@@ -128,14 +135,18 @@ extension _ViewInputs {
         childInputs.depth += 1
         let childOutputs = body(childInputs)
         let childLayout = childOutputs.layout
-        let layout = Attribute<LayoutComputer>(subgraph, isEqual: LayoutComputer.equivalence) {
+        // Placement needs the current parameters (e.g. a new offset), while the parent only sees a
+        // change when the computer is not equivalent (equivalent computers keep the old instance).
+        let current = Attribute<LayoutComputer>(subgraph, isEqual: { ($1 as! UnaryLayoutComputer).isSamePlacement(as: $0) }) {
             makeComputer(childLayout.value, modifierPath)
         }
+        current.label = "current layout \(modifierPath)"
+        let layout = Attribute<LayoutComputer>(subgraph, isEqual: LayoutComputer.equivalence) { current.value }
         layout.label = "layout \(modifierPath)"
         let geometry = self.geometry
         let tracer = self.tracer
         childGeometry.setRule {
-            let computer = layout.value as! UnaryLayoutComputer
+            let computer = current.value as! UnaryLayoutComputer
             tracer.record(.placement, modifierPath)
             return computer.placeChild(in: geometry.value, child: childLayout.value)
         }

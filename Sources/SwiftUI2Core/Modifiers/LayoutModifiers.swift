@@ -342,6 +342,9 @@ final class OffsetComputer: UnaryLayoutComputer {
         return result
     }
 
+    override func hasSameParameters(as other: LayoutComputer) -> Bool { (other as? OffsetComputer)?.offset == offset }
+
+    /// The offset does not change the size: only the child matters to the parent.
     override func isEquivalent(to other: LayoutComputer) -> Bool {
         guard let other = other as? OffsetComputer else { return false }
         return other.child === child
@@ -376,9 +379,9 @@ final class PositionComputer: UnaryLayoutComputer {
     }
 
     /// Takes all proposed space regardless of the child: a layout boundary.
-    override func isEquivalent(to other: LayoutComputer) -> Bool {
-        (other as? PositionComputer)?.position == position || ((other as? PositionComputer) != nil)
-    }
+    override func isEquivalent(to other: LayoutComputer) -> Bool { other is PositionComputer }
+
+    override func hasSameParameters(as other: LayoutComputer) -> Bool { (other as? PositionComputer)?.position == position }
 }
 
 extension View {

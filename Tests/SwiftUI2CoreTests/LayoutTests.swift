@@ -174,6 +174,30 @@ struct LayoutTests {
         #expect(host.view(withText: "M")?.absoluteFrame.midX == 50)
     }
 
+    @Test func offsetChangeFromGeometryRepositionsChild() throws {
+        // An offset change is invisible to the parent (equivalent layout) but must still move
+        // the child: placement uses the current offset, not the retained computer's.
+        struct Box: View {
+            @State var height: CGFloat = 40
+            var body: some View {
+                VStack {
+                    Color.red.frame(width: 50, height: height).background {
+                        GeometryReader { proxy in Text("L").offset(y: proxy.size.height - 4) }
+                    }
+                    Button("grow") { height = 80 }
+                }
+            }
+        }
+        let host = TestHost(Box(), size: CGSize(width: 200, height: 300))
+        func gap() -> CGFloat {
+            let red = host.allViews.first { if case .color = $0.content { true } else { false } }!.absoluteFrame
+            return host.view(withText: "L")!.absoluteFrame.minY - red.minY
+        }
+        #expect(gap() == 36)
+        host.tap("grow")
+        #expect(gap() == 76)
+    }
+
     @Test func flexibleFrameMaxWidthInfinity() throws {
         let host = TestHost(
             Text("hi").frame(maxWidth: .infinity, alignment: .leading).background(Color.red),
