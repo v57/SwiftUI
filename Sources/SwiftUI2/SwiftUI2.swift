@@ -1,0 +1,19 @@
+// Umbrella module: `import SwiftUI2` gives the SwiftUI API plus the backend for the current
+// platform. App code should only ever import this module.
+@_exported import Foundation
+@_exported import SwiftUI2Core
+@_exported import Observation
+
+#if canImport(AppKit)
+@_exported import SwiftUI2AppKit
+#endif
+
+extension App {
+    @MainActor
+    public static func main() {
+        #if canImport(AppKit)
+        AppKitAppRunner.install()
+        #endif
+        AppRuntime.run(Self.self)
+    }
+}

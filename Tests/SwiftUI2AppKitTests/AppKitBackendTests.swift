@@ -1,0 +1,66 @@
+#if canImport(AppKit)
+import AppKit
+import Testing
+@testable import SwiftUI2AppKit
+import SwiftUI2
+
+@MainActor
+struct AppKitBackendTests {
+    struct CounterView: View {
+        @State var count = 0
+        var body: some View {
+            VStack {
+                Text("count \(count)")
+                Button("increment") { count += 1 }
+            }
+        }
+    }
+
+    private func descendants(of view: NSView) -> [NSView] {
+        view.subviews.flatMap { [$0] + descendants(of: $0) }
+    }
+
+    private func click(_ view: NSView, in window: NSWindow) {
+        let center = view.convert(CGPoint(x: view.bounds.midX, y: view.bounds.midY), to: nil)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            let event = NSEvent.mouseEvent(with: type, location: center, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+            if type == .leftMouseDown { view.mouseDown(with: event) } else { view.mouseUp(with: event) }
+        }
+    }
+
+    @Test func buildsNativeViewsAndHandlesClicks() throws {
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 300, height: 200), styleMask: [.titled], backing: .buffered, defer: true)
+        let host = NSHostingView(rootView: CounterView())
+        window.contentView = host
+        host.frame = CGRect(x: 0, y: 0, width: 300, height: 200)
+
+        let views = descendants(of: host)
+        let texts = views.compactMap { $0 as? TextNodeView }
+        let button = try #require(views.first { $0 is ButtonNodeView })
+        #expect(texts.count == 2)
+        #expect(button.frame.height == 20)  // SwiftUI bordered buttons are 20pt tall on macOS
+        #expect(button.subviews.first is TextNodeView) // label is a child of the bezel view
+
+        click(button, in: window)
+        host.graph.update() // what the run-loop observer does
+        let counter = try #require(host.graph.tracer.events.last { $0.kind == .renderContent })
+        #expect(counter.path.hasSuffix("Text"))
+        #expect(host.graph.renderer.root.platformChildren.contains { node in
+            if case .text(let text) = node.content { return text.string == "count 1" }
+            return false
+        })
+    }
+
+    @Test func textMeasurementMatchesDrawing() {
+        let backend = AppKitBackend(rootView: NSView())
+        let text = Text("Hello, world").resolve(in: EnvironmentValues())
+        let single = backend.measureText(text, proposal: .unspecified)
+        let wrapped = backend.measureText(text, proposal: ProposedViewSize(width: single.width / 2, height: nil))
+        #expect(single.height > 0)
+        #expect(wrapped.height > single.height)
+        #expect(wrapped.width <= single.width / 2)
+        // Stacks probe flexibility with an infinite proposal: it must measure like an ideal size.
+        #expect(backend.measureText(text, proposal: ProposedViewSize(width: .infinity, height: nil)) == single)
+    }
+}
+#endif

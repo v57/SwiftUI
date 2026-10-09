@@ -1,0 +1,214 @@
+{
+  "recordedWith" : "SwiftUI on macOS 27.0.1",
+  "scenarios" : {
+    "background-isolation" : {
+      "grow background" : {
+        "layout.background.place" : 2,
+        "layout.background.sizeThatFits" : 1,
+        "layout.card.place" : 6,
+        "layout.card.sizeThatFits" : 7,
+        "layout.footer.place" : 5,
+        "layout.footer.sizeThatFits" : 5,
+        "layout.header.place" : 5,
+        "layout.header.sizeThatFits" : 7,
+        "layout.stack.place" : 1,
+        "layout.stack.sizeThatFits" : 4
+      },
+      "initial" : {
+        "layout.background.place" : 3,
+        "layout.background.sizeThatFits" : 1,
+        "layout.card.place" : 16,
+        "layout.card.sizeThatFits" : 22,
+        "layout.footer.place" : 16,
+        "layout.footer.sizeThatFits" : 14,
+        "layout.header.place" : 16,
+        "layout.header.sizeThatFits" : 22,
+        "layout.stack.place" : 2,
+        "layout.stack.sizeThatFits" : 12
+      }
+    },
+    "color-change" : {
+      "initial" : {
+        "layout.header.place" : 16,
+        "layout.header.sizeThatFits" : 24,
+        "layout.stack.place" : 2,
+        "layout.stack.sizeThatFits" : 12,
+        "layout.tinted.place" : 16,
+        "layout.tinted.sizeThatFits" : 14
+      },
+      "tint blue" : {
+        "layout.header.place" : 5,
+        "layout.header.sizeThatFits" : 9,
+        "layout.stack.place" : 1,
+        "layout.stack.sizeThatFits" : 4,
+        "layout.tinted.place" : 6,
+        "layout.tinted.sizeThatFits" : 5
+      }
+    },
+    "conditional-branches" : {
+      "hide detail" : {
+        "body.ConditionalScreen" : 1
+      },
+      "initial" : {
+        "body.ConditionalScreen" : 1,
+        "body.Detail" : 1,
+        "body.StaticChild" : 1
+      },
+      "show detail" : {
+        "body.ConditionalScreen" : 1,
+        "body.Detail" : 1
+      }
+    },
+    "environment-keys" : {
+      "initial" : {
+        "body.LineLimitReader" : 1,
+        "body.ThemeReader" : 1,
+        "body.ThemeScreen" : 1
+      },
+      "theme dark" : {
+        "body.ThemeReader" : 1,
+        "body.ThemeScreen" : 1
+      }
+    },
+    "environment-object" : {
+      "a += 1" : {
+        "body.EnvObjectReader" : 1
+      },
+      "initial" : {
+        "body.EnvObjectReader" : 1,
+        "body.StaticChild" : 1
+      }
+    },
+    "fixed-frame-boundary" : {
+      "change title" : {
+        "layout.footer.place" : 5,
+        "layout.footer.sizeThatFits" : 5,
+        "layout.header.place" : 5,
+        "layout.header.sizeThatFits" : 7,
+        "layout.inner.place" : 2,
+        "layout.inner.sizeThatFits" : 1,
+        "layout.stack.place" : 1,
+        "layout.stack.sizeThatFits" : 4
+      },
+      "initial" : {
+        "layout.footer.place" : 16,
+        "layout.footer.sizeThatFits" : 14,
+        "layout.header.place" : 16,
+        "layout.header.sizeThatFits" : 22,
+        "layout.inner.place" : 3,
+        "layout.inner.sizeThatFits" : 1,
+        "layout.stack.place" : 2,
+        "layout.stack.sizeThatFits" : 12
+      }
+    },
+    "foreach-edits" : {
+      "initial" : {
+        "body.ListRow" : 5,
+        "body.ListScreen" : 1
+      },
+      "insert front" : {
+        "body.ListRow" : 1,
+        "body.ListScreen" : 1
+      },
+      "remove middle" : {
+        "body.ListScreen" : 1
+      },
+      "reverse" : {
+        "body.ListScreen" : 1
+      }
+    },
+    "lazy-list" : {
+      "change offscreen row" : {
+
+      },
+      "change visible row" : {
+        "body.LazyRowView" : 1
+      },
+      "initial" : {
+        "body.LazyRowView" : 20
+      }
+    },
+    "observable-fine-grained" : {
+      "a += 1" : {
+        "body.ReadsA" : 1
+      },
+      "b += 1" : {
+        "body.ReadsB" : 1
+      },
+      "initial" : {
+        "body.ReadsA" : 1,
+        "body.ReadsB" : 1
+      }
+    },
+    "observable-object-coarse" : {
+      "a += 1" : {
+        "body.ObservesA" : 1,
+        "body.ObservesB" : 1
+      },
+      "b = b" : {
+        "body.ObservesA" : 1,
+        "body.ObservesB" : 1
+      },
+      "initial" : {
+        "body.HoldsObject" : 1,
+        "body.ObservesA" : 1,
+        "body.ObservesB" : 1
+      }
+    },
+    "overlay-isolation" : {
+      "grow badge" : {
+        "body.Badge" : 1,
+        "layout.badge.place" : 3,
+        "layout.badge.sizeThatFits" : 2,
+        "layout.card.place" : 1
+      },
+      "hide badge" : {
+        "body.OverlayScreen" : 1,
+        "layout.card.place" : 6,
+        "layout.card.sizeThatFits" : 7,
+        "layout.footer.place" : 5,
+        "layout.footer.sizeThatFits" : 5,
+        "layout.header.place" : 5,
+        "layout.header.sizeThatFits" : 7,
+        "layout.stack.place" : 1,
+        "layout.stack.sizeThatFits" : 4
+      },
+      "initial" : {
+        "body.Badge" : 1,
+        "body.OverlayScreen" : 1,
+        "layout.badge.place" : 4,
+        "layout.badge.sizeThatFits" : 2,
+        "layout.card.place" : 16,
+        "layout.card.sizeThatFits" : 22,
+        "layout.footer.place" : 16,
+        "layout.footer.sizeThatFits" : 14,
+        "layout.header.place" : 16,
+        "layout.header.sizeThatFits" : 22,
+        "layout.stack.place" : 2,
+        "layout.stack.sizeThatFits" : 12
+      },
+      "show badge" : {
+        "body.Badge" : 1,
+        "body.OverlayScreen" : 1,
+        "layout.badge.place" : 5,
+        "layout.badge.sizeThatFits" : 2,
+        "layout.card.place" : 1
+      }
+    },
+    "unchanged-child-inputs" : {
+      "count += 1" : {
+        "body.ParentReadsCount" : 1,
+        "body.ValueChild" : 1
+      },
+      "initial" : {
+        "body.ParentReadsCount" : 1,
+        "body.StaticChild" : 1,
+        "body.ValueChild" : 2
+      }
+    }
+  },
+  "windowSize" : [
+    400,
+    600
+  ]
+}

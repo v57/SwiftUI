@@ -1,0 +1,676 @@
+import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
+
+// MARK: - TimelineView
+
+public struct TimelineViewDefaultContext {
+    public let date: Date
+    public let cadence: Cadence
+    public enum Cadence: Comparable, Sendable { case live, seconds, minutes }
+}
+
+@MainActor @preconcurrency
+public protocol TimelineSchedule {
+    /// Seconds between updates (nil: no periodic updates).
+    var _interval: Double? { get }
+}
+
+public struct PeriodicTimelineSchedule: TimelineSchedule {
+    let interval: Double
+    public var _interval: Double? { interval }
+}
+
+public struct EveryMinuteTimelineSchedule: TimelineSchedule {
+    public var _interval: Double? { 60 }
+}
+
+public struct AnimationTimelineSchedule: TimelineSchedule {
+    let minimumInterval: Double?
+    let paused: Bool
+    public var _interval: Double? { paused ? nil : max(minimumInterval ?? 1.0 / 60, 1.0 / 120) }
+}
+
+public struct ExplicitTimelineSchedule: TimelineSchedule {
+    public var _interval: Double? { nil }
+}
+
+extension TimelineSchedule where Self == PeriodicTimelineSchedule {
+    public static func periodic(from startDate: Date, by interval: Double) -> PeriodicTimelineSchedule { PeriodicTimelineSchedule(interval: interval) }
+}
+
+extension TimelineSchedule where Self == EveryMinuteTimelineSchedule {
+    public static var everyMinute: EveryMinuteTimelineSchedule { EveryMinuteTimelineSchedule() }
+}
+
+extension TimelineSchedule where Self == AnimationTimelineSchedule {
+    public static var animation: AnimationTimelineSchedule { AnimationTimelineSchedule(minimumInterval: nil, paused: false) }
+    public static func animation(minimumInterval: Double? = nil, paused: Bool = false) -> AnimationTimelineSchedule {
+        AnimationTimelineSchedule(minimumInterval: minimumInterval, paused: paused)
+    }
+}
+
+extension TimelineSchedule where Self == ExplicitTimelineSchedule {
+    public static func explicit<S: Sequence>(_ dates: S) -> ExplicitTimelineSchedule where S.Element == Date { ExplicitTimelineSchedule() }
+}
+
+/// Re-evaluates its content on a schedule (a timer drives a date source attribute).
+public struct TimelineView<Schedule: TimelineSchedule, Content: View>: View {
+    let schedule: Schedule
+    let content: (TimelineViewDefaultContext) -> Content
+
+    public init(_ schedule: Schedule, @ViewBuilder content: @escaping (TimelineViewDefaultContext) -> Content) {
+        self.schedule = schedule
+        self.content = content
+    }
+
+    public var body: Never { primitiveBody(Self.self) }
+
+    public static func _makeView(view: _GraphValue<Self>, inputs: _ViewInputs) -> _ViewOutputs {
+        let inputs = inputs.with(path: "TimelineView")
+        let date = Attribute<Date>(inputs.subgraph, value: Date(), isEqual: { $0 == $1 })
+        let interval = AnyAttribute.withoutDependencies { view.attribute.value.schedule._interval }
+        if let interval {
+            let timer = Timer(timeInterval: interval, repeats: true) { [weak date] _ in
+                MainActor.assumeIsolated { date?.setValue(Date()) }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            inputs.subgraph.onDestroy { timer.invalidate() }
+        }
+        let content = makeObservedAttribute(inputs.subgraph, of: Content.self) {
+            let timeline = view.attribute.value
+            let cadence: TimelineViewDefaultContext.Cadence = (interval ?? 60) < 1 ? .live : (interval ?? 60) < 60 ? .seconds : .minutes
+            return timeline.content(TimelineViewDefaultContext(date: date.value, cadence: cadence))
+        }
+        return Content._makeView(view: _GraphValue(content), inputs: inputs)
+    }
+}
+
+// MARK: - Canvas
+
+/// Immediate-mode drawing recorded as commands and replayed by the backend.
+@MainActor
+public struct GraphicsContext {
+    public enum Shading {
+        case color(Color)
+        case style(AnyShapeStyle)
+
+        public static func linearGradient(_ gradient: Gradient, startPoint: CGPoint, endPoint: CGPoint) -> Shading {
+            .style(AnyShapeStyle(LinearGradient(gradient: gradient, startPoint: .top, endPoint: .bottom)))
+        }
+    }
+
+    let recorder: DrawingRecorder
+    var transform = CGAffineTransform.identity
+    public var opacity: Double = 1
+    let environment: EnvironmentValues
+
+    public mutating func translateBy(x: CGFloat, y: CGFloat) { transform = transform.translatedBy(x: x, y: y) }
+    public mutating func scaleBy(x: CGFloat, y: CGFloat) { transform = transform.scaledBy(x: x, y: y) }
+    public mutating func rotate(by angle: Angle) { transform = transform.rotated(by: CGFloat(angle.radians)) }
+
+    private func paint(_ shading: Shading) -> ResolvedPaint {
+        switch shading {
+        case .color(let color):
+            var resolved = color.resolve(in: environment)
+            resolved.opacity *= Float(opacity)
+            return .color(resolved)
+        case .style(let style):
+            return style._resolvePaint(in: environment)
+        }
+    }
+
+    public func fill(_ path: Path, with shading: Shading, style: FillStyle = FillStyle()) {
+        recorder.commands.append(.fill(path.applying(transform), paint(shading)))
+    }
+
+    public func stroke(_ path: Path, with shading: Shading, lineWidth: CGFloat = 1) {
+        recorder.commands.append(.stroke(path.applying(transform), paint(shading), StrokeStyle(lineWidth: lineWidth)))
+    }
+
+    public func stroke(_ path: Path, with shading: Shading, style: StrokeStyle) {
+        recorder.commands.append(.stroke(path.applying(transform), paint(shading), style))
+    }
+
+    public func draw(_ text: Text, at point: CGPoint, anchor: UnitPoint = .center) {
+        recorder.commands.append(.text(text.resolve(in: environment), point.applying(transform), anchor))
+    }
+}
+
+@MainActor
+final class DrawingRecorder {
+    var commands: [DrawCommand] = []
+}
+
+public enum DrawCommand: Equatable, Sendable {
+    case fill(Path, ResolvedPaint)
+    case stroke(Path, ResolvedPaint, StrokeStyle)
+    case text(ResolvedText, CGPoint, UnitPoint)
+}
+
+public struct Canvas<Symbols: View>: View {
+    let renderer: (inout GraphicsContext, CGSize) -> Void
+
+    public var body: Never { primitiveBody(Self.self) }
+
+    public static func _makeView(view: _GraphValue<Self>, inputs: _ViewInputs) -> _ViewOutputs {
+        let inputs = inputs.with(path: "Canvas")
+        let geometry = inputs.geometry
+        let environment = inputs.environment
+        let content = makeObservedAttribute(inputs.subgraph, of: RenderContent.self, isEqual: { $0 == $1 }) {
+            let recorder = DrawingRecorder()
+            var context = GraphicsContext(recorder: recorder, environment: environment.value)
+            view.attribute.value.renderer(&context, geometry.value.size)
+            return .drawing(recorder.commands)
+        }
+        inputs.makePlatformNode(content: content)
+        let tracer = inputs.tracer
+        let path = inputs.path
+        return _ViewOutputs(layout: inputs.makeLayoutAttribute { FlexibleLayoutComputer(path: path, tracer: tracer) })
+    }
+}
+
+extension Canvas where Symbols == EmptyView {
+    public init(opaque: Bool = false, colorMode: ColorRenderingMode = .nonLinear, rendersAsynchronously: Bool = false, renderer: @escaping (inout GraphicsContext, CGSize) -> Void) {
+        self.renderer = renderer
+    }
+}
+
+public enum ColorRenderingMode: Sendable { case nonLinear, linear, extendedLinear }
+
+// MARK: - Table
+
+@MainActor
+public struct TableColumn<RowValue> {
+    let title: Text
+    let width: CGFloat?
+    let content: @MainActor (RowValue) -> AnyView
+
+    public init<S: StringProtocol, C: View>(_ title: S, @ViewBuilder content: @escaping (RowValue) -> C) {
+        self.title = Text(title)
+        self.width = nil
+        self.content = { AnyView(content($0)) }
+    }
+
+    public init<S: StringProtocol>(_ title: S, value: KeyPath<RowValue, String>) {
+        self.title = Text(title)
+        self.width = nil
+        self.content = { AnyView(Text($0[keyPath: value])) }
+    }
+
+    init(title: Text, width: CGFloat?, content: @escaping @MainActor (RowValue) -> AnyView) {
+        self.title = title
+        self.width = width
+        self.content = content
+    }
+
+    public func width(_ width: CGFloat? = nil) -> TableColumn { TableColumn(title: title, width: width, content: content) }
+    public func width(min: CGFloat? = nil, ideal: CGFloat? = nil, max: CGFloat? = nil) -> TableColumn { TableColumn(title: title, width: ideal, content: content) }
+}
+
+@resultBuilder @MainActor
+public enum TableColumnBuilder<RowValue> {
+    public static func buildExpression(_ column: TableColumn<RowValue>) -> [TableColumn<RowValue>] { [column] }
+    public static func buildBlock(_ columns: [TableColumn<RowValue>]...) -> [TableColumn<RowValue>] { columns.flatMap { $0 } }
+    public static func buildOptional(_ columns: [TableColumn<RowValue>]?) -> [TableColumn<RowValue>] { columns ?? [] }
+}
+
+public struct Table<Value: Identifiable>: View {
+    let rows: [Value]
+    let columns: [TableColumn<Value>]
+    let selection: SelectionContext?
+
+    public init<C: RandomAccessCollection>(_ data: C, @TableColumnBuilder<Value> columns: () -> [TableColumn<Value>]) where C.Element == Value {
+        self.rows = Array(data)
+        self.columns = columns()
+        self.selection = nil
+    }
+
+    public init<C: RandomAccessCollection>(_ data: C, selection: Binding<Value.ID?>, @TableColumnBuilder<Value> columns: () -> [TableColumn<Value>]) where C.Element == Value {
+        self.rows = Array(data)
+        self.columns = columns()
+        self.selection = .optional(selection)
+    }
+
+    public init<C: RandomAccessCollection>(_ data: C, selection: Binding<Set<Value.ID>>, @TableColumnBuilder<Value> columns: () -> [TableColumn<Value>]) where C.Element == Value {
+        self.rows = Array(data)
+        self.columns = columns()
+        self.selection = .multiple(selection)
+    }
+
+    public var body: some View {
+        let columns = self.columns
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                ForEach(columns.indices, id: \.self) { index in
+                    columns[index].title.font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                        .padding(.horizontal, 6)
+                        .modifier(_TableCellFrame(width: columns[index].width))
+                }
+            }
+            .padding(.vertical, 4)
+            Divider()
+            List(selection: Binding<Value.ID?>(get: { nil }, set: { _ in })) {
+                ForEach(Array(rows.enumerated()), id: \.element.id) { offset, row in
+                    HStack(spacing: 0) {
+                        ForEach(columns.indices, id: \.self) { index in
+                            columns[index].content(row)
+                                .lineLimit(1)
+                                .padding(.horizontal, 6)
+                                .modifier(_TableCellFrame(width: columns[index].width))
+                        }
+                    }
+                    .listRowBackground(offset % 2 == 1 ? RoundedRectangle(cornerRadius: 4).fill(Color.gray.opacity(0.12)) : nil)
+                    .tag(row.id)
+                }
+            }
+            .environment(\.listContext, ListContext(selection: selection, isForm: false))
+        }
+        .background(Color.gray.opacity(0.06))
+        .overlay(Rectangle().strokeBorder(Color.separator))
+    }
+}
+
+struct _TableCellFrame: ViewModifier {
+    let width: CGFloat?
+    func body(content: Content) -> some View {
+        if let width {
+            content.frame(width: width, alignment: .leading)
+        } else {
+            content.frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+// MARK: - Misc containers
+
+public struct ControlGroup<Content: View>: View {
+    let content: Content
+    public init(@ViewBuilder content: () -> Content) { self.content = content() }
+    public var body: some View {
+        HStack(spacing: 1) { content }
+            .buttonStyle(.bordered)
+    }
+}
+
+public struct OutlineGroup<Data: RandomAccessCollection, ID: Hashable, Leaf: View>: View where Data.Element: Identifiable, Data.Element.ID == ID {
+    let data: Data
+    let children: KeyPath<Data.Element, Data?>
+    let content: (Data.Element) -> Leaf
+
+    public init(_ data: Data, children: KeyPath<Data.Element, Data?>, @ViewBuilder content: @escaping (Data.Element) -> Leaf) {
+        self.data = data
+        self.children = children
+        self.content = content
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(data) { element in
+                if let nested = element[keyPath: children] {
+                    DisclosureGroup {
+                        OutlineGroup(nested, children: children, content: content)
+                    } label: {
+                        content(element)
+                    }
+                } else {
+                    content(element)
+                }
+            }
+        }
+    }
+}
+
+/// Compares the wrapped view with `==` to decide whether its body must run again.
+public struct EquatableView<Content: View & Equatable>: View {
+    public var content: Content
+    public init(content: Content) { self.content = content }
+    public var body: some View { content }
+}
+
+extension EquatableView: _GraphComparable {
+    public nonisolated static func _isIdentical(_ lhs: EquatableView, _ rhs: EquatableView) -> Bool {
+        MainActor.assumeIsolated { lhs.content == rhs.content }
+    }
+}
+
+extension View where Self: Equatable {
+    public func equatable() -> EquatableView<Self> { EquatableView(content: self) }
+}
+
+// MARK: - Modifiers
+
+extension View {
+    public func safeAreaInset<V: View>(edge: VerticalEdge, alignment: HorizontalAlignment = .center, spacing: CGFloat? = nil, @ViewBuilder content: () -> V) -> some View {
+        let inset = content()
+        return VStack(alignment: alignment, spacing: spacing ?? 0) {
+            if edge == .top { inset }
+            self.frame(maxWidth: .infinity, maxHeight: .infinity)
+            if edge == .bottom { inset }
+        }
+    }
+
+    public func safeAreaInset<V: View>(edge: HorizontalEdge, alignment: VerticalAlignment = .center, spacing: CGFloat? = nil, @ViewBuilder content: () -> V) -> some View {
+        let inset = content()
+        return HStack(alignment: alignment, spacing: spacing ?? 0) {
+            if edge == .leading { inset }
+            self.frame(maxWidth: .infinity, maxHeight: .infinity)
+            if edge == .trailing { inset }
+        }
+    }
+
+    public func safeAreaPadding(_ edges: Edge.Set = .all, _ length: CGFloat? = nil) -> some View { padding(edges, length) }
+
+    /// Masks with a shape (alpha masks of arbitrary views need compositing support and are ignored).
+    public func mask<M: View>(alignment: Alignment = .center, @ViewBuilder _ mask: () -> M) -> some View {
+        modifier(_ShapeMaskModifier(mask: mask()))
+    }
+
+    public func mask<M: View>(_ mask: M) -> some View {
+        modifier(_ShapeMaskModifier(mask: mask))
+    }
+
+    public func onReceive<P: Publisher>(_ publisher: P, perform action: @escaping @MainActor (P.Output) -> Void) -> some View where P.Failure == Never {
+        modifier(_ReceiveModifier(publisher: publisher, action: action))
+    }
+
+    public func phaseAnimator<Phase: Equatable, V: View>(_ phases: some Sequence<Phase>, @ViewBuilder content: @escaping (PlaceholderContentView<Self>, Phase) -> V, animation: @escaping (Phase) -> Animation? = { _ in .default }) -> some View {
+        _PhaseAnimatorView(base: self, phases: Array(phases), trigger: 0, loops: true, content: content, animation: animation)
+    }
+
+    public func phaseAnimator<Phase: Equatable, V: View, T: Equatable>(_ phases: some Sequence<Phase>, trigger: T, @ViewBuilder content: @escaping (PlaceholderContentView<Self>, Phase) -> V, animation: @escaping (Phase) -> Animation? = { _ in .default }) -> some View {
+        _PhaseAnimatorView(base: self, phases: Array(phases), trigger: trigger, loops: false, content: content, animation: animation)
+    }
+
+    // Visual filters require compositing support (excluded with blur/shaders); accepted for
+    // source compatibility.
+    public func grayscale(_ amount: Double) -> some View { self }
+    public func saturation(_ amount: Double) -> some View { self }
+    public func brightness(_ amount: Double) -> some View { self }
+    public func contrast(_ amount: Double) -> some View { self }
+    public func hueRotation(_ angle: Angle) -> some View { self }
+    public func colorInvert() -> some View { self }
+    public func colorMultiply(_ color: Color) -> some View { self }
+    public func luminanceToAlpha() -> some View { self }
+    public func blur(radius: CGFloat, opaque: Bool = false) -> some View { self }
+    public func blendMode(_ mode: BlendMode) -> some View { self }
+    public func contentTransition(_ transition: ContentTransition) -> some View { self }
+    public func redacted(reason: RedactionReasons) -> some View { opacity(reason.isEmpty ? 1 : 0.4) }
+    public func unredacted() -> some View { self }
+    public func privacySensitive(_ sensitive: Bool = true) -> some View { self }
+    public func dynamicTypeSize<T>(_ size: T) -> some View { self }
+    public func monospaced(_ isActive: Bool = true) -> some View {
+        transformEnvironment(\.font) { font in if isActive { font = (font ?? .body).monospaced() } }
+    }
+}
+
+public enum HorizontalEdge: Int8, Hashable, Sendable { case leading, trailing }
+public enum BlendMode: Sendable { case normal, multiply, screen, overlay, darken, lighten, colorDodge, colorBurn, softLight, hardLight, difference, exclusion, hue, saturation, color, luminosity, sourceAtop, destinationOver, destinationOut, plusDarker, plusLighter }
+public struct ContentTransition: Sendable {
+    public static let identity = ContentTransition()
+    public static let opacity = ContentTransition()
+    public static let interpolate = ContentTransition()
+    public static func numericText(countsDown: Bool = false) -> ContentTransition { ContentTransition() }
+    public static let symbolEffect = ContentTransition()
+}
+public struct RedactionReasons: OptionSet, Sendable {
+    public let rawValue: Int
+    public init(rawValue: Int) { self.rawValue = rawValue }
+    public static let placeholder = RedactionReasons(rawValue: 1)
+    public static let privacy = RedactionReasons(rawValue: 2)
+    public static let invalidated = RedactionReasons(rawValue: 4)
+}
+
+struct _ShapeMaskModifier<Mask: View>: ViewModifier {
+    let mask: Mask
+    func body(content: Content) -> some View {
+        if let shape = mask as? any Shape {
+            content.modifier(_ClipEffect(shape: AnyShape(shape)))
+        } else {
+            content
+        }
+    }
+}
+
+public struct _ReceiveModifier<P: Publisher>: ViewModifier where P.Failure == Never {
+    let publisher: P
+    let action: @MainActor (P.Output) -> Void
+    public typealias Body = Never
+
+    public static func _makeView(modifier: _GraphValue<Self>, inputs: _ViewInputs, body: @escaping @MainActor (_ViewInputs) -> _ViewOutputs) -> _ViewOutputs {
+        let source = modifier.attribute
+        let host = inputs.host
+        let publisher = AnyAttribute.withoutDependencies { source.value.publisher }
+        let cancellable = publisher.sink { [weak source] output in
+            let deliver: @MainActor () -> Void = {
+                guard let source else { return }
+                AnyAttribute.withoutDependencies { source.value.action(output) }
+                host.onNeedsUpdate?()
+            }
+            if Thread.isMainThread { MainActor.assumeIsolated(deliver) } else { DispatchQueue.main.async { MainActor.assumeIsolated(deliver) } }
+        }
+        inputs.subgraph.onDestroy { cancellable.cancel() }
+        return body(inputs)
+    }
+}
+
+/// The view a phase animator's content closure receives.
+public struct PlaceholderContentView<Value: View>: View {
+    let content: Value
+    public var body: some View { content }
+}
+
+struct _PhaseAnimatorView<Base: View, Phase: Equatable, Content: View, Trigger: Equatable>: View {
+    let base: Base
+    let phases: [Phase]
+    let trigger: Trigger
+    let loops: Bool
+    let content: (PlaceholderContentView<Base>, Phase) -> Content
+    let animation: (Phase) -> Animation?
+    @State private var index = 0
+
+    var body: some View {
+        content(PlaceholderContentView(content: base), phases[min(index, phases.count - 1)])
+            .task(id: trigger) {
+                guard phases.count > 1 else { return }
+                var first = true
+                repeat {
+                    for next in 1...phases.count {
+                        if !loops && !first && next == phases.count { break }
+                        let target = next % phases.count
+                        let animation = animation(phases[target])
+                        withAnimation(animation) { index = target }
+                        let duration = animation.map { $0.duration / $0.speed + $0.delay } ?? 0.35
+                        try? await Task.sleep(for: .seconds(duration))
+                        if Task.isCancelled { return }
+                        if !loops && target == 0 { return }
+                    }
+                    first = false
+                } while loops && !Task.isCancelled
+            }
+    }
+}
+
+// MARK: - Storage property wrappers
+
+/// `@AppStorage`: a value persisted in `UserDefaults`, observed for external changes.
+@propertyWrapper
+public struct AppStorage<Value>: DynamicProperty {
+    let key: String
+    let defaultValue: Value
+    let store: UserDefaults
+    let read: (UserDefaults, String) -> Value?
+    let write: (UserDefaults, String, Value) -> Void
+    var location: StoredLocation<Value>?
+
+    public var wrappedValue: Value {
+        get { location?.get() ?? read(store, key) ?? defaultValue }
+        nonmutating set {
+            write(store, key, newValue)
+            location?.set(newValue, transaction: Transaction.current)
+        }
+    }
+
+    public var projectedValue: Binding<Value> {
+        let current = self
+        return Binding(get: { current.wrappedValue }, set: { current.wrappedValue = $0 })
+    }
+}
+
+extension AppStorage {
+    public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) where Value == Bool { self.init(key, wrappedValue, store) { $0.object(forKey: $1) as? Bool } }
+    public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) where Value == Int { self.init(key, wrappedValue, store) { $0.object(forKey: $1) as? Int } }
+    public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) where Value == Double { self.init(key, wrappedValue, store) { $0.object(forKey: $1) as? Double } }
+    public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) where Value == String { self.init(key, wrappedValue, store) { $0.string(forKey: $1) } }
+    public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) where Value == URL { self.init(key, wrappedValue, store) { $0.url(forKey: $1) } }
+    public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) where Value == Data { self.init(key, wrappedValue, store) { $0.data(forKey: $1) } }
+
+    public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) where Value: RawRepresentable, Value.RawValue == String {
+        self.init(key: key, defaultValue: wrappedValue, store: store ?? .standard,
+                  read: { ($0.string(forKey: $1)).flatMap(Value.init(rawValue:)) },
+                  write: { $0.set($2.rawValue, forKey: $1) })
+    }
+
+    public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) where Value: RawRepresentable, Value.RawValue == Int {
+        self.init(key: key, defaultValue: wrappedValue, store: store ?? .standard,
+                  read: { ($0.object(forKey: $1) as? Int).flatMap(Value.init(rawValue:)) },
+                  write: { $0.set($2.rawValue, forKey: $1) })
+    }
+
+    init(_ key: String, _ defaultValue: Value, _ store: UserDefaults?, read: @escaping (UserDefaults, String) -> Value?) {
+        self.init(key: key, defaultValue: defaultValue, store: store ?? .standard, read: read, write: { $0.set($2, forKey: $1) })
+    }
+
+    init(key: String, defaultValue: Value, store: UserDefaults, read: @escaping (UserDefaults, String) -> Value?, write: @escaping (UserDefaults, String, Value) -> Void) {
+        self.key = key
+        self.defaultValue = defaultValue
+        self.store = store
+        self.read = read
+        self.write = write
+    }
+}
+
+@MainActor
+final class AppStorageBox<Value> {
+    let location: StoredLocation<Value>
+    var observer: NSObjectProtocol?
+    init(location: StoredLocation<Value>) { self.location = location }
+}
+
+extension AppStorage: _DynamicPropertyInstallable {
+    mutating func _install(slot: inout AnyObject?, context: DynamicPropertyContext) {
+        if let box = slot as? AppStorageBox<Value> {
+            location = box.location
+            return
+        }
+        let attribute = Attribute<Value>(context.subgraph, value: read(store, key) ?? defaultValue)
+        let box = AppStorageBox(location: StoredLocation(attribute: attribute))
+        let captured = UncheckedSendable((store: store, key: key, read: read, defaultValue: defaultValue))
+        box.observer = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: store, queue: .main) { [weak attribute] _ in
+            MainActor.assumeIsolated {
+                let c = captured.value
+                attribute?.setValue(c.read(c.store, c.key) ?? c.defaultValue)
+            }
+        }
+        let observer = box.observer
+        context.subgraph.onDestroy { if let observer { NotificationCenter.default.removeObserver(observer) } }
+        slot = box
+        location = box.location
+    }
+}
+
+extension AppStorage: _GraphComparable {
+    public nonisolated static func _isIdentical(_ lhs: AppStorage, _ rhs: AppStorage) -> Bool { lhs.key == rhs.key }
+}
+
+/// `@SceneStorage`: per-scene state restoration; kept in memory for the process lifetime.
+@propertyWrapper
+public struct SceneStorage<Value>: DynamicProperty {
+    let key: String
+    let defaultValue: Value
+    var location: StoredLocation<Value>?
+
+    public init(wrappedValue: Value, _ key: String) {
+        self.key = key
+        self.defaultValue = wrappedValue
+    }
+
+    public var wrappedValue: Value {
+        get { location?.get() ?? (SceneStorageValues.values[key] as? Value) ?? defaultValue }
+        nonmutating set {
+            SceneStorageValues.values[key] = newValue
+            location?.set(newValue, transaction: Transaction.current)
+        }
+    }
+
+    public var projectedValue: Binding<Value> {
+        let current = self
+        return Binding(get: { current.wrappedValue }, set: { current.wrappedValue = $0 })
+    }
+}
+
+enum SceneStorageValues {
+    nonisolated(unsafe) static var values: [String: Any] = [:]
+}
+
+extension SceneStorage: _DynamicPropertyInstallable {
+    mutating func _install(slot: inout AnyObject?, context: DynamicPropertyContext) {
+        if let existing = slot as? StoredLocation<Value> {
+            location = existing
+            return
+        }
+        let created = StoredLocation(attribute: Attribute(context.subgraph, value: (SceneStorageValues.values[key] as? Value) ?? defaultValue))
+        slot = created
+        location = created
+    }
+}
+
+extension SceneStorage: _GraphComparable {
+    public nonisolated static func _isIdentical(_ lhs: SceneStorage, _ rhs: SceneStorage) -> Bool { lhs.key == rhs.key }
+}
+
+// MARK: - More environment values
+
+public enum UserInterfaceSizeClass: Hashable, Sendable { case compact, regular }
+public enum ScenePhase: Hashable, Sendable { case background, inactive, active }
+
+struct LocaleKey: EnvironmentKey { static let defaultValue = Locale.current }
+struct CalendarKey: EnvironmentKey { static let defaultValue = Calendar.current }
+struct TimeZoneKey: EnvironmentKey { static let defaultValue = TimeZone.current }
+struct HorizontalSizeClassKey: EnvironmentKey { static let defaultValue: UserInterfaceSizeClass? = .regular }
+struct VerticalSizeClassKey: EnvironmentKey { static let defaultValue: UserInterfaceSizeClass? = .regular }
+struct ScenePhaseKey: EnvironmentKey { static let defaultValue = ScenePhase.active }
+
+extension EnvironmentValues {
+    public var locale: Locale {
+        get { self[LocaleKey.self] }
+        set { self[LocaleKey.self] = newValue }
+    }
+    public var calendar: Calendar {
+        get { self[CalendarKey.self] }
+        set { self[CalendarKey.self] = newValue }
+    }
+    public var timeZone: TimeZone {
+        get { self[TimeZoneKey.self] }
+        set { self[TimeZoneKey.self] = newValue }
+    }
+    public var horizontalSizeClass: UserInterfaceSizeClass? {
+        get { self[HorizontalSizeClassKey.self] }
+        set { self[HorizontalSizeClassKey.self] = newValue }
+    }
+    public var verticalSizeClass: UserInterfaceSizeClass? {
+        get { self[VerticalSizeClassKey.self] }
+        set { self[VerticalSizeClassKey.self] = newValue }
+    }
+    public var scenePhase: ScenePhase {
+        get { self[ScenePhaseKey.self] }
+        set { self[ScenePhaseKey.self] = newValue }
+    }
+}
+
+struct UncheckedSendable<T>: @unchecked Sendable {
+    let value: T
+    init(_ value: T) { self.value = value }
+}
