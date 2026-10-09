@@ -103,6 +103,44 @@ struct LayoutTests {
         #expect(host.texts == ["150x80"])
     }
 
+    @Test func geometryReaderContentWithScrollViewInsideStack() throws {
+        // ScrollView reads its axes while being built, which evaluates the reader's content
+        // before the stack has bound the reader's geometry.
+        let host = TestHost(
+            ZStack {
+                GeometryReader { proxy in
+                    ScrollView { Text("\(Int(proxy.size.width))") }
+                }
+            },
+            size: CGSize(width: 120, height: 80)
+        )
+        #expect(host.texts == ["120"])
+    }
+
+    @Test func aspectRatioWithPartialProposals() throws {
+        // Measured on macOS SwiftUI: a missing dimension is unbounded when fitting, zero when
+        // filling; a fully unspecified proposal passes through to the child.
+        let host = TestHost(
+            VStack(alignment: .leading, spacing: 0) {
+                Color.red.aspectRatio(1, contentMode: .fit).frame(width: 50).fixedSize(horizontal: false, vertical: true)
+                Color.green.aspectRatio(1, contentMode: .fill).fixedSize(horizontal: true, vertical: false).frame(height: 60)
+                Color.blue.aspectRatio(2, contentMode: .fit).fixedSize()
+            },
+            size: CGSize(width: 300, height: 300)
+        )
+        let fills = host.allViews.filter(\.isFill).map(\.frame.size)
+        #expect(fills == [CGSize(width: 50, height: 50), CGSize(width: 60, height: 60), CGSize(width: 10, height: 10)])
+    }
+
+    @Test func textShowsOnlyLinesThatFitProposedHeight() throws {
+        // Headless metrics at 10pt: 5pt per character, 12pt lines.
+        let host = TestHost(
+            Text("aaaa bbbb cccc").font(.system(size: 10)).frame(width: 25, height: 30),
+            size: CGSize(width: 100, height: 100)
+        )
+        #expect(host.view(withText: "aaaa bbbb cccc")?.frame.height == 24)
+    }
+
     @Test func flexibleFrameMaxWidthInfinity() throws {
         let host = TestHost(
             Text("hi").frame(maxWidth: .infinity, alignment: .leading).background(Color.red),

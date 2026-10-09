@@ -117,7 +117,8 @@ final class FrameComputer: UnaryLayoutComputer {
     override func explicitAlignment(_ key: AlignmentKey, in size: CGSize) -> CGFloat? { nil }
 
     override func placeChild(in geometry: ViewGeometry, child: LayoutComputer) -> ViewGeometry {
-        let proposal = ProposedViewSize(width: width ?? geometry.size.width, height: height ?? geometry.size.height)
+        // Unfixed axes pass the frame's own proposal through (as when sizing).
+        let proposal = ProposedViewSize(width: width ?? geometry.proposal.width, height: height ?? geometry.proposal.height)
         let childSize = child.sizeThatFits(proposal)
         return geometry.aligning(childSize: childSize, child: child, container: dimensions(size: geometry.size), alignment: alignment, proposal: proposal)
     }
@@ -409,26 +410,34 @@ final class AspectRatioComputer: UnaryLayoutComputer {
         super.init(child: child, path: path, tracer: tracer)
     }
 
-    private func targetSize(_ proposal: ProposedViewSize) -> CGSize {
-        let ideal = child.sizeThatFits(.unspecified)
-        let ratio = self.ratio ?? (ideal.height > 0 ? ideal.width / ideal.height : 1)
-        let available = proposal.replacingUnspecifiedDimensions(by: ideal)
-        let widthFromHeight = available.height * ratio
-        let fitsByWidth = contentMode == .fit ? widthFromHeight > available.width : widthFromHeight < available.width
-        if fitsByWidth {
-            return CGSize(width: available.width, height: available.width / ratio)
+    /// SwiftUI: an unspecified proposal passes through; otherwise a missing dimension counts as
+    /// unbounded when fitting and as zero when filling.
+    private func targetProposal(_ proposal: ProposedViewSize) -> ProposedViewSize {
+        if proposal.width == nil && proposal.height == nil { return .unspecified }
+        let ratio: CGFloat
+        if let fixed = self.ratio {
+            ratio = fixed
+        } else {
+            let ideal = child.sizeThatFits(.unspecified)
+            ratio = ideal.height > 0 ? ideal.width / ideal.height : 1
         }
-        return CGSize(width: widthFromHeight, height: available.height)
+        let missing: CGFloat = contentMode == .fit ? .infinity : 0
+        let available = CGSize(width: proposal.width ?? missing, height: proposal.height ?? missing)
+        let widthFromHeight = available.height * ratio
+        let byWidth = contentMode == .fit ? widthFromHeight > available.width : widthFromHeight < available.width
+        return byWidth
+            ? ProposedViewSize(width: available.width, height: available.width / ratio)
+            : ProposedViewSize(width: widthFromHeight, height: available.height)
     }
 
     override func computeSize(_ proposal: ProposedViewSize) -> CGSize {
-        child.sizeThatFits(ProposedViewSize(targetSize(proposal)))
+        child.sizeThatFits(targetProposal(proposal))
     }
 
     override func placeChild(in geometry: ViewGeometry, child: LayoutComputer) -> ViewGeometry {
-        let target = targetSize(ProposedViewSize(geometry.size))
-        let size = child.sizeThatFits(ProposedViewSize(target))
-        return geometry.aligning(childSize: size, child: child, container: dimensions(size: geometry.size), alignment: .center, proposal: ProposedViewSize(target))
+        let target = targetProposal(geometry.proposal)
+        let size = child.sizeThatFits(target)
+        return geometry.aligning(childSize: size, child: child, container: dimensions(size: geometry.size), alignment: .center, proposal: target)
     }
 
     override func hasSameParameters(as other: LayoutComputer) -> Bool {

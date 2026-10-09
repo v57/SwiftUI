@@ -39,7 +39,16 @@ final class TextLayoutComputer: LayoutComputer {
     }
 
     override func computeSize(_ proposal: ProposedViewSize) -> CGSize {
-        services.measureText(text, proposal: proposal)
+        let size = services.measureText(text, proposal: proposal)
+        // SwiftUI: text shows only as many lines as fit the proposed height (at least one).
+        guard let height = proposal.height, height.isFinite, size.height > height, (text.lineLimit ?? 2) > 1 else { return size }
+        var line = text
+        line.lineLimit = 1
+        let lineHeight = services.measureText(line, proposal: ProposedViewSize(width: proposal.width, height: nil)).height
+        guard lineHeight > 0 else { return size }
+        var limited = text
+        limited.lineLimit = max(1, Int(((height + 0.01) / lineHeight).rounded(.down)))
+        return services.measureText(limited, proposal: proposal)
     }
 
     override var spacing: ViewSpacing {

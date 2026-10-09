@@ -307,6 +307,14 @@ public final class Attribute<Value>: AnyAttribute {
         return storage
     }
 
+    /// Like `value`, but nil (still registering the dependency) while a late-bound attribute has
+    /// no rule yet; the dependent stays dirty and recomputes once the rule is set.
+    public var valueIfPresent: Value? {
+        updateIfNeeded()
+        recordRead()
+        return storage
+    }
+
     /// Value without bringing it up to date or registering a dependency.
     public var peekValue: Value? { storage }
 

@@ -270,8 +270,31 @@ public enum AppKitAppRunner {
             makeWindow(sceneIndex: first, value: nil)
         }
         app.activate()
+        if let path = ProcessInfo.processInfo.environment["SWIFTUI2_SNAPSHOT"] { scheduleSnapshot(to: path) }
         app.run()
         exit(0)
+    }
+
+    /// Debugging aid: `SWIFTUI2_SNAPSHOT=/path/shot.png` renders each window (including its
+    /// title bar and toolbar) to `shot.png`, `shot-1.png`, … after `SWIFTUI2_SNAPSHOT_DELAY`
+    /// seconds (default 3), without needing screen recording access. `SWIFTUI2_SNAPSHOT_EXIT=1`
+    /// quits afterwards.
+    private static func scheduleSnapshot(to path: String) {
+        let environment = ProcessInfo.processInfo.environment
+        let delay = environment["SWIFTUI2_SNAPSHOT_DELAY"].flatMap(Double.init) ?? 3
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            let base = URL(fileURLWithPath: path)
+            let windows = NSApp.windows.filter { $0.isVisible && $0.contentView != nil }
+            for (index, window) in windows.enumerated() {
+                guard let frameView = window.contentView?.superview ?? window.contentView,
+                      let bitmap = frameView.bitmapImageRepForCachingDisplay(in: frameView.bounds) else { continue }
+                frameView.cacheDisplay(in: frameView.bounds, to: bitmap)
+                let url = index == 0 ? base : base.deletingLastPathComponent()
+                    .appendingPathComponent("\(base.deletingPathExtension().lastPathComponent)-\(index).png")
+                try? bitmap.representation(using: .png, properties: [:])?.write(to: url)
+            }
+            if environment["SWIFTUI2_SNAPSHOT_EXIT"] == "1" { NSApp.terminate(nil) }
+        }
     }
 
     /// `openWindow(id:value:)`: focuses a window already showing the value, otherwise opens one.

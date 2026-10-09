@@ -197,7 +197,11 @@ public struct GeometryReader<Content: View>: View {
         let inputs = inputs.with(path: "GeometryReader")
         let geometry = inputs.geometry
         let spaces = inputs.coordinateSpaces
-        let proxy = Attribute<GeometryProxy>(inputs.subgraph, isEqual: { $0 == $1 }) { GeometryProxy(geometry: geometry.value, spaces: spaces) }
+        // The content can be evaluated while the view graph is still being built (a descendant
+        // reading static information), before the parent has bound this reader's geometry.
+        let proxy = Attribute<GeometryProxy>(inputs.subgraph, isEqual: { $0 == $1 }) {
+            GeometryProxy(geometry: geometry.valueIfPresent ?? ViewGeometry(origin: .zero, size: .zero, proposal: .unspecified), spaces: spaces)
+        }
         let contentView = Attribute<Content>(inputs.subgraph)
         contentView.setRule { [unowned contentView] in
             let reader = view.attribute.value
