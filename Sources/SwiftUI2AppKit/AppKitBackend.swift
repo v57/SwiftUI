@@ -30,6 +30,7 @@ public final class AppKitBackend: RenderBackend {
         case .textField: view = TextFieldNodeView()
         case .slider: view = SliderNodeView()
         case .scrollView: view = ScrollNodeView()
+        case .effect(.maskSource): view = MaskSourceNodeView()
         case .effect, .empty: view = EffectNodeView()
         case .datePicker: view = DatePickerNodeView()
         case .colorWell: view = ColorWellNodeView()
@@ -54,7 +55,23 @@ public final class AppKitBackend: RenderBackend {
         (view as? FlippedView)?.applyPresentation(node.presentation)
     }
 
+    /// Mask containers whose alpha mask is re-rendered after each commit.
+    private let maskedViews = NSHashTable<EffectNodeView>.weakObjects()
+
+    public func didCommit() {
+        for view in maskedViews.allObjects { view.refreshMask() }
+    }
+
     public func setChildren(of view: AnyObject, node: RenderNode, to children: [AnyObject]) {
+        if let effect = view as? EffectNodeView, case .effect(.mask) = node.content {
+            // The mask source stays out of the visible hierarchy; it is drawn into the layer mask.
+            let views = children.map { $0 as! NSView }
+            let visible = views.filter { !($0 is MaskSourceNodeView) }
+            if effect.subviews != visible { effect.subviews = visible }
+            effect.maskSource = views.last { $0 is MaskSourceNodeView } as? MaskSourceNodeView
+            maskedViews.add(effect)
+            return
+        }
         let container: NSView
         if let scroll = view as? ScrollNodeView {
             container = scroll.documentContainer

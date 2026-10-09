@@ -521,9 +521,38 @@ final class ScrollNodeView: FlippedView, PlatformNodeView {
     }
 }
 
+/// The content of `.mask { ... }`: never shown itself, drawn into its container's layer mask.
+final class MaskSourceNodeView: FlippedView, PlatformNodeView {
+    func apply(_ content: RenderContent, backend: AppKitBackend) {}
+}
+
 final class EffectNodeView: FlippedView, PlatformNodeView {
     private var isTapTarget = false
     private let maskLayer = CAShapeLayer()
+    private var isMaskContainer = false
+    var maskSource: MaskSourceNodeView?
+
+    /// Renders the mask source (offscreen) and uses its alpha as this view's layer mask.
+    func refreshMask() {
+        guard isMaskContainer else { return }
+        guard let source = maskSource, source.bounds.width >= 1, source.bounds.height >= 1 else {
+            layer?.mask = nil
+            return
+        }
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        let size = source.bounds.size
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: Int((size.width * scale).rounded(.up)), pixelsHigh: Int((size.height * scale).rounded(.up)),
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ) else { return }
+        rep.size = size
+        source.cacheDisplay(in: source.bounds, to: rep)
+        let mask = CALayer()
+        mask.frame = source.frame
+        mask.contents = rep.cgImage
+        mask.contentsGravity = .resize
+        layer?.mask = mask
+    }
 
     func apply(_ content: RenderContent, backend: AppKitBackend) {
         baseAlpha = 1
@@ -532,6 +561,7 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
         layer?.shadowOpacity = 0
         effectTransform = .identity
         isTapTarget = false
+        isMaskContainer = false
         toolTip = node?.actions.toolTip
         updateTrackingAreas()
         updateDropRegistration()
@@ -549,6 +579,10 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
             layer?.mask = maskLayer
         case .tapTarget:
             isTapTarget = true
+        case .mask:
+            isMaskContainer = true
+        case .maskSource:
+            break
         case let .transform(offset, scale, rotation):
             let center = CGPoint(x: bounds.midX, y: bounds.midY)
             var transform = CGAffineTransform(translationX: offset.width + center.x, y: offset.height + center.y)

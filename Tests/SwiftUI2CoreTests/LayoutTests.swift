@@ -161,6 +161,19 @@ struct LayoutTests {
         #expect(host.graph.windowToolbar.items.isEmpty && !host.graph.windowToolbar.chrome.wantsToolbar)
     }
 
+    @Test func viewMaskIsLaidOutLikeAnOverlay() throws {
+        let host = TestHost(
+            Color.red.frame(width: 60, height: 40).mask { Text("M").font(.system(size: 10)) },
+            size: CGSize(width: 100, height: 100)
+        )
+        let mask = try #require(host.allViews.first { if case .effect(.mask) = $0.content { true } else { false } })
+        let source = try #require(mask.children.last)
+        #expect(source.content == .effect(.maskSource))
+        #expect(source.frame == CGRect(x: 27.5, y: 14, width: 5, height: 12))
+        // The mask content is centered in the masked view, as in an overlay.
+        #expect(host.view(withText: "M")?.absoluteFrame.midX == 50)
+    }
+
     @Test func flexibleFrameMaxWidthInfinity() throws {
         let host = TestHost(
             Text("hi").frame(maxWidth: .infinity, alignment: .leading).background(Color.red),

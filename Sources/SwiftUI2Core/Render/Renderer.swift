@@ -389,6 +389,8 @@ public final class Renderer {
             }
         }
 
+        backend.didCommit()
+
         if let completionGroup, completionGroup.remaining == 0 {
             for completion in completionGroup.completions { schedule(completion) }
         } else if completionGroup == nil, !transaction.completions.isEmpty {
@@ -450,6 +452,7 @@ public final class Renderer {
             if !active { animating[key] = nil }
         }
         for container in resync.values where !container.isRemoved { syncChildren(of: container) }
+        backend.didCommit()
         return !animating.isEmpty
     }
 

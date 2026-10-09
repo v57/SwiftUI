@@ -97,6 +97,10 @@ public enum DisplayEffect: Equatable, Sendable {
     case tapTarget
     case transform(offset: CGSize, scale: CGSize, rotationDegrees: Double)
     case shadow(ResolvedShadow)
+    /// The container is masked by its last child, a `.maskSource` node (`.mask { ... }`).
+    case mask
+    /// The mask content: drawn only as the alpha mask of its `.mask` parent.
+    case maskSource
 }
 
 public struct ResolvedShadow: Equatable, Sendable {
@@ -226,12 +230,15 @@ public protocol RenderBackend: PlatformServices {
     func presentFileDialog(_ request: FileDialogRequest, completion: @escaping @MainActor ([URL]?) -> Void)
     /// Shows the platform share sheet (`ShareLink`) for URLs, strings or other platform items.
     func share(_ items: [Any])
+    /// Called after the renderer applied a batch of changes (e.g. to refresh view masks).
+    func didCommit()
 }
 
 extension RenderBackend {
     public func setPresentation(of view: AnyObject, node: RenderNode) {}
     public func openURL(_ url: URL) {}
     public func share(_ items: [Any]) {}
+    public func didCommit() {}
     public func presentFileDialog(_ request: FileDialogRequest, completion: @escaping @MainActor ([URL]?) -> Void) {
         completion(nil)
     }

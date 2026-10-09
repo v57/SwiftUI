@@ -262,11 +262,11 @@ extension View {
 
     /// Masks with a shape (alpha masks of arbitrary views need compositing support and are ignored).
     public func mask<M: View>(alignment: Alignment = .center, @ViewBuilder _ mask: () -> M) -> some View {
-        modifier(_ShapeMaskModifier(mask: mask()))
+        modifier(_MaskModifier(mask: mask(), alignment: alignment))
     }
 
     public func mask<M: View>(_ mask: M) -> some View {
-        modifier(_ShapeMaskModifier(mask: mask))
+        modifier(_MaskModifier(mask: mask, alignment: .center))
     }
 
     public func onReceive<P: Publisher>(_ publisher: P, perform action: @escaping @MainActor (P.Output) -> Void) -> some View where P.Failure == Never {
@@ -324,15 +324,35 @@ public struct RedactionReasons: OptionSet, Sendable {
     public static let invalidated = RedactionReasons(rawValue: 4)
 }
 
-struct _ShapeMaskModifier<Mask: View>: ViewModifier {
+/// `.mask { ... }`: the content is shown through the mask's alpha. The mask is laid out like an
+/// overlay; shapes become a clip path, other views a platform alpha mask.
+public struct _MaskModifier<Mask: View>: ViewModifier {
     let mask: Mask
-    func body(content: Content) -> some View {
-        if let shape = mask as? any Shape {
-            content.modifier(_ClipEffect(shape: AnyShape(shape)))
-        } else {
-            content
+    let alignment: Alignment
+    public typealias Body = Never
+
+    public static func _makeView(modifier: _GraphValue<Self>, inputs: _ViewInputs, body: @escaping @MainActor (_ViewInputs) -> _ViewOutputs) -> _ViewOutputs {
+        if Mask.self is any Shape.Type {
+            let clip = modifier.project(inputs) { modifier -> _ClipEffect<AnyShape> in
+                let shape = modifier.mask as! any Shape
+                return _ClipEffect(shape: AnyShape(shape))
+            }
+            return _ClipEffect<AnyShape>._makeView(modifier: clip, inputs: inputs, body: body)
         }
+        let inputs = inputs.with(path: "mask")
+        let content = inputs.constant(RenderContent.effect(.mask))
+        let render = inputs.makePlatformNode(content: content, actions: RenderActions())
+        var maskedInputs = inputs
+        maskedInputs.render = render
+        let source = modifier.project(inputs) { ModifiedContent(content: $0.mask, modifier: _MaskSourceEffect()) }
+        let alignment = Attribute<Alignment>(inputs.subgraph, isEqual: { $0 == $1 }) { modifier.attribute.value.alignment }
+        return makeSecondaryLayer(secondary: source, alignment: alignment, placement: .above, inputs: maskedInputs, body: body)
     }
+}
+
+struct _MaskSourceEffect: PlatformEffectModifier {
+    static var pathComponent: String { "maskSource" }
+    func effect(size: CGSize) -> DisplayEffect { .maskSource }
 }
 
 public struct _ReceiveModifier<P: Publisher>: ViewModifier where P.Failure == Never {
