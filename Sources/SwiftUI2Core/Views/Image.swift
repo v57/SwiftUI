@@ -166,9 +166,11 @@ final class ImageLayoutComputer: LayoutComputer {
     init(image: ResolvedImage, services: any PlatformServices, path: ViewPath, tracer: UpdateTracer) {
         self.image = image
         self.intrinsic = services.imageSize(image)
-        // Symbol images space like text of their point size (no gap to adjacent text).
+        // Symbol images space like text (no gap to adjacent text), but sit much closer to other
+        // views than text does: measured ≈ 0.28 × (height − ¾ point size) above, 1pt more below.
         if case .system = image.source, !image.isResizable {
-            textSpacing = services.textSpacing(Font.Resolved(size: image.pointSize, weight: image.weight))
+            let above = max(0.5, ((intrinsic.height - 0.75 * image.pointSize) * 0.28 * 2).rounded() / 2)
+            textSpacing = TextSpacing(above: above, below: above + 1, leading: 0)
         } else {
             textSpacing = nil
         }

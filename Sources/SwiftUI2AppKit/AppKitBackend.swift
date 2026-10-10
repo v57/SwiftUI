@@ -141,7 +141,9 @@ public final class AppKitBackend: RenderBackend {
         let below = above + nsFont.ascender - nsFont.capHeight
         var leading: CGFloat = 0
         if let style = font.textStyle {
-            leading = Self.ceilToPixel(NSFont.preferredFont(forTextStyle: AppKitText.textStyle(style)).leading)
+            // Designed variants use their own font's leading (monospaced: none, measured).
+            let styleFont = NSFont.preferredFont(forTextStyle: AppKitText.textStyle(style))
+            leading = Self.ceilToPixel(font.design == .default ? styleFont.leading : min(styleFont.leading, nsFont.leading))
         }
         return TextSpacing(above: above, below: below, leading: leading)
     }
