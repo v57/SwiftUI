@@ -50,7 +50,11 @@ class ScrollNode(host: HostView, id: Int) : NodeView(host, id, KIND_SCROLL) {
         scrollBarStyle = SCROLLBARS_INSIDE_OVERLAY
         isVerticalScrollBarEnabled = true
         isHorizontalScrollBarEnabled = false
-        clipChildren = true
+        // The viewport clips through the outline: clipChildren would clip every child to its own
+        // bounds (Android's semantics), cutting off content drawn outside a child's frame.
+        clipChildren = false
+        outlineProvider = android.view.ViewOutlineProvider.BOUNDS
+        clipToOutline = true
         setWillNotDraw(false)
         overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS
     }
@@ -65,7 +69,7 @@ class ScrollNode(host: HostView, id: Int) : NodeView(host, id, KIND_SCROLL) {
         isVerticalScrollBarEnabled = r.bool() && vertical
         isHorizontalScrollBarEnabled = r.bool() && horizontal
         scrollEnabled = r.bool()
-        clipChildren = r.bool()
+        clipToOutline = r.bool()
         val request = r.i32()
         val hasRequest = r.bool()
         val requestX = r.f32(); val requestY = r.f32()

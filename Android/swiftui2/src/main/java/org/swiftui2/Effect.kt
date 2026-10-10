@@ -71,6 +71,9 @@ class EffectNode(host: HostView, id: Int) : NodeView(host, id, KIND_EFFECT) {
         invalidate()
     }
 
+    override fun describe() = " effect:${effect.type}" + (if (touchFlags != 0) " touch:$touchFlags" else "") +
+        (if (clipToOutline) " clipsToOutline" else "") + (if (alpha != 1f) " alpha:$alpha" else "")
+
     private fun clip(path: Path) {
         val rect = RectF()
         if (path.isRect(rect)) {
