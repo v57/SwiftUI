@@ -178,21 +178,30 @@ public struct _ZStackLayout: Layout, Equatable {
     public var alignment: Alignment
     public init(alignment: Alignment = .center) { self.alignment = alignment }
 
-    public func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
-        subviews.reduce(CGSize.zero) { result, subview in
+    /// Children's frames with their alignment guides at the origin (SwiftUI sizes a ZStack to
+    /// the union of these, so alignment guides can make it larger than any child).
+    private func alignedFrames(_ subviews: Subviews, proposal: ProposedViewSize) -> [CGRect] {
+        subviews.map { subview in
             let size = subview.sizeThatFits(proposal)
-            return CGSize(width: max(result.width, size.width), height: max(result.height, size.height))
+            let dimensions = subview.computer.dimensions(size: size)
+            return CGRect(x: -dimensions[alignment.horizontal], y: -dimensions[alignment.vertical], width: size.width, height: size.height)
         }
     }
 
+    public func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
+        guard let union = alignedFrames(subviews, proposal: proposal).reduce(nil, { (result: CGRect?, frame) in result?.union(frame) ?? frame }) else { return .zero }
+        return union.size
+    }
+
     public func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
-        let container = ViewDimensions(size: bounds.size)
-        for subview in subviews {
-            let size = subview.sizeThatFits(proposal)
-            let dimensions = subview.computer.dimensions(size: size)
-            let x = container[alignment.horizontal] - dimensions[alignment.horizontal]
-            let y = container[alignment.vertical] - dimensions[alignment.vertical]
-            subview.place(at: CGPoint(x: bounds.minX + x, y: bounds.minY + y), proposal: proposal)
+        // Children are proposed the stack's size (a flexible child fills it).
+        let placement = ProposedViewSize(bounds.size)
+        let frames = alignedFrames(subviews, proposal: placement)
+        guard let union = frames.reduce(nil, { (result: CGRect?, frame) in result?.union(frame) ?? frame }) else { return }
+        let fx = _LazyGridLayout.fraction(alignment.horizontal), fy = _LazyGridLayout.fraction(alignment.vertical)
+        let origin = CGPoint(x: bounds.minX + (bounds.width - union.width) * fx - union.minX, y: bounds.minY + (bounds.height - union.height) * fy - union.minY)
+        for (subview, frame) in zip(subviews, frames) {
+            subview.place(at: CGPoint(x: origin.x + frame.minX, y: origin.y + frame.minY), proposal: placement)
         }
     }
 }

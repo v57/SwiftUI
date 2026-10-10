@@ -381,7 +381,12 @@ public struct _ShapeView<S: Shape, Style: ShapeStyle>: View {
             let shapeView = view.attribute.value
             let size = geometry.value.size
             let paint = shapeView.style._resolvePaint(in: environment.value)
-            let path = shape.value.path(in: CGRect(origin: .zero, size: size))
+            var path = shape.value.path(in: CGRect(origin: .zero, size: size))
+            if shape.value is ContainerRelativeShape || (shape.value as? _InsetShape<ContainerRelativeShape>) != nil,
+               let container = environment.value._containerShape {
+                let inset = (shape.value as? _InsetShape<ContainerRelativeShape>)?.inset ?? 0
+                path = container(CGRect(origin: .zero, size: size).insetBy(dx: inset, dy: inset))
+            }
             var gradient: ResolvedGradient?
             var color: Color.Resolved?
             switch paint {
@@ -513,9 +518,10 @@ public struct Ellipse: InsettableShape {
     public func inset(by amount: CGFloat) -> _InsetShape<Ellipse> { _InsetShape(base: self, inset: amount) }
 }
 
+/// The shape of the enclosing container (`containerShape(_:)`), else a rectangle.
 public struct ContainerRelativeShape: InsettableShape {
     public init() {}
-    public func path(in rect: CGRect) -> Path { Path(roundedRect: rect, cornerRadius: 8) }
+    public func path(in rect: CGRect) -> Path { Path(rect) }
     public func inset(by amount: CGFloat) -> _InsetShape<ContainerRelativeShape> { _InsetShape(base: self, inset: amount) }
 }
 
@@ -537,4 +543,26 @@ extension _ShapeView {
     public func strokeBorder<S2: ShapeStyle>(_ content: S2 = .foreground, style strokeStyle: StrokeStyle, antialiased: Bool = true) -> some View {
         overlay { shape.strokeBorder(content, style: strokeStyle) }
     }
+}
+
+struct ContainerShapeKey: EnvironmentKey { static let defaultValue: (@Sendable (CGRect) -> Path)? = nil }
+
+extension EnvironmentValues {
+    var _containerShape: (@Sendable (CGRect) -> Path)? {
+        get { self[ContainerShapeKey.self] }
+        set { self[ContainerShapeKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// The shape `ContainerRelativeShape` takes inside this view.
+    public func containerShape<T: InsettableShape>(_ shape: T) -> some View {
+        let box = UncheckedSendableBox(shape)
+        return environment(\._containerShape) { rect in box.value.path(in: rect) }
+    }
+}
+
+struct UncheckedSendableBox<T>: @unchecked Sendable {
+    let value: T
+    init(_ value: T) { self.value = value }
 }

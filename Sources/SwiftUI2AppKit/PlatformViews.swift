@@ -392,7 +392,7 @@ final class ShapeNodeView: FlippedView, PlatformNodeView {
                 layer?.addSublayer(gradientLayer)
                 self.gradientLayer = gradientLayer
             }
-            gradientLayer.colors = gradient.stops.map { NSColor($0.color).cgColor }
+            gradientLayer.colors = AppKitGradients.colors(gradient.stops)
             gradientLayer.locations = gradient.stops.map { NSNumber(value: Double($0.location)) }
             switch gradient.kind {
             case let .linear(start, end):
@@ -1371,6 +1371,21 @@ final class CanvasNodeView: FlippedView, PlatformNodeView {
 #endif
 
 #if canImport(AppKit)
+enum AppKitGradients {
+    /// Gradient colors; transparent stops take their neighbor's color (SwiftUI interpolates
+    /// premultiplied, Core Animation doesn't: fading to clear black would darken the gradient).
+    static func colors(_ stops: [ResolvedGradient.Stop]) -> [CGColor] {
+        stops.indices.map { index in
+            var color = stops[index].color
+            if color.opacity == 0 {
+                let neighbor = stops[..<index].last(where: { $0.color.opacity > 0 }) ?? stops[(index + 1)...].first(where: { $0.color.opacity > 0 })
+                if let neighbor { color = Color.Resolved(red: neighbor.color.red, green: neighbor.color.green, blue: neighbor.color.blue, opacity: 0) }
+            }
+            return NSColor(color).cgColor
+        }
+    }
+}
+
 /// Core Image filters for color effects and blend modes.
 enum AppKitFilters {
     static func filters(for filter: ColorFilter) -> [CIFilter] {

@@ -1432,123 +1432,181 @@ public struct GridItem: Sendable, Hashable {
 
 extension GridItem: @unchecked Sendable {}
 
+/// Lazy grid layout (laid out eagerly). Tracks follow SwiftUI: fixed items take their size; the
+/// rest of the width (after the items' spacing) is shared equally by flexible items (clamped to
+/// their range) and adaptive items (split into as many tracks of at least their minimum as fit).
+/// Section headers and footers span the grid. The grid is as wide as its tracks.
 struct _LazyGridLayout: Layout {
     let items: [GridItem]
     let spacing: CGFloat
     let axis: Axis
+    var alignment: Alignment = .center
 
-    func tracks(available: CGFloat) -> [CGFloat] {
-        var result: [CGFloat] = []
+    struct Track { var size: CGFloat; var gap: CGFloat; var alignment: Alignment? }
+
+    func tracks(available: CGFloat) -> [Track] {
         let gaps = items.map { $0.spacing ?? 8 }
         var remaining = available - gaps.dropLast().reduce(0, +)
-        var flexible: [Int] = []
+        var shared = 0
+        for item in items {
+            if case .fixed(let value) = item.size { remaining -= value } else { shared += 1 }
+        }
+        let share = shared > 0 ? max(0, remaining / CGFloat(shared)) : 0
+        var result: [Track] = []
         for (index, item) in items.enumerated() {
+            let gap = gaps[index]
             switch item.size {
             case .fixed(let value):
-                result.append(value)
-                remaining -= value
-            case .flexible:
-                result.append(0)
-                flexible.append(index)
-            case .adaptive(let minimum, let maximum):
-                let count = max(1, Int((remaining + (item.spacing ?? 8)) / (minimum + (item.spacing ?? 8))))
-                let width = min(maximum, (remaining - CGFloat(count - 1) * (item.spacing ?? 8)) / CGFloat(count))
-                return Array(repeating: max(minimum, width), count: count)
-            }
-        }
-        if !flexible.isEmpty {
-            let share = max(0, remaining / CGFloat(flexible.count))
-            for index in flexible {
-                if case let .flexible(minimum, maximum) = items[index].size {
-                    result[index] = min(max(share, minimum), maximum)
-                }
+                result.append(Track(size: value, gap: gap, alignment: item.alignment))
+            case let .flexible(minimum, maximum):
+                result.append(Track(size: min(max(share, minimum), maximum), gap: gap, alignment: item.alignment))
+            case let .adaptive(minimum, maximum):
+                let count = max(1, Int(((share + gap) / (minimum + gap)).rounded(.down)))
+                let width = min(maximum, max(minimum, (share - gap * CGFloat(count - 1)) / CGFloat(count)))
+                for _ in 0..<count { result.append(Track(size: width, gap: gap, alignment: item.alignment)) }
             }
         }
         return result
     }
 
+    /// Lazy grids are containers, not text: standard spacing around them.
+    func spacing(subviews: Subviews, cache: inout Void) -> ViewSpacing { .default }
+
+    static func fraction(_ guide: HorizontalAlignment) -> CGFloat {
+        guide == .leading ? 0 : guide == .trailing ? 1 : 0.5
+    }
+
+    static func fraction(_ guide: VerticalAlignment) -> CGFloat {
+        guide == .top ? 0 : guide == .bottom ? 1 : 0.5
+    }
+
+    private func crossSize(_ tracks: [Track]) -> CGFloat {
+        tracks.map(\.size).reduce(0, +) + tracks.dropLast().map(\.gap).reduce(0, +)
+    }
+
+    private func isFullLine(_ subview: LayoutSubview) -> Bool {
+        let role = subview.traits.value(ListElementRoleKey.self)
+        return role == .header || role == .footer
+    }
+
+    /// Lines of subview indices (a header/footer is a line by itself).
+    private func lines(_ subviews: Subviews, columns: Int) -> [[Int]] {
+        var result: [[Int]] = []
+        var current: [Int] = []
+        for index in subviews.indices {
+            if MainActor.assumeIsolated({ isFullLine(subviews[index]) }) {
+                if !current.isEmpty { result.append(current); current = [] }
+                result.append([index])
+            } else {
+                current.append(index)
+                if current.count == columns { result.append(current); current = [] }
+            }
+        }
+        if !current.isEmpty { result.append(current) }
+        return result
+    }
+
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
-        let available = proposal[axis.other] ?? CGFloat(items.count) * 80
-        let columns = tracks(available: available.isFinite ? available : CGFloat(items.count) * 80)
-        guard !columns.isEmpty else { return .zero }
+        let available = proposal[axis.other].flatMap { $0.isFinite ? $0 : nil } ?? CGFloat(items.count) * 80
+        let tracks = tracks(available: available)
+        guard !tracks.isEmpty else { return .zero }
+        let cross = crossSize(tracks)
         var main: CGFloat = 0
-        var index = 0
-        var lines = 0
-        while index < subviews.count {
+        let allLines = lines(subviews, columns: tracks.count)
+        for line in allLines {
             var lineSize: CGFloat = 0
-            for column in columns.indices where index < subviews.count {
-                let size = subviews[index].sizeThatFits(ProposedViewSize(main: nil, cross: columns[column], axis: axis))
+            for (column, index) in line.enumerated() {
+                let full = line.count == 1 && MainActor.assumeIsolated { isFullLine(subviews[index]) }
+                let size = subviews[index].sizeThatFits(ProposedViewSize(main: nil, cross: full ? cross : tracks[column].size, axis: axis))
                 lineSize = max(lineSize, size[axis])
-                index += 1
             }
             main += lineSize
-            lines += 1
         }
-        main += spacing * CGFloat(max(lines - 1, 0))
-        let cross = columns.reduce(0, +) + CGFloat(max(columns.count - 1, 0)) * (items.first?.spacing ?? 8)
+        main += spacing * CGFloat(max(allLines.count - 1, 0))
         return CGSize(main: main, cross: cross, axis: axis)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
-        let columns = tracks(available: bounds.size[axis.other])
-        guard !columns.isEmpty else { return }
+        // Tracks come from the proposed width (the grid itself is only as wide as its tracks).
+        let tracks = tracks(available: proposal[axis.other].flatMap { $0.isFinite ? $0 : nil } ?? bounds.size[axis.other])
+        guard !tracks.isEmpty else { return }
+        let cross = crossSize(tracks)
+        // The tracks are centered in the bounds.
+        let crossStart = bounds.origin[axis.other] + max(0, (bounds.size[axis.other] - cross) / 2)
         var position = bounds.origin[axis]
-        var index = 0
-        while index < subviews.count {
-            var lineSize: CGFloat = 0
-            var crossPosition = bounds.origin[axis.other]
-            let start = index
-            var sizes: [CGSize] = []
-            for column in columns.indices where index < subviews.count {
-                let size = subviews[index].sizeThatFits(ProposedViewSize(main: nil, cross: columns[column], axis: axis))
-                sizes.append(size)
-                lineSize = max(lineSize, size[axis])
-                index += 1
-            }
-            for (offset, size) in sizes.enumerated() {
-                let column = offset
-                let crossOffset = (columns[column] - size[axis.other]) / 2
+        for line in lines(subviews, columns: tracks.count) {
+            let full = line.count == 1 && MainActor.assumeIsolated { isFullLine(subviews[line[0]]) }
+            let proposals = line.enumerated().map { column, _ in ProposedViewSize(main: nil, cross: full ? cross : tracks[column].size, axis: axis) }
+            let sizes = zip(line, proposals).map { subviews[$0].sizeThatFits($1) }
+            let lineSize = sizes.map { $0[axis] }.max() ?? 0
+            var crossPosition = crossStart
+            for (column, index) in line.enumerated() {
+                let size = sizes[column]
+                let slot = full ? cross : tracks[column].size
+                let cellAlignment = full ? alignment : (tracks[column].alignment ?? alignment)
+                let unit = axis == .vertical ? Self.fraction(cellAlignment.horizontal) : Self.fraction(cellAlignment.vertical)
+                let crossOffset = (slot - size[axis.other]) * unit
                 let mainOffset = (lineSize - size[axis]) / 2
                 let point = axis == .vertical
                     ? CGPoint(x: crossPosition + crossOffset, y: position + mainOffset)
                     : CGPoint(x: position + mainOffset, y: crossPosition + crossOffset)
-                subviews[start + offset].place(at: point, proposal: ProposedViewSize(main: size[axis], cross: columns[column], axis: axis))
-                crossPosition += columns[column] + (items[min(column, items.count - 1)].spacing ?? 8)
+                subviews[index].place(at: point, proposal: ProposedViewSize(main: size[axis], cross: slot, axis: axis))
+                if !full { crossPosition += tracks[column].size + tracks[column].gap }
             }
             position += lineSize + spacing
         }
     }
 }
 
+/// The grid's children with section headers/footers as their own elements.
+struct _LazyGridView<Content: View>: View {
+    let layout: _LazyGridLayout
+    let content: Content
+    var body: Never { primitiveBody(Self.self) }
+
+    static func _makeView(view: _GraphValue<Self>, inputs: _ViewInputs) -> _ViewOutputs {
+        var listInputs = inputs.listInputs
+        listInputs.flattensSections = true
+        listInputs.rawSectionHeaders = true
+        let list = Content._makeViewList(view: view.project(inputs) { $0.content }, inputs: listInputs).list
+        let layout = Attribute<_LazyGridLayout>(inputs.subgraph) { view.attribute.value.layout }
+        return inputs.makeLayoutContainer(layout: layout, list: list)
+    }
+}
+
 public struct LazyVGrid<Content: View>: View {
     let columns: [GridItem]
+    let alignment: HorizontalAlignment
     let spacing: CGFloat?
     let content: Content
 
     public init(columns: [GridItem], alignment: HorizontalAlignment = .center, spacing: CGFloat? = nil, pinnedViews: PinnedScrollableViews = [], @ViewBuilder content: () -> Content) {
         self.columns = columns
+        self.alignment = alignment
         self.spacing = spacing
         self.content = content()
     }
 
     public var body: some View {
-        _LazyGridLayout(items: columns, spacing: spacing ?? 8, axis: .vertical) { content }
+        _LazyGridView(layout: _LazyGridLayout(items: columns, spacing: spacing ?? 8, axis: .vertical, alignment: Alignment(horizontal: alignment, vertical: .center)), content: content)
     }
 }
 
 public struct LazyHGrid<Content: View>: View {
     let rows: [GridItem]
+    let alignment: VerticalAlignment
     let spacing: CGFloat?
     let content: Content
 
     public init(rows: [GridItem], alignment: VerticalAlignment = .center, spacing: CGFloat? = nil, pinnedViews: PinnedScrollableViews = [], @ViewBuilder content: () -> Content) {
         self.rows = rows
+        self.alignment = alignment
         self.spacing = spacing
         self.content = content()
     }
 
     public var body: some View {
-        _LazyGridLayout(items: rows, spacing: spacing ?? 8, axis: .horizontal) { content }
+        _LazyGridView(layout: _LazyGridLayout(items: rows, spacing: spacing ?? 8, axis: .horizontal, alignment: Alignment(horizontal: .center, vertical: alignment)), content: content)
     }
 }
 

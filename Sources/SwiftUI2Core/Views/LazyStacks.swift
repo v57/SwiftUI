@@ -337,7 +337,7 @@ public struct LazyVStack<Content: View>: View {
         let inputs = inputs.with(path: "LazyVStack")
         let list = Content._makeViewList(view: view.project(inputs) { $0.content }, inputs: inputs.listInputs)
         let (alignment, spacing) = AnyAttribute.withoutDependencies { (view.attribute.value.alignment, view.attribute.value.spacing) }
-        let layout = view.project(inputs) { _VStackLayout(alignment: $0.alignment, spacing: $0.spacing) }
+        let layout = view.project(inputs) { _LazyEagerStackLayout(base: _VStackLayout(alignment: $0.alignment, spacing: $0.spacing), axis: .vertical) }
         return inputs.makeLazyStack(axis: .vertical, crossGuide: (alignment.key, alignment.id), spacing: spacing, list: list.list, eagerLayout: layout.attribute)
     }
 }
@@ -359,7 +359,7 @@ public struct LazyHStack<Content: View>: View {
         let inputs = inputs.with(path: "LazyHStack")
         let list = Content._makeViewList(view: view.project(inputs) { $0.content }, inputs: inputs.listInputs)
         let (alignment, spacing) = AnyAttribute.withoutDependencies { (view.attribute.value.alignment, view.attribute.value.spacing) }
-        let layout = view.project(inputs) { _HStackLayout(alignment: $0.alignment, spacing: $0.spacing) }
+        let layout = view.project(inputs) { _LazyEagerStackLayout(base: _HStackLayout(alignment: $0.alignment, spacing: $0.spacing), axis: .horizontal) }
         return inputs.makeLazyStack(axis: .horizontal, crossGuide: (alignment.key, alignment.id), spacing: spacing, list: list.list, eagerLayout: layout.attribute)
     }
 }
@@ -432,3 +432,22 @@ extension View {
 public enum ScrollPhase: Sendable { case idle, tracking, interacting, decelerating, animating }
 
 public enum ScrollDismissesKeyboardMode: Sendable { case automatic, immediately, interactively, never }
+
+/// A lazy stack outside a scroll view (laid out eagerly). Like SwiftUI's, it takes the proposed
+/// cross-axis size and has standard spacing around it (it is a container, not its children).
+struct _LazyEagerStackLayout<Base: Layout>: Layout where Base.Cache == Void {
+    let base: Base
+    let axis: Axis
+
+    func spacing(subviews: Subviews, cache: inout Void) -> ViewSpacing { .default }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
+        var size = base.sizeThatFits(proposal: proposal, subviews: subviews, cache: &cache)
+        if let cross = proposal[axis.other], cross.isFinite { size[axis.other] = cross }
+        return size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
+        base.placeSubviews(in: bounds, proposal: proposal, subviews: subviews, cache: &cache)
+    }
+}
