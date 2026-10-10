@@ -30,6 +30,11 @@ public enum GridColumnAlignmentTraitKey: _ViewTraitKey {
     public static var defaultValue: HorizontalAlignment? { nil }
 }
 
+/// Where a grid cell's content sits in its cell (`gridCellAnchor`).
+public enum GridCellAnchorTraitKey: _ViewTraitKey {
+    public static var defaultValue: UnitPoint? { nil }
+}
+
 public enum ListRowBackgroundTraitKey: _ViewTraitKey {
     public static var defaultValue: AnyView? { nil }
 }
@@ -79,6 +84,10 @@ extension View {
 
     public func gridCellUnsizedAxes(_ axes: Axis.Set) -> some View {
         modifier(_TraitWritingModifier<GridCellUnsizedAxesTraitKey>(value: axes))
+    }
+
+    public func gridCellAnchor(_ anchor: UnitPoint) -> some View {
+        modifier(_TraitWritingModifier<GridCellAnchorTraitKey>(value: anchor))
     }
 
     public func gridColumnAlignment(_ alignment: HorizontalAlignment) -> some View {

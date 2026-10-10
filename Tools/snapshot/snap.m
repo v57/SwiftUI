@@ -1,6 +1,9 @@
 // Injected with DYLD_INSERT_LIBRARIES: renders the app's visible windows to PNGs after a delay.
 // SNAP_PATH=/tmp/x.png  SNAP_DELAY=4  SNAP_EXIT=1
 #import <AppKit/AppKit.h>
+#import <objc/runtime.h>
+
+static BOOL yes(id self, SEL _cmd) { return YES; }
 static int countAnimations(CALayer *l) {
     int n = (int)l.animationKeys.count;
     for (CALayer *sub in l.sublayers) n += countAnimations(sub);
@@ -28,12 +31,36 @@ static void dumpLayers(NSView *view, int depth) {
 }
 __attribute__((constructor)) static void snapInit(void) {
     NSDictionary *env = NSProcessInfo.processInfo.environment;
+    if ([env[@"SNAP_FAKE_KEY"] isEqualToString:@"1"]) {
+        // Render as the active app's key window (activation from the background is refused).
+        method_setImplementation(class_getInstanceMethod(NSWindow.class, @selector(isKeyWindow)), (IMP)yes);
+        method_setImplementation(class_getInstanceMethod(NSWindow.class, @selector(isMainWindow)), (IMP)yes);
+        method_setImplementation(class_getInstanceMethod(NSApplication.class, @selector(isActive)), (IMP)yes);
+        double fakeDelay = env[@"SNAP_DELAY"] ? [env[@"SNAP_DELAY"] doubleValue] - 1.5 : 2;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(fakeDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [NSNotificationCenter.defaultCenter postNotificationName:NSApplicationDidBecomeActiveNotification object:NSApp];
+            for (NSWindow *window in NSApp.windows) {
+                if (!window.isVisible) continue;
+                [NSNotificationCenter.defaultCenter postNotificationName:NSWindowDidBecomeMainNotification object:window];
+                [NSNotificationCenter.defaultCenter postNotificationName:NSWindowDidBecomeKeyNotification object:window];
+                [window.contentView setNeedsDisplay:YES];
+            }
+        });
+    }
     NSString *path = env[@"SNAP_PATH"];
     if (!path) return;
     double delay = env[@"SNAP_DELAY"] ? [env[@"SNAP_DELAY"] doubleValue] : 4;
     BOOL quit = [env[@"SNAP_EXIT"] isEqualToString:@"1"];
+    if ([env[@"SNAP_ACTIVATE"] isEqualToString:@"1"]) {
+        // Make the app active and its window key before the snapshot (active control states).
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((delay - 1.5) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [NSApp activateIgnoringOtherApps:YES];
+            for (NSWindow *window in NSApp.windows) if (window.isVisible && window.canBecomeKeyWindow) { [window makeKeyAndOrderFront:nil]; break; }
+        });
+    }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         int index = 0;
+        if (env[@"SNAP_ACTIVATE"]) for (NSWindow *w in NSApp.windows) if (w.isVisible) fprintf(stderr, "KEY %d MAIN %d ACTIVE %d\n", w.isKeyWindow, w.isMainWindow, NSApp.isActive);
         if (env[@"SNAP_ANIM"]) for (NSWindow *w in NSApp.windows) if (w.contentView) dumpAnimations(w.contentView);
         if (env[@"SNAP_DUMP"]) for (NSWindow *w in NSApp.windows) if (w.contentView) dumpLayers(w.contentView, 0);
         for (NSWindow *window in NSApp.windows) {

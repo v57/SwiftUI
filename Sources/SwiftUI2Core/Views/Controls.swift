@@ -251,7 +251,7 @@ public struct _PlatformButton<Label: View>: View {
             // In inactive windows, accent-colored prominent buttons draw as plain bordered ones.
             var drawnStyle = style.value
             if drawnStyle == .borderedProminent, tint == nil, !env.appearsActive { drawnStyle = .bordered }
-            return .button(ResolvedButton(style: drawnStyle, isEnabled: env.isEnabled && env.allowsHitTesting, tint: tint))
+            return .button(ResolvedButton(style: drawnStyle, isEnabled: env.isEnabled && env.allowsHitTesting, tint: tint, repeats: env._buttonRepeats))
         }
         var actions = RenderActions()
         let viewAttribute = view.attribute

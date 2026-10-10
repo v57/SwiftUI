@@ -36,7 +36,10 @@ extension View {
     public func hoverEffectDisabled(_ disabled: Bool = true) -> some View { self }
     public func indexViewStyle<S>(_ style: S) -> some View { self }
     public func buttonBorderShape(_ shape: ButtonBorderShape) -> some View { self }
-    public func buttonRepeatBehavior(_ behavior: ButtonRepeatBehavior) -> some View { self }
+    /// Held buttons repeat their action (`.enabled`).
+    public func buttonRepeatBehavior(_ behavior: ButtonRepeatBehavior) -> some View {
+        environment(\._buttonRepeats, behavior == .enabled)
+    }
     public func springLoadingBehavior(_ behavior: SpringLoadingBehavior) -> some View { self }
     public func textScale(_ scale: TextScale, isEnabled: Bool = true) -> some View { self }
     /// Radio-group pickers lay their options out in a row.
@@ -54,21 +57,22 @@ extension View {
 
     /// A trailing inspector column (macOS shows it beside the content).
     public func inspector<V: View>(isPresented: Binding<Bool>, @ViewBuilder content: () -> V) -> some View {
-        let inspector = content()
-        return HStack(spacing: 0) {
-            self.frame(maxWidth: .infinity, maxHeight: .infinity)
-            if isPresented.wrappedValue {
-                _SplitDividerLine()
-                inspector
-                    .frame(width: 270)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .transition(.move(edge: .trailing))
-            }
-        }
+        modifier(_InspectorModifier(isPresented: isPresented, inspector: content()))
     }
 
-    public func inspectorColumnWidth(_ width: CGFloat) -> some View { self }
-    public func inspectorColumnWidth(min: CGFloat? = nil, ideal: CGFloat, max: CGFloat? = nil) -> some View { self }
+    /// The inspector column's width (applied to the inspector's content).
+    public func inspectorColumnWidth(_ width: CGFloat) -> some View {
+        preference(key: InspectorWidthKey.self, value: width)
+    }
+
+    public func inspectorColumnWidth(min: CGFloat? = nil, ideal: CGFloat, max: CGFloat? = nil) -> some View {
+        preference(key: InspectorWidthKey.self, value: ideal)
+    }
+
+    /// An async refresh action for the content (`\.refresh`; lists offer it to the user).
+    public func refreshable(action: @escaping @Sendable () async -> Void) -> some View {
+        environment(\.refresh, RefreshAction(action: action))
+    }
 
     /// Sizes the view relative to its container (approximated by filling the offered space).
     public func containerRelativeFrame(_ axes: Axis.Set, alignment: Alignment = .center) -> some View {
@@ -140,5 +144,55 @@ extension EnvironmentValues {
     var _horizontalRadioGroup: Bool {
         get { self[HorizontalRadioGroupKey.self] }
         set { self[HorizontalRadioGroupKey.self] = newValue }
+    }
+}
+
+struct ButtonRepeatsKey: EnvironmentKey { static let defaultValue = false }
+
+extension EnvironmentValues {
+    var _buttonRepeats: Bool {
+        get { self[ButtonRepeatsKey.self] }
+        set { self[ButtonRepeatsKey.self] = newValue }
+    }
+}
+
+struct InspectorWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat? = nil
+    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) { value = nextValue() ?? value }
+}
+
+/// The inspector column: 270pt unless its content sets `inspectorColumnWidth`.
+struct _InspectorModifier<Inspector: View>: ViewModifier {
+    let isPresented: Binding<Bool>
+    let inspector: Inspector
+    @State private var width: CGFloat?
+
+    func body(content: Content) -> some View {
+        HStack(spacing: 0) {
+            content.frame(maxWidth: .infinity, maxHeight: .infinity)
+            if isPresented.wrappedValue {
+                _SplitDividerLine()
+                inspector
+                    .onPreferenceChange(InspectorWidthKey.self) { width = $0 }
+                    .frame(width: width ?? 270)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .transition(.move(edge: .trailing))
+            }
+        }
+    }
+}
+
+/// Refreshes content (`refreshable`); call it as a function: `await refresh?()`.
+public struct RefreshAction: @unchecked Sendable {
+    let action: @Sendable () async -> Void
+    public func callAsFunction() async { await action() }
+}
+
+struct RefreshActionKey: EnvironmentKey { static let defaultValue: RefreshAction? = nil }
+
+extension EnvironmentValues {
+    public var refresh: RefreshAction? {
+        get { self[RefreshActionKey.self] }
+        set { self[RefreshActionKey.self] = newValue }
     }
 }

@@ -457,7 +457,9 @@ struct _PhaseAnimatorView<Base: View, Phase: Equatable, Content: View, Trigger: 
 public struct AppStorage<Value>: DynamicProperty {
     let key: String
     let defaultValue: Value
-    let store: UserDefaults
+    /// The explicit `store:`, else the environment's `defaultAppStorage` (standard by default).
+    var store: UserDefaults
+    let hasExplicitStore: Bool
     let read: (UserDefaults, String) -> Value?
     let write: (UserDefaults, String, Value) -> Void
     var location: StoredLocation<Value>?
@@ -485,25 +487,26 @@ extension AppStorage {
     public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) where Value == Data { self.init(key, wrappedValue, store) { $0.data(forKey: $1) } }
 
     public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) where Value: RawRepresentable, Value.RawValue == String {
-        self.init(key: key, defaultValue: wrappedValue, store: store ?? .standard,
+        self.init(key: key, defaultValue: wrappedValue, store: store,
                   read: { ($0.string(forKey: $1)).flatMap(Value.init(rawValue:)) },
                   write: { $0.set($2.rawValue, forKey: $1) })
     }
 
     public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) where Value: RawRepresentable, Value.RawValue == Int {
-        self.init(key: key, defaultValue: wrappedValue, store: store ?? .standard,
+        self.init(key: key, defaultValue: wrappedValue, store: store,
                   read: { ($0.object(forKey: $1) as? Int).flatMap(Value.init(rawValue:)) },
                   write: { $0.set($2.rawValue, forKey: $1) })
     }
 
     init(_ key: String, _ defaultValue: Value, _ store: UserDefaults?, read: @escaping (UserDefaults, String) -> Value?) {
-        self.init(key: key, defaultValue: defaultValue, store: store ?? .standard, read: read, write: { $0.set($2, forKey: $1) })
+        self.init(key: key, defaultValue: defaultValue, store: store, read: read, write: { $0.set($2, forKey: $1) })
     }
 
-    init(key: String, defaultValue: Value, store: UserDefaults, read: @escaping (UserDefaults, String) -> Value?, write: @escaping (UserDefaults, String, Value) -> Void) {
+    init(key: String, defaultValue: Value, store: UserDefaults?, read: @escaping (UserDefaults, String) -> Value?, write: @escaping (UserDefaults, String, Value) -> Void) {
         self.key = key
         self.defaultValue = defaultValue
-        self.store = store
+        self.store = store ?? .standard
+        self.hasExplicitStore = store != nil
         self.read = read
         self.write = write
     }
@@ -512,18 +515,40 @@ extension AppStorage {
 @MainActor
 final class AppStorageBox<Value> {
     let location: StoredLocation<Value>
+    var store = UserDefaults.standard
     var observer: NSObjectProtocol?
     init(location: StoredLocation<Value>) { self.location = location }
+}
+
+struct DefaultAppStorageKey: EnvironmentKey { nonisolated(unsafe) static let defaultValue: UserDefaults? = nil }
+
+extension EnvironmentValues {
+    var _defaultAppStorage: UserDefaults? {
+        get { self[DefaultAppStorageKey.self] }
+        set { self[DefaultAppStorageKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// The store `@AppStorage` uses in this view hierarchy when no `store:` is given.
+    public func defaultAppStorage(_ store: UserDefaults) -> some View {
+        environment(\._defaultAppStorage, store)
+    }
 }
 
 extension AppStorage: _DynamicPropertyInstallable {
     mutating func _install(slot: inout AnyObject?, context: DynamicPropertyContext) {
         if let box = slot as? AppStorageBox<Value> {
             location = box.location
+            store = box.store
             return
+        }
+        if !hasExplicitStore, let environmentStore = AnyAttribute.withoutDependencies({ context.environment.value._defaultAppStorage }) {
+            store = environmentStore
         }
         let attribute = Attribute<Value>(context.subgraph, value: read(store, key) ?? defaultValue)
         let box = AppStorageBox(location: StoredLocation(attribute: attribute))
+        box.store = store
         let captured = UncheckedSendable((store: store, key: key, read: read, defaultValue: defaultValue))
         box.observer = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: store, queue: .main) { [weak attribute] _ in
             MainActor.assumeIsolated {

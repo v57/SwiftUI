@@ -299,11 +299,45 @@ public protocol LabelStyle {
 public struct TitleAndIconLabelStyle: LabelStyle {
     public init() {}
     public func makeBody(configuration: Configuration) -> some View {
-        HStack {
-            configuration.icon
-            configuration.title
+        _IconAndTitle(icon: configuration.icon, title: configuration.title)
+    }
+}
+
+/// Icon then title, honoring `labelIconToTitleSpacing` and `labelReservedIconWidth`.
+struct _IconAndTitle<Icon: View, Title: View>: View {
+    let icon: Icon
+    let title: Title
+    @Environment(\._labelIconSpacing) private var spacing
+    @Environment(\._labelReservedIconWidth) private var reservedWidth
+
+    var body: some View {
+        HStack(spacing: spacing) {
+            if let reservedWidth { icon.frame(width: reservedWidth) } else { icon }
+            title
         }
     }
+}
+
+struct LabelIconSpacingKey: EnvironmentKey { static let defaultValue: CGFloat? = nil }
+struct LabelReservedIconWidthKey: EnvironmentKey { static let defaultValue: CGFloat? = nil }
+
+extension EnvironmentValues {
+    var _labelIconSpacing: CGFloat? {
+        get { self[LabelIconSpacingKey.self] }
+        set { self[LabelIconSpacingKey.self] = newValue }
+    }
+    var _labelReservedIconWidth: CGFloat? {
+        get { self[LabelReservedIconWidthKey.self] }
+        set { self[LabelReservedIconWidthKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// Spacing between labels' icons and titles.
+    public func labelIconToTitleSpacing(_ spacing: CGFloat) -> some View { environment(\._labelIconSpacing, spacing) }
+
+    /// Width reserved for labels' icons (so titles line up).
+    public func labelReservedIconWidth(_ width: CGFloat) -> some View { environment(\._labelReservedIconWidth, width) }
 }
 
 public struct TitleOnlyLabelStyle: LabelStyle {
@@ -357,10 +391,7 @@ public struct Label<Title: View, Icon: View>: View {
         if let style {
             style.make(configuration)
         } else {
-            HStack {
-                icon
-                title
-            }
+            _IconAndTitle(icon: icon, title: title)
         }
     }
 }

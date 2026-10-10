@@ -604,10 +604,25 @@ final class ButtonNodeView: FlippedView, PlatformNodeView {
         return bounds.contains(local) ? self : nil
     }
 
+    private var repeatTimer: Timer?
+    private var didRepeat = false
+
     override func mouseDown(with event: NSEvent) {
         guard let info, info.isEnabled else { return }
         isPressed = true
         if info.style == .plain || info.style == .borderless { baseAlpha = 0.6 }
+        if info.repeats {
+            // Fire now, then repeat while held (after a short delay).
+            didRepeat = true
+            node?.actions.primary?()
+            repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+                        MainActor.assumeIsolated { if self?.isPressed == true { self?.node?.actions.primary?() } }
+                    }
+                }
+            }
+        }
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -617,8 +632,11 @@ final class ButtonNodeView: FlippedView, PlatformNodeView {
     override func mouseUp(with event: NSEvent) {
         let inside = bounds.contains(convert(event.locationInWindow, from: nil))
         isPressed = false
+        repeatTimer?.invalidate()
+        repeatTimer = nil
         let isEnabled = info?.isEnabled ?? true
         baseAlpha = isEnabled ? 1 : 0.5
+        if didRepeat { didRepeat = false; return }
         if inside, isEnabled { node?.actions.primary?() }
     }
 }

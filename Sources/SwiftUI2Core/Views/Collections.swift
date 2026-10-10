@@ -1393,6 +1393,17 @@ struct _GridLayout: Layout, Equatable {
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
         let (rows, widths, heights) = measure(subviews)
         let totalWidth = widths.reduce(0, +) + horizontalSpacing * CGFloat(max(widths.count - 1, 0))
+        // A column takes the `gridColumnAlignment` of any of its cells.
+        var columnAlignments: [Int: HorizontalAlignment] = [:]
+        for row in rows where !row.isFullWidth {
+            var column = 0
+            for cell in row.cells {
+                if columnAlignments[column] == nil, let alignment = MainActor.assumeIsolated({ subviews[cell.index].traits.value(GridColumnAlignmentTraitKey.self) }) {
+                    columnAlignments[column] = alignment
+                }
+                column += cell.span
+            }
+        }
         var y = bounds.minY
         for (rowIndex, row) in rows.enumerated() {
             var x = bounds.minX
@@ -1407,13 +1418,17 @@ struct _GridLayout: Layout, Equatable {
                 }
                 let proposalSize = ProposedViewSize(width: cellWidth, height: heights[rowIndex])
                 let size = subviews[cell.index].sizeThatFits(proposalSize)
-                let dx: CGFloat
-                switch alignment.horizontal {
+                var dx: CGFloat
+                switch (row.isFullWidth ? nil : columnAlignments[column]) ?? alignment.horizontal {
                 case .leading: dx = 0
                 case .trailing: dx = cellWidth - size.width
                 default: dx = (cellWidth - size.width) / 2
                 }
-                let dy: CGFloat = alignment.vertical == .top ? 0 : alignment.vertical == .bottom ? heights[rowIndex] - size.height : (heights[rowIndex] - size.height) / 2
+                var dy: CGFloat = alignment.vertical == .top ? 0 : alignment.vertical == .bottom ? heights[rowIndex] - size.height : (heights[rowIndex] - size.height) / 2
+                if let anchor = MainActor.assumeIsolated({ subviews[cell.index].traits.value(GridCellAnchorTraitKey.self) }) {
+                    dx = (cellWidth - size.width) * anchor.x
+                    dy = (heights[rowIndex] - size.height) * anchor.y
+                }
                 subviews[cell.index].place(at: CGPoint(x: x + dx, y: y + dy), proposal: proposalSize)
                 x += cellWidth + horizontalSpacing
                 column += cell.span
@@ -1708,7 +1723,6 @@ extension View {
         searchable(text: text, isPresented: isPresented, placement: placement, prompt: Text(prompt))
     }
 
-    public func refreshable(action: @escaping @Sendable () async -> Void) -> some View { self }
 }
 
 public struct SearchFieldPlacement: Sendable {
