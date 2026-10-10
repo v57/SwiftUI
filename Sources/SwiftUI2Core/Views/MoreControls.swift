@@ -39,8 +39,16 @@ public struct EventModifiers: OptionSet, Hashable, Sendable {
 }
 
 public struct KeyboardShortcut: Hashable, Sendable {
+    public struct Localization: Hashable, Sendable {
+        let value: Int
+        public static let automatic = Localization(value: 0)
+        public static let withoutMirroring = Localization(value: 1)
+        public static let custom = Localization(value: 2)
+    }
+
     public var key: KeyEquivalent
     public var modifiers: EventModifiers
+    public var localization: Localization = .automatic
     public init(_ key: KeyEquivalent, modifiers: EventModifiers = .command) {
         self.key = key
         self.modifiers = modifiers
@@ -147,6 +155,11 @@ extension View {
 
     public func keyboardShortcut(_ key: KeyEquivalent, modifiers: EventModifiers = .command) -> some View {
         environment(\.keyboardShortcut, KeyboardShortcut(key, modifiers: modifiers))
+    }
+
+    /// Shortcuts are not remapped for keyboard layouts (`localization` is accepted).
+    public func keyboardShortcut(_ key: KeyEquivalent, modifiers: EventModifiers = .command, localization: KeyboardShortcut.Localization) -> some View {
+        keyboardShortcut(key, modifiers: modifiers)
     }
 
     public func keyboardShortcut(_ shortcut: KeyboardShortcut?) -> some View {

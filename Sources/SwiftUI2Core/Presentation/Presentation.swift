@@ -335,30 +335,6 @@ extension View {
         alert(Text(title), isPresented: isPresented, actions: actions, message: message)
     }
 
-    @_disfavoredOverload public func alert<S: StringProtocol, A: View, M: View, T>(_ title: S, isPresented: Binding<Bool>, presenting data: T?, @ViewBuilder actions: @escaping (T) -> A, @ViewBuilder message: @escaping (T) -> M) -> some View {
-        modifier(_SheetModifier(isPresented: isPresented, onDismiss: nil, content: {
-            _DialogContent(title: Text(title), message: data.map { AnyView(message($0)) }, actions: AnyView(Group { if let data { actions(data) } }), vertical: false)
-        }, kind: .alert))
-    }
-
-    @_disfavoredOverload public func confirmationDialog<S: StringProtocol, A: View>(_ title: S, isPresented: Binding<Bool>, titleVisibility: Visibility = .automatic, @ViewBuilder actions: @escaping () -> A) -> some View {
-        modifier(_SheetModifier(isPresented: isPresented, onDismiss: nil, content: {
-            _DialogContent(title: Text(title), message: nil, actions: AnyView(Group {
-                actions()
-                Button("Cancel", role: .cancel) {}
-            }), vertical: true)
-        }, kind: .confirmationDialog))
-    }
-
-    @_disfavoredOverload public func confirmationDialog<S: StringProtocol, A: View, M: View>(_ title: S, isPresented: Binding<Bool>, titleVisibility: Visibility = .automatic, @ViewBuilder actions: @escaping () -> A, @ViewBuilder message: @escaping () -> M) -> some View {
-        modifier(_SheetModifier(isPresented: isPresented, onDismiss: nil, content: {
-            _DialogContent(title: Text(title), message: AnyView(message()), actions: AnyView(Group {
-                actions()
-                Button("Cancel", role: .cancel) {}
-            }), vertical: true)
-        }, kind: .confirmationDialog))
-    }
-
     public func presentationDetents(_ detents: Set<PresentationDetent>) -> some View { self }
     public func presentationDragIndicator(_ visibility: Visibility) -> some View { self }
 }

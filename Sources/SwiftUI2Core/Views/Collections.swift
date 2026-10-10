@@ -274,6 +274,7 @@ struct _ListRowModifier: ViewModifier {
     var role: ListElementRole = .row
     var position = ListItemPosition()
     var rowInsets: EdgeInsets?
+    var partialInsets = _PartialEdgeInsets()
     var separator = ListRowSeparatorConfiguration()
     var sectionSeparator = ListRowSeparatorConfiguration()
     var badge: Text?
@@ -300,7 +301,7 @@ struct _ListRowModifier: ViewModifier {
             // Between sections: 20pt; a leading gap stands in for the list's top inset.
             Color.clear.frame(height: position.index == 0 ? style.contentInsets.top : sectionSpacing ?? 20)
         } else {
-            let insets = rowInsets ?? style.rowInsets
+            let insets = partialInsets.applied(to: rowInsets ?? style.rowInsets)
             let showsBottomSeparator = separator.bottomVisibility == .visible
                 || (separator.bottomVisibility == .automatic && style.showsSeparators && role == .row && position.next == .row)
             content
@@ -453,6 +454,7 @@ private func makeListRowModifier(traits: ViewTraits, environment: EnvironmentVal
         style: context?.style ?? .automatic
     )
     row.rowInsets = traits.value(ListRowInsetsTraitKey.self)
+    row.partialInsets = traits.value(ListRowPartialInsetsTraitKey.self)
     row.separator = traits.value(ListRowSeparatorTraitKey.self)
     row.sectionSeparator = traits.value(ListSectionSeparatorTraitKey.self)
     row.badge = traits.value(ListBadgeTraitKey.self)

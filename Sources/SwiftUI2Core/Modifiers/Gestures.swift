@@ -467,8 +467,9 @@ final class GestureSession {
 
 public struct _GestureModifier<G: Gesture>: PlatformEffectModifier {
     let gesture: G
+    var isEnabled = true
     static var pathComponent: String { "gesture" }
-    func effect(size: CGSize) -> DisplayEffect { .tapTarget }
+    func effect(size: CGSize) -> DisplayEffect { isEnabled ? .tapTarget : .group }
 
     func actions(modifier: Attribute<Self>) -> RenderActions {
         let session = GestureSession()
@@ -476,6 +477,7 @@ public struct _GestureModifier<G: Gesture>: PlatformEffectModifier {
         actions.pointer = { [weak modifier] event in
             guard let modifier else { return }
             AnyAttribute.withoutDependencies {
+                guard modifier.value.isEnabled else { session.recognizer = nil; return }
                 if event.phase == .began || session.recognizer == nil || session.recognizer?.state == .ended || session.recognizer?.state == .failed {
                     if event.phase != .began { return }
                     session.recognizer = modifier.value.gesture._makeRecognizer()
@@ -489,15 +491,39 @@ public struct _GestureModifier<G: Gesture>: PlatformEffectModifier {
 
 extension View {
     public func gesture<G: Gesture>(_ gesture: G, including mask: GestureMask = .all) -> some View {
-        modifier(_GestureModifier(gesture: gesture))
+        modifier(_GestureModifier(gesture: gesture, isEnabled: mask.contains(.gesture)))
+    }
+
+    public func gesture<G: Gesture>(_ gesture: G, isEnabled: Bool) -> some View {
+        modifier(_GestureModifier(gesture: gesture, isEnabled: isEnabled))
+    }
+
+    public func gesture<G: Gesture>(_ gesture: G, name: String, isEnabled: Bool = true) -> some View {
+        modifier(_GestureModifier(gesture: gesture, isEnabled: isEnabled))
     }
 
     public func simultaneousGesture<G: Gesture>(_ gesture: G, including mask: GestureMask = .all) -> some View {
-        modifier(_GestureModifier(gesture: gesture))
+        modifier(_GestureModifier(gesture: gesture, isEnabled: mask.contains(.gesture)))
+    }
+
+    public func simultaneousGesture<G: Gesture>(_ gesture: G, isEnabled: Bool) -> some View {
+        modifier(_GestureModifier(gesture: gesture, isEnabled: isEnabled))
+    }
+
+    public func simultaneousGesture<G: Gesture>(_ gesture: G, name: String, isEnabled: Bool = true) -> some View {
+        modifier(_GestureModifier(gesture: gesture, isEnabled: isEnabled))
+    }
+
+    public func highPriorityGesture<G: Gesture>(_ gesture: G, isEnabled: Bool) -> some View {
+        modifier(_GestureModifier(gesture: gesture, isEnabled: isEnabled))
+    }
+
+    public func highPriorityGesture<G: Gesture>(_ gesture: G, name: String, isEnabled: Bool = true) -> some View {
+        modifier(_GestureModifier(gesture: gesture, isEnabled: isEnabled))
     }
 
     public func highPriorityGesture<G: Gesture>(_ gesture: G, including mask: GestureMask = .all) -> some View {
-        modifier(_GestureModifier(gesture: gesture))
+        modifier(_GestureModifier(gesture: gesture, isEnabled: mask.contains(.gesture)))
     }
 
     public func onLongPressGesture(minimumDuration: Double = 0.5, maximumDistance: CGFloat = 10, perform action: @escaping @MainActor () -> Void, onPressingChanged: (@MainActor (Bool) -> Void)? = nil) -> some View {
@@ -517,8 +543,12 @@ extension View {
         modifier(_HoverModifier(action: action))
     }
 
-    public func onContinuousHover(perform action: @escaping @MainActor (HoverPhase) -> Void) -> some View {
-        modifier(_HoverModifier(action: { action($0 ? .active(.zero) : .ended) }))
+    @_disfavoredOverload public func onContinuousHover(coordinateSpace: CoordinateSpace = .local, perform action: @escaping @MainActor (HoverPhase) -> Void) -> some View {
+        modifier(_ContinuousHoverModifier(coordinateSpace: coordinateSpace, action: action))
+    }
+
+    public func onContinuousHover(coordinateSpace: some CoordinateSpaceProtocol = .local, perform action: @escaping @MainActor (HoverPhase) -> Void) -> some View {
+        modifier(_ContinuousHoverModifier(coordinateSpace: coordinateSpace.coordinateSpace, action: action))
     }
 }
 
@@ -538,6 +568,36 @@ struct _HoverModifier: PlatformEffectModifier {
             AnyAttribute.withoutDependencies { modifier.value.action(hovering) }
         }
         return actions
+    }
+}
+
+/// Reports the pointer location in the requested coordinate space while it hovers the view.
+struct _ContinuousHoverModifier: ViewModifier {
+    let coordinateSpace: CoordinateSpace
+    let action: @MainActor (HoverPhase) -> Void
+    typealias Body = Never
+
+    static func _makeView(modifier: _GraphValue<Self>, inputs: _ViewInputs, body: @escaping @MainActor (_ViewInputs) -> _ViewOutputs) -> _ViewOutputs {
+        let inputs = inputs.with(path: "onContinuousHover")
+        let geometry = inputs.geometry
+        let spaces = inputs.coordinateSpaces
+        let source = modifier.attribute
+        let content = Attribute<RenderContent>(inputs.subgraph) { .effect(.opacity(1)) }
+        var actions = RenderActions()
+        actions.hover = { _ in }
+        actions.hoverLocation = { [weak source] point in
+            guard let source else { return }
+            AnyAttribute.withoutDependencies {
+                let current = source.value
+                guard let point else { return current.action(.ended) }
+                let origin = GeometryProxy(geometry: geometry.value, spaces: spaces).frame(in: current.coordinateSpace).origin
+                current.action(.active(CGPoint(x: point.x + origin.x, y: point.y + origin.y)))
+            }
+        }
+        let render = inputs.makePlatformNode(content: content, actions: actions)
+        var childInputs = inputs
+        childInputs.render = render
+        return body(childInputs)
     }
 }
 

@@ -87,9 +87,10 @@ extension View {
 
     /// Hit testing uses view bounds; shapes are accepted for source compatibility.
     public func contentShape<S: Shape>(_ shape: S, eoFill: Bool = false) -> some View { self }
+    public func contentShape<S: Shape>(_ kind: ContentShapeKinds, _ shape: S, eoFill: Bool = false) -> some View { self }
 
     public func compositingGroup() -> some View { self }
-    public func drawingGroup(opaque: Bool = false) -> some View { self }
+    public func drawingGroup(opaque: Bool = false, colorMode: ColorRenderingMode = .nonLinear) -> some View { self }
 
     public func clipped(antialiased: Bool = false) -> some View { modifier(_ClipEffect(shape: Rectangle())) }
 
@@ -119,6 +120,18 @@ extension View {
         modifier(_TapGestureModifier(count: count, action: action))
     }
 
+}
+
+/// The kinds of interaction a content shape applies to.
+public struct ContentShapeKinds: OptionSet, Sendable {
+    public let rawValue: Int
+    public init(rawValue: Int) { self.rawValue = rawValue }
+    public static let interaction = ContentShapeKinds(rawValue: 1)
+    public static let dragPreview = ContentShapeKinds(rawValue: 2)
+    public static let contextMenuPreview = ContentShapeKinds(rawValue: 4)
+    public static let hoverEffect = ContentShapeKinds(rawValue: 8)
+    public static let focusEffect = ContentShapeKinds(rawValue: 16)
+    public static let accessibility = ContentShapeKinds(rawValue: 32)
 }
 
 public struct FillStyle: Equatable, Sendable {

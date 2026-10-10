@@ -100,7 +100,9 @@ public struct ScrollView<Content: View>: View {
             let scrolled = offset.value
             return CGPoint(x: origin.x - scrolled.x, y: origin.y - scrolled.y)
         }
-        contentInputs.coordinateSpaces = CoordinateSpaces(scrollTransform: scrollTransform, parent: inputs.coordinateSpaces)
+        let boundary = CoordinateSpaces(scrollTransform: scrollTransform, parent: inputs.coordinateSpaces)
+        // `.scrollView`: the visible region (content point minus the content offset).
+        contentInputs.coordinateSpaces = CoordinateSpaces(name: AnyHashable(_ScrollViewCoordinateSpaceName()), origin: offset, parent: boundary)
         contentInputs.scrollViewport = Attribute<CGRect>(inputs.subgraph, isEqual: { $0 == $1 }) {
             CGRect(origin: offset.value, size: geometry.value.size)
         }
@@ -237,6 +239,11 @@ public struct GeometryProxy {
     public var safeAreaInsets: EdgeInsets { EdgeInsets() }
 
     @MainActor
+    public func frame(in coordinateSpace: some CoordinateSpaceProtocol) -> CGRect {
+        frame(in: coordinateSpace.coordinateSpace)
+    }
+
+    @MainActor @_disfavoredOverload
     public func frame(in coordinateSpace: CoordinateSpace) -> CGRect {
         switch coordinateSpace {
         case .local: return CGRect(origin: .zero, size: geometry.size)
@@ -250,10 +257,6 @@ public struct GeometryProxy {
         }
     }
 
-    @MainActor
-    public func frame(in space: NamedCoordinateSpace) -> CGRect {
-        frame(in: CoordinateSpace.named(space.name))
-    }
 }
 
 extension GeometryProxy: Equatable {
@@ -264,6 +267,42 @@ public enum CoordinateSpace: Hashable, @unchecked Sendable {
     case global, local
     case named(AnyHashable)
 }
+
+/// A coordinate space for geometry and gestures (`.local`, `.global`, `.named(_:)`).
+public protocol CoordinateSpaceProtocol {
+    var coordinateSpace: CoordinateSpace { get }
+}
+
+public struct LocalCoordinateSpace: CoordinateSpaceProtocol {
+    public init() {}
+    public var coordinateSpace: CoordinateSpace { .local }
+}
+
+public struct GlobalCoordinateSpace: CoordinateSpaceProtocol {
+    public init() {}
+    public var coordinateSpace: CoordinateSpace { .global }
+}
+
+extension NamedCoordinateSpace: CoordinateSpaceProtocol {
+    public var coordinateSpace: CoordinateSpace { .named(name) }
+}
+
+extension CoordinateSpaceProtocol where Self == LocalCoordinateSpace {
+    public static var local: LocalCoordinateSpace { LocalCoordinateSpace() }
+}
+
+extension CoordinateSpaceProtocol where Self == GlobalCoordinateSpace {
+    public static var global: GlobalCoordinateSpace { GlobalCoordinateSpace() }
+}
+
+extension CoordinateSpaceProtocol where Self == NamedCoordinateSpace {
+    public static func named(_ name: some Hashable) -> NamedCoordinateSpace { NamedCoordinateSpace(name: AnyHashable(name)) }
+    /// The coordinate space of the nearest enclosing scroll view's content.
+    public static var scrollView: NamedCoordinateSpace { NamedCoordinateSpace(name: AnyHashable(_ScrollViewCoordinateSpaceName())) }
+    public static func scrollView(axis: Axis) -> NamedCoordinateSpace { scrollView }
+}
+
+struct _ScrollViewCoordinateSpaceName: Hashable {}
 
 public struct GeometryReader<Content: View>: View {
     public var content: (GeometryProxy) -> Content

@@ -164,6 +164,8 @@ public struct RenderActions {
     public var submit: (@MainActor () -> Void)?
     public var focusChanged: (@MainActor (Bool) -> Void)?
     public var hover: (@MainActor (Bool) -> Void)?
+    /// The pointer location while it is over the view (local coordinates), nil when it leaves.
+    public var hoverLocation: (@MainActor (CGPoint?) -> Void)?
     /// Raw pointer events in the node's local coordinates (gestures).
     public var pointer: (@MainActor (PointerEvent) -> Void)?
     public var keyboardShortcut: KeyboardShortcut?

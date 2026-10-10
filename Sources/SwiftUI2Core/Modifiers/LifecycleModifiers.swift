@@ -97,11 +97,12 @@ extension View {
         modifier(_ValueActionModifier(value: value, initial: initial) { _, _ in action() })
     }
 
-    public func task(priority: TaskPriority = .userInitiated, _ action: @escaping @MainActor @Sendable () async -> Void) -> some View {
+    /// `name` labels the task for debugging; `file`/`line` identify the call site.
+    public func task(name: String? = nil, priority: TaskPriority = .userInitiated, file: String = #fileID, line: Int = #line, _ action: @escaping @MainActor @Sendable () async -> Void) -> some View {
         modifier(_TaskModifier(id: 0, priority: priority, action: action))
     }
 
-    public func task<T: Equatable>(id value: T, priority: TaskPriority = .userInitiated, _ action: @escaping @MainActor @Sendable () async -> Void) -> some View {
+    public func task<T: Equatable>(id value: T, name: String? = nil, priority: TaskPriority = .userInitiated, file: String = #fileID, line: Int = #line, _ action: @escaping @MainActor @Sendable () async -> Void) -> some View {
         modifier(_TaskModifier(id: value, priority: priority, action: action))
     }
 }

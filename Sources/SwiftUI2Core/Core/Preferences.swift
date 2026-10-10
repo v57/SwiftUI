@@ -389,6 +389,4 @@ public struct NamedCoordinateSpace: Hashable, @unchecked Sendable {
     let name: AnyHashable
 }
 
-extension NamedCoordinateSpace {
-    public static func named<N: Hashable>(_ name: N) -> NamedCoordinateSpace { NamedCoordinateSpace(name: AnyHashable(name)) }
-}
+

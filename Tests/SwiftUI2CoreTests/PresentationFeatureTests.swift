@@ -104,4 +104,40 @@ struct PresentationFeatureTests {
         while let view = container { widths.append(view.frame.width); container = view.superview }
         #expect(widths.contains { $0 >= 500 })
     }
+
+    @Test func alertFromAnErrorBinding() {
+        struct Failure: LocalizedError { var errorDescription: String? { "Upload failed" } }
+        struct Screen: View {
+            @State var error: Failure? = Failure()
+            var body: some View {
+                Text(error == nil ? "cleared" : "failing")
+                    .alert(error: $error) { Button("Retry") {} }
+            }
+        }
+        let host = TestHost(Screen())
+        host.flush()
+        #expect(host.texts.contains("Upload failed") && host.texts.contains("Retry"))
+        host.tap("Retry")
+        host.finishAnimations()
+        #expect(host.texts.contains("cleared") && !host.texts.contains("Upload failed"))
+    }
+
+    @Test func confirmationDialogPresentingDataAndItemAlerts() {
+        struct Screen: View {
+            @State var asking = true
+            @State var item: String? = "notes.txt"
+            var body: some View {
+                VStack {
+                    Text("a").confirmationDialog(Text("Remove"), isPresented: $asking, presenting: "draft.md") { name in
+                        Button("Delete \(name)", role: .destructive) {}
+                    } message: { name in Text("\(name) will be gone") }
+                    Text("b").alert("Open", item: $item) { name in Button("Open \(name)") {} }
+                }
+            }
+        }
+        let host = TestHost(Screen())
+        host.flush()
+        #expect(host.texts.contains("Delete draft.md") && host.texts.contains("draft.md will be gone") && host.texts.contains("Cancel"))
+        #expect(host.texts.contains("Open notes.txt"))
+    }
 }

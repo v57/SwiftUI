@@ -16,7 +16,39 @@ public struct Font: Hashable, Sendable {
         public init(_ value: CGFloat) { self.value = value }
         public static let compressed = Width(-0.3), condensed = Width(-0.2), standard = Width(0), expanded = Width(0.2)
     }
-    public func width(_ width: Width) -> Font { self }
+    public func width(_ width: Width) -> Font {
+        var copy = self
+        copy.widthValue = width.value
+        return copy
+    }
+
+    public enum Leading: Hashable, Sendable { case standard, tight, loose }
+
+    public func leading(_ leading: Leading) -> Font {
+        var copy = self
+        copy.leadingValue = leading
+        return copy
+    }
+
+    public func smallCaps() -> Font {
+        var copy = self
+        copy.caps = .smallCaps
+        return copy
+    }
+
+    public func lowercaseSmallCaps() -> Font {
+        var copy = self
+        copy.caps = .lowercaseSmallCaps
+        return copy
+    }
+
+    public func uppercaseSmallCaps() -> Font {
+        var copy = self
+        copy.caps = .uppercaseSmallCaps
+        return copy
+    }
+
+    public enum _Caps: Hashable, Sendable { case none, smallCaps, lowercaseSmallCaps, uppercaseSmallCaps }
 
     public struct Weight: Hashable, Sendable {
         public let value: Double
@@ -41,6 +73,12 @@ public struct Font: Hashable, Sendable {
         /// The text style of an explicit style font (`.body`, `.title`, ...); nil for sized fonts and
         /// the environment's default font. Backends use it for style metrics (leading).
         public var textStyle: TextStyle? = nil
+        /// A named font (`Font.custom`, platform fonts); nil for the system font.
+        public var name: String? = nil
+        /// Width axis (`Font.Width.value`: condensed < 0 < expanded).
+        public var width: CGFloat = 0
+        public var leading: Leading = .standard
+        public var caps: _Caps = .none
 
         public init(size: CGFloat, weight: Weight = .regular, design: Design = .default, italic: Bool = false, monospacedDigit: Bool = false, textStyle: TextStyle? = nil) {
             self.size = size
@@ -58,6 +96,8 @@ public struct Font: Hashable, Sendable {
         /// The environment's default font: body metrics, but without the body style's leading
         /// (stacked default-font texts have no gap in SwiftUI, explicit `.body` ones do).
         case defaultBody
+        /// A named font, optionally scaled relative to a text style.
+        case custom(name: String, size: CGFloat, relativeTo: TextStyle?)
     }
 
     /// Font used when the environment has none.
@@ -68,6 +108,9 @@ public struct Font: Hashable, Sendable {
     var design: Design = .default
     var isItalic = false
     var monospacedDigits = false
+    var widthValue: CGFloat = 0
+    var leadingValue: Leading = .standard
+    var caps: _Caps = .none
 
     init(base: Base, weight: Weight? = nil, design: Design = .default) {
         self.base = base
@@ -87,12 +130,25 @@ public struct Font: Hashable, Sendable {
     public static let caption = Font(base: .style(.caption))
     public static let caption2 = Font(base: .style(.caption2))
 
-    public static func system(size: CGFloat, weight: Weight = .regular, design: Design = .default) -> Font {
-        Font(base: .system(size: size), weight: weight, design: design)
+    public static func system(size: CGFloat, weight: Weight? = nil, design: Design? = nil) -> Font {
+        Font(base: .system(size: size), weight: weight, design: design ?? .default)
     }
 
-    public static func system(_ style: TextStyle, design: Design = .default, weight: Weight? = nil) -> Font {
-        Font(base: .style(style), weight: weight, design: design)
+    public static func system(_ style: TextStyle, design: Design? = nil, weight: Weight? = nil) -> Font {
+        Font(base: .style(style), weight: weight, design: design ?? .default)
+    }
+
+    /// A font by name (PostScript or family name); falls back to the system font if missing.
+    public static func custom(_ name: String, size: CGFloat) -> Font {
+        Font(base: .custom(name: name, size: size, relativeTo: .body))
+    }
+
+    public static func custom(_ name: String, size: CGFloat, relativeTo textStyle: TextStyle) -> Font {
+        Font(base: .custom(name: name, size: size, relativeTo: textStyle))
+    }
+
+    public static func custom(_ name: String, fixedSize: CGFloat) -> Font {
+        Font(base: .custom(name: name, size: fixedSize, relativeTo: nil))
     }
 
     public func weight(_ weight: Weight) -> Font {
@@ -148,9 +204,15 @@ public struct Font: Hashable, Sendable {
             style = textStyle
         case .system(let pointSize): (size, resolvedWeight) = (pointSize, .regular)
         case .defaultBody: (size, resolvedWeight) = Font.metrics(.body)
+        case .custom(_, let pointSize, _): (size, resolvedWeight) = (pointSize, .regular)
         }
         if let weight { resolvedWeight = weight }
-        return Resolved(size: size, weight: resolvedWeight, design: design, italic: isItalic, monospacedDigit: monospacedDigits, textStyle: style)
+        var resolved = Resolved(size: size, weight: resolvedWeight, design: design, italic: isItalic, monospacedDigit: monospacedDigits, textStyle: style)
+        if case .custom(let name, _, _) = base { resolved.name = name }
+        resolved.width = widthValue
+        resolved.leading = leadingValue
+        resolved.caps = caps
+        return resolved
     }
 }
 
@@ -256,6 +318,7 @@ public struct Text: Equatable {
         case background(Color?)
         case design(Font.Design)
         case link(URL)
+        case width(CGFloat)
     }
 
     var storage: Storage
@@ -310,7 +373,7 @@ public struct Text: Equatable {
     public enum Case: Sendable { case uppercase, lowercase }
 
     public func fontDesign(_ design: Font.Design?) -> Text { adding(.design(design ?? .default)) }
-    public func fontWidth(_ width: Font.Width?) -> Text { self }
+    public func fontWidth(_ width: Font.Width?) -> Text { adding(.width(width?.value ?? 0)) }
     public func kerning(_ kerning: CGFloat) -> Text { adding(.tracking(kerning)) }
     public func tracking(_ tracking: CGFloat) -> Text { adding(.tracking(tracking)) }
     public func baselineOffset(_ offset: CGFloat) -> Text { adding(.baselineOffset(offset)) }
@@ -426,6 +489,7 @@ public struct Text: Equatable {
             case .baselineOffset(let value): baselineOffset = value
             case .background(let value): background = value?.resolve(in: environment)
             case .design(let design): font.design = design
+            case .width(let value): font.widthValue = value
             case .link(let url):
                 link = url
                 color = Color.accentColor.resolve(in: environment)

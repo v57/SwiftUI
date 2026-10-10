@@ -298,3 +298,12 @@ extension AttributeDynamicLookup {
     }
 }
 #endif
+
+#if canImport(AppKit)
+extension Font {
+    /// A font from an AppKit font (by name and size).
+    public init(_ font: NSFont) {
+        self = .custom(font.fontName, fixedSize: font.pointSize)
+    }
+}
+#endif

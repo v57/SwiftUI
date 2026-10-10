@@ -1022,7 +1022,9 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
         super.updateTrackingAreas()
         if let trackingArea { removeTrackingArea(trackingArea) }
         guard node?.actions.hover != nil || hidesPointer else { return }
-        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        var options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect]
+        if node?.actions.hoverLocation != nil { options.insert(.mouseMoved) }
+        let area = NSTrackingArea(rect: bounds, options: options, owner: self)
         addTrackingArea(area)
         trackingArea = area
     }
@@ -1032,11 +1034,18 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
     override func mouseEntered(with event: NSEvent) {
         if hidesPointer, !pointerHidden { NSCursor.hide(); pointerHidden = true }
         node?.actions.hover?(true)
+        node?.actions.hoverLocation?(convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        guard let hoverLocation = node?.actions.hoverLocation else { return super.mouseMoved(with: event) }
+        hoverLocation(convert(event.locationInWindow, from: nil))
     }
 
     override func mouseExited(with event: NSEvent) {
         if pointerHidden { NSCursor.unhide(); pointerHidden = false }
         node?.actions.hover?(false)
+        node?.actions.hoverLocation?(nil)
     }
 
     private var handlesPointer: Bool { isTapTarget || node?.actions.pointer != nil || node?.actions.dragItem != nil }

@@ -92,6 +92,10 @@ extension View {
         environment(\.textInputSuggestions, AnyView(ForEach(data, content: content)))
     }
 
+    public func textInputSuggestions<Data: RandomAccessCollection, ID: Hashable, Content: View>(_ data: Data, id: KeyPath<Data.Element, ID>, @ViewBuilder content: @escaping (Data.Element) -> Content) -> some View {
+        environment(\.textInputSuggestions, AnyView(ForEach(data, id: id, content: content)))
+    }
+
     @_disfavoredOverload public func textInputCompletion<S: StringProtocol>(_ completion: S) -> some View {
         containerValue(\.searchCompletion, String(completion))
     }

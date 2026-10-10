@@ -338,6 +338,14 @@ enum AppKitText {
     static func font(_ font: Font.Resolved) -> NSFont {
         let weight = NSFont.Weight(rawValue: CGFloat(font.weight.value))
         var result: NSFont
+        if let name = font.name, let named = NSFont(name: name, size: font.size) {
+            result = named
+            if font.weight.value >= Font.Weight.semibold.value {
+                result = NSFontManager.shared.convert(result, toHaveTrait: .boldFontMask)
+            }
+            if font.italic { result = NSFontManager.shared.convert(result, toHaveTrait: .italicFontMask) }
+            return adjusted(result, font)
+        }
         switch font.design {
         case .monospaced: result = .monospacedSystemFont(ofSize: font.size, weight: weight)
         default: result = .systemFont(ofSize: font.size, weight: weight)
@@ -353,7 +361,24 @@ enum AppKitText {
         if font.monospacedDigit {
             result = .monospacedDigitSystemFont(ofSize: font.size, weight: weight)
         }
-        return result
+        return adjusted(result, font)
+    }
+
+    /// Width axis and small caps.
+    private static func adjusted(_ base: NSFont, _ font: Font.Resolved) -> NSFont {
+        var descriptor = base.fontDescriptor
+        if font.width != 0 {
+            descriptor = descriptor.addingAttributes([.traits: [NSFontDescriptor.TraitKey.width: font.width]])
+        }
+        let lowerSmall: [NSFontDescriptor.FeatureKey: Int] = [.typeIdentifier: kLowerCaseType, .selectorIdentifier: kLowerCaseSmallCapsSelector]
+        let upperSmall: [NSFontDescriptor.FeatureKey: Int] = [.typeIdentifier: kUpperCaseType, .selectorIdentifier: kUpperCaseSmallCapsSelector]
+        switch font.caps {
+        case .none: break
+        case .smallCaps, .lowercaseSmallCaps: descriptor = descriptor.addingAttributes([.featureSettings: [lowerSmall]])
+        case .uppercaseSmallCaps: descriptor = descriptor.addingAttributes([.featureSettings: [upperSmall]])
+        }
+        guard descriptor != base.fontDescriptor else { return base }
+        return NSFont(descriptor: descriptor, size: font.size) ?? base
     }
 
     /// With `placeholders`, inline images take their width but no height (SwiftUI doesn't let

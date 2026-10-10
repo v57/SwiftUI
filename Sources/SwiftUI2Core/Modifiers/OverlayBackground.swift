@@ -124,28 +124,42 @@ extension View {
         modifier(_OverlayModifier(overlay: content(), alignment: alignment))
     }
 
-    public func overlay<V: View>(_ overlay: V, alignment: Alignment = .center) -> some View {
+    @_disfavoredOverload public func overlay<V: View>(_ overlay: V, alignment: Alignment = .center) -> some View {
         modifier(_OverlayModifier(overlay: overlay, alignment: alignment))
     }
 
-    public func overlay<S: ShapeStyle>(_ style: S) -> some View {
+    /// Safe areas are not modeled, so `ignoresSafeAreaEdges` has no effect.
+    public func overlay<S: ShapeStyle>(_ style: S, ignoresSafeAreaEdges edges: Edge.Set = .all) -> some View {
         modifier(_OverlayModifier(overlay: Rectangle().fill(style), alignment: .center))
+    }
+
+    public func overlay<S: ShapeStyle, T: Shape>(_ style: S, in shape: T, fillStyle: FillStyle = FillStyle()) -> some View {
+        modifier(_OverlayModifier(overlay: shape.fill(style, style: fillStyle), alignment: .center))
     }
 
     public func background<V: View>(alignment: Alignment = .center, @ViewBuilder content: () -> V) -> some View {
         modifier(_BackgroundModifier(background: content(), alignment: alignment))
     }
 
-    public func background<V: View>(_ background: V, alignment: Alignment = .center) -> some View {
+    @_disfavoredOverload public func background<V: View>(_ background: V, alignment: Alignment = .center) -> some View {
         modifier(_BackgroundModifier(background: background, alignment: alignment))
     }
 
-    public func background<S: ShapeStyle>(_ style: S) -> some View {
+    public func background<S: ShapeStyle>(_ style: S, ignoresSafeAreaEdges edges: Edge.Set = .all) -> some View {
         modifier(_BackgroundModifier(background: Rectangle().fill(style), alignment: .center))
     }
 
-    public func background<S: ShapeStyle, T: Shape>(_ style: S, in shape: T) -> some View {
-        modifier(_BackgroundModifier(background: shape.fill(style), alignment: .center))
+    /// The environment's background style (`backgroundStyle`, else the window background).
+    public func background(ignoresSafeAreaEdges edges: Edge.Set = .all) -> some View {
+        background(BackgroundStyle(), ignoresSafeAreaEdges: edges)
+    }
+
+    public func background<S: ShapeStyle, T: Shape>(_ style: S, in shape: T, fillStyle: FillStyle = FillStyle()) -> some View {
+        modifier(_BackgroundModifier(background: shape.fill(style, style: fillStyle), alignment: .center))
+    }
+
+    public func background<T: Shape>(in shape: T, fillStyle: FillStyle = FillStyle()) -> some View {
+        background(BackgroundStyle(), in: shape, fillStyle: fillStyle)
     }
 
     public func border<S: ShapeStyle>(_ content: S, width: CGFloat = 1) -> some View {

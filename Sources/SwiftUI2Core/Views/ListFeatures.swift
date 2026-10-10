@@ -9,6 +9,19 @@ public enum ListRowInsetsTraitKey: _ViewTraitKey {
     public static var defaultValue: EdgeInsets? { nil }
 }
 
+/// Per-edge row insets (`listRowInsets(_:_:)`); nil edges keep the list's default.
+public struct _PartialEdgeInsets: Hashable, Sendable {
+    var top: CGFloat?, leading: CGFloat?, bottom: CGFloat?, trailing: CGFloat?
+
+    func applied(to insets: EdgeInsets) -> EdgeInsets {
+        EdgeInsets(top: top ?? insets.top, leading: leading ?? insets.leading, bottom: bottom ?? insets.bottom, trailing: trailing ?? insets.trailing)
+    }
+}
+
+public enum ListRowPartialInsetsTraitKey: _ViewTraitKey {
+    public static var defaultValue: _PartialEdgeInsets { _PartialEdgeInsets() }
+}
+
 /// Row separator visibility and tint per edge.
 public struct ListRowSeparatorConfiguration: Hashable, Sendable {
     public var topVisibility = Visibility.automatic
@@ -70,6 +83,16 @@ public enum TypeSelectEquivalentTraitKey: _ViewTraitKey {
 extension View {
     public func listRowInsets(_ insets: EdgeInsets?) -> some View {
         modifier(_TraitWritingModifier<ListRowInsetsTraitKey>(value: insets))
+    }
+
+    /// Insets for some edges (nil restores the list's default for them).
+    public func listRowInsets(_ edges: Edge.Set = .all, _ length: CGFloat?) -> some View {
+        modifier(_TraitTransformModifier<ListRowPartialInsetsTraitKey> { insets in
+            if edges.contains(.top) { insets.top = length }
+            if edges.contains(.leading) { insets.leading = length }
+            if edges.contains(.bottom) { insets.bottom = length }
+            if edges.contains(.trailing) { insets.trailing = length }
+        })
     }
 
     public func listRowSeparator(_ visibility: Visibility, edges: VerticalEdge.Set = .all) -> some View {
