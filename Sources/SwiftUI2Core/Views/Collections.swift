@@ -1081,6 +1081,7 @@ struct _MenuOptionModifier: ViewModifier {
 // MARK: - TabView
 
 public struct TabView<SelectionValue: Hashable, Content: View>: View {
+    @Environment(\._tabSidebarExtras) private var sidebarExtras
     let selection: Binding<SelectionValue>?
     let content: Content
     @State private var internalSelection: AnyHashable?
@@ -1126,10 +1127,16 @@ public struct TabView<SelectionValue: Hashable, Content: View>: View {
             if sidebar {
                 // macOS 15 sidebar-adaptable tab views list their tabs in a sidebar.
                 HStack(spacing: 0) {
-                    items
-                        .padding(10)
-                        .frame(width: 180, alignment: .topLeading)
-                        .frame(maxHeight: .infinity, alignment: .top)
+                    VStack(alignment: .leading, spacing: 8) {
+                        if let header = sidebarExtras.header { header }
+                        items
+                        if let footer = sidebarExtras.footer { footer }
+                        Spacer(minLength: 0)
+                        if let bottomBar = sidebarExtras.bottomBar { bottomBar }
+                    }
+                    .padding(10)
+                    .frame(width: 180, alignment: .topLeading)
+                    .frame(maxHeight: .infinity, alignment: .top)
                     Divider()
                     pages
                 }
@@ -1753,5 +1760,38 @@ struct _SegmentedLayout: Layout, Equatable {
         for (index, subview) in subviews.enumerated() {
             subview.place(at: CGPoint(x: bounds.minX + CGFloat(index) * width, y: bounds.minY), proposal: ProposedViewSize(width: width, height: bounds.height))
         }
+    }
+}
+
+/// Views around a sidebar-adaptable tab view's tab list.
+struct TabSidebarExtras {
+    var header: AnyView?
+    var footer: AnyView?
+    var bottomBar: AnyView?
+}
+
+struct TabSidebarExtrasKey: EnvironmentKey { static let defaultValue = TabSidebarExtras() }
+
+extension EnvironmentValues {
+    var _tabSidebarExtras: TabSidebarExtras {
+        get { self[TabSidebarExtrasKey.self] }
+        set { self[TabSidebarExtrasKey.self] = newValue }
+    }
+}
+
+extension View {
+    public func tabViewSidebarHeader<V: View>(@ViewBuilder content: () -> V) -> some View {
+        let view = AnyView(content())
+        return transformEnvironment(\._tabSidebarExtras) { $0.header = view }
+    }
+
+    public func tabViewSidebarFooter<V: View>(@ViewBuilder content: () -> V) -> some View {
+        let view = AnyView(content())
+        return transformEnvironment(\._tabSidebarExtras) { $0.footer = view }
+    }
+
+    public func tabViewSidebarBottomBar<V: View>(@ViewBuilder content: () -> V) -> some View {
+        let view = AnyView(content())
+        return transformEnvironment(\._tabSidebarExtras) { $0.bottomBar = view }
     }
 }

@@ -100,6 +100,8 @@ public struct ResolvedTextField: Equatable, Sendable {
 
 public struct ResolvedSlider: Equatable, Sendable {
     public var controlSize: ControlSize = .regular
+    /// `sliderThumbVisibility(.hidden)`: the track only.
+    public var showsThumb = true
     public var value: Double
     public var range: ClosedRange<Double>
     public var isEnabled: Bool

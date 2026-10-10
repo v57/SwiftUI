@@ -57,9 +57,20 @@ extension View {
     public func labelsVisibility(_ visibility: Visibility) -> some View { environment(\.labelsHidden, visibility == .hidden) }
     public func allowsTightening(_ flag: Bool) -> some View { environment(\.allowsTightening, flag) }
     public func invalidatableContent(_ invalidatable: Bool = true) -> some View { self }
+    /// Which external events (URLs, activities) this window prefers to handle (one window per app
+    /// here: events go to the registered handlers).
     public func handlesExternalEvents(preferring: Set<String>, allowing: Set<String>) -> some View { self }
-    public func userActivity(_ activityType: String, isActive: Bool = true, _ update: @escaping (NSUserActivity) -> Void) -> some View { self }
-    public func onContinueUserActivity(_ activityType: String, perform action: @escaping (NSUserActivity) -> Void) -> some View { self }
+
+    /// Advertises an `NSUserActivity` (Handoff, Spotlight) while the view is shown and active;
+    /// `update` fills it in and runs again when the view updates.
+    public func userActivity(_ activityType: String, isActive: Bool = true, _ update: @escaping (NSUserActivity) -> Void) -> some View {
+        modifier(_UserActivityModifier(activityType: activityType, isActive: isActive, update: update))
+    }
+
+    /// Handles a user activity of `activityType` continued from another device or Spotlight.
+    public func onContinueUserActivity(_ activityType: String, perform action: @escaping (NSUserActivity) -> Void) -> some View {
+        modifier(_ContinueActivityModifier(activityType: activityType, action: action))
+    }
     public func hoverEffect(_ effect: HoverEffect = .automatic, isEnabled: Bool = true) -> some View { self }
     public func hoverEffectDisabled(_ disabled: Bool = true) -> some View { self }
     public func indexViewStyle<S>(_ style: S) -> some View { self }
@@ -223,5 +234,90 @@ extension EnvironmentValues {
     public var refresh: RefreshAction? {
         get { self[RefreshActionKey.self] }
         set { self[RefreshActionKey.self] = newValue }
+    }
+}
+
+// MARK: - User activities (Handoff)
+
+@MainActor
+final class _UserActivityBox {
+    var activity: NSUserActivity?
+}
+
+struct _UserActivityModifier: ViewModifier {
+    let activityType: String
+    let isActive: Bool
+    let update: (NSUserActivity) -> Void
+    @State private var box = _UserActivityBox()
+
+    func body(content: Content) -> some View {
+        let box = self.box
+        return content
+            .onAppear { refresh(box) }
+            .onChange(of: isActive) { refresh(box) }
+            .onChange(of: activityType) { refresh(box) }
+            .onDisappear {
+                box.activity?.invalidate()
+                box.activity = nil
+            }
+    }
+
+    private func refresh(_ box: _UserActivityBox) {
+        guard isActive else {
+            box.activity?.resignCurrent()
+            return
+        }
+        let activity = box.activity?.activityType == activityType ? box.activity! : NSUserActivity(activityType: activityType)
+        box.activity = activity
+        update(activity)
+        activity.needsSave = true
+        activity.becomeCurrent()
+    }
+}
+
+@MainActor
+final class _ActivityHandler {
+    let activityType: String
+    var action: (NSUserActivity) -> Void
+    init(activityType: String, action: @escaping (NSUserActivity) -> Void) {
+        self.activityType = activityType
+        self.action = action
+    }
+}
+
+struct _ContinueActivityModifier: ViewModifier {
+    let activityType: String
+    let action: (NSUserActivity) -> Void
+    @State private var handler: _ActivityHandler?
+
+    func body(content: Content) -> some View {
+        handler?.action = action
+        return content
+            .onAppear {
+                let handler = _ActivityHandler(activityType: activityType, action: action)
+                self.handler = handler
+                AppRuntime.activityHandlers.append(handler)
+            }
+            .onDisappear {
+                AppRuntime.activityHandlers.removeAll { $0 === handler }
+            }
+    }
+}
+
+extension AppRuntime {
+    /// Live `onContinueUserActivity` handlers.
+    static var activityHandlers: [_ActivityHandler] = []
+
+    /// Delivers a continued user activity; returns false if no view handles its type.
+    /// Whether a view handles continued activities of this type.
+    public static func handlesUserActivity(type: String) -> Bool {
+        activityHandlers.contains { $0.activityType == type }
+    }
+
+    @discardableResult
+    public static func continueUserActivity(_ activity: NSUserActivity) -> Bool {
+        let matching = activityHandlers.filter { $0.activityType == activity.activityType }
+        for handler in matching { handler.action(activity) }
+        return !matching.isEmpty
     }
 }

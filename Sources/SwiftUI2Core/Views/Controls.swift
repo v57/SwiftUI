@@ -1084,6 +1084,7 @@ struct _SliderControl: View {
             let slider = view.attribute.value
             var resolved = ResolvedSlider(value: slider.value.wrappedValue, range: slider.range, isEnabled: environment.value.isEnabled)
             resolved.controlSize = environment.value.controlSize
+            resolved.showsThumb = environment.value._sliderThumbVisibility != .hidden
             return .slider(resolved)
         }
         let viewAttribute = view.attribute
@@ -1119,5 +1120,21 @@ struct _SliderControl: View {
             }
             return ControlLayoutComputer(metrics: metrics, path: path, tracer: tracer)
         })
+    }
+}
+
+struct SliderThumbVisibilityKey: EnvironmentKey { static let defaultValue = Visibility.automatic }
+
+extension EnvironmentValues {
+    var _sliderThumbVisibility: Visibility {
+        get { self[SliderThumbVisibilityKey.self] }
+        set { self[SliderThumbVisibilityKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// Whether sliders show their thumb (a hidden thumb leaves a progress-like track).
+    public func sliderThumbVisibility(_ visibility: Visibility) -> some View {
+        environment(\._sliderThumbVisibility, visibility)
     }
 }

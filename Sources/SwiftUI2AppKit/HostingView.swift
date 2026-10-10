@@ -463,6 +463,18 @@ public enum AppKitAppRunner {
             }
         }
 
+        /// Handoff / Spotlight activities: `onContinueUserActivity` handlers first.
+        func application(_ application: NSApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void) -> Bool {
+            MainActor.assumeIsolated {
+                if AppRuntime.continueUserActivity(userActivity) { return true }
+                return AppKitAppRunner.userDelegate?.application?(application, continue: userActivity, restorationHandler: restorationHandler) ?? false
+            }
+        }
+
+        func application(_ application: NSApplication, willContinueUserActivityWithType userActivityType: String) -> Bool {
+            MainActor.assumeIsolated { AppRuntime.handlesUserActivity(type: userActivityType) }
+        }
+
         /// Dock icon click with no windows: reopen the main window (like SwiftUI).
         func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
             MainActor.assumeIsolated {

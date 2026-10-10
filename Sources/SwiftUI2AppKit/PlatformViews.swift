@@ -891,8 +891,21 @@ final class ColorWellNodeView: FlippedView, PlatformNodeView {
     }
 }
 
+/// A slider cell that can omit its knob (`sliderThumbVisibility(.hidden)`).
+final class ThumbOptionalSliderCell: NSSliderCell {
+    var showsThumb = true
+    override func drawKnob(_ knobRect: NSRect) {
+        if showsThumb { super.drawKnob(knobRect) }
+    }
+}
+
 /// Reports the drag around AppKit's tracking loop (`onEditingChanged`).
 final class EditingSlider: NSSlider {
+    override class var cellClass: AnyClass? {
+        get { ThumbOptionalSliderCell.self }
+        set {}
+    }
+
     var editingChanged: ((Bool) -> Void)?
 
     override func mouseDown(with event: NSEvent) {
@@ -922,6 +935,10 @@ final class SliderNodeView: FlippedView, PlatformNodeView {
         slider.doubleValue = model.value
         slider.isEnabled = model.isEnabled
         slider.controlSize = model.controlSize == .mini ? .mini : model.controlSize == .small ? .small : .regular
+        if let cell = slider.cell as? ThumbOptionalSliderCell, cell.showsThumb != model.showsThumb {
+            cell.showsThumb = model.showsThumb
+            slider.needsDisplay = true
+        }
         slider.frame = bounds
         slider.editingChanged = { [weak self] editing in self?.node?.actions.editingChanged?(editing) }
     }
