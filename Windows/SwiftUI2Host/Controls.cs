@@ -157,14 +157,20 @@ sealed class ButtonNode : NodeView
 /// <summary>Toggle: a native ToggleSwitch, CheckBox or RadioButton.</summary>
 sealed class ToggleNode : NodeView
 {
+    /// The native control scaled uniformly to the frame SwiftUI's layout gave it (forms use small
+    /// controls), so it's never clipped.
+    readonly Viewbox box = new() { Stretch = Stretch.Uniform, StretchDirection = StretchDirection.Both };
     Control? widget;
     int widgetStyle = -1;
     bool updating;
     bool mixed;
 
-    public ToggleNode(HostView host, int id) : base(host, id, Kinds.Toggle) { }
+    public ToggleNode(HostView host, int id) : base(host, id, Kinds.Toggle)
+    {
+        Element.Children.Add(box);
+    }
 
-    protected override int FirstNodeChildIndex => widget != null ? 1 : 0;
+    protected override int FirstNodeChildIndex => 1;
 
     public override void ApplyContent(Reader r)
     {
@@ -175,8 +181,8 @@ sealed class ToggleNode : NodeView
         r.U8(); // control size
         if (style != widgetStyle)
         {
-            if (widget != null) Element.Children.Remove(widget);
             widget = Widgets.Toggle(style);
+            box.Child = widget;
             switch (widget)
             {
                 case ToggleSwitch s: s.Toggled += (_, _) => Changed(s.IsOn); break;
@@ -185,7 +191,6 @@ sealed class ToggleNode : NodeView
                     b.Unchecked += (_, _) => Changed(false);
                     break;
             }
-            Element.Children.Insert(0, widget);
             widgetStyle = style;
             Layout();
         }
@@ -210,8 +215,8 @@ sealed class ToggleNode : NodeView
     void Layout()
     {
         if (widget == null) return;
-        widget.Width = Math.Max(0, FrameWidth);
-        widget.Height = Math.Max(0, FrameHeight);
+        box.Width = Math.Max(0, FrameWidth);
+        box.Height = Math.Max(0, FrameHeight);
     }
 }
 
@@ -390,8 +395,7 @@ sealed class SliderNode : NodeView
 
     protected override void FrameSizeChanged()
     {
-        slider.Width = Math.Max(0, FrameWidth);
-        slider.Height = Math.Max(0, FrameHeight);
+        CenterVertically(slider, Math.Max(0, FrameWidth));
     }
 }
 

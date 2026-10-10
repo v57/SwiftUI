@@ -96,8 +96,24 @@ abstract class NodeView
         Element.Tag = this;
     }
 
+    static bool warnedNonFinite;
+
+    /// XAML fails fast (E_UNEXPECTED while rendering) on NaN/infinite geometry; such values are
+    /// dropped (logged once).
+    protected static float Finite(float value, float fallback = 0)
+    {
+        if (float.IsFinite(value)) return value;
+        if (!warnedNonFinite)
+        {
+            warnedNonFinite = true;
+            Console.Error.WriteLine("[SwiftUI2Host] warning: non-finite geometry from the renderer (ignored)");
+        }
+        return fallback;
+    }
+
     public void SetFrame(float x, float y, float w, float h)
     {
+        x = Finite(x); y = Finite(y); w = Finite(w); h = Finite(h);
         var sizeChanged = w != FrameWidth || h != FrameHeight;
         FrameX = x; FrameY = y; FrameWidth = w; FrameHeight = h;
         Canvas.SetLeft(Element, x);
@@ -113,6 +129,27 @@ abstract class NodeView
 
     /// <summary>The frame's size changed.</summary>
     protected virtual void FrameSizeChanged() { }
+
+    /// <summary>
+    /// Places a native control whose template needs its own height (sliders, switches, check
+    /// boxes: ~32 epx with the visual centered) at its natural height, centered vertically in the
+    /// frame, instead of squeezing (clipping) it to the frame's height. `width` NaN keeps its
+    /// natural width.
+    /// </summary>
+    protected void CenterVertically(FrameworkElement control, double width)
+    {
+        control.Width = width;
+        control.Height = double.NaN;
+        void Place() => Canvas.SetTop(control, Math.Round((FrameHeight - control.ActualHeight) / 2));
+        if (!centered.Contains(control))
+        {
+            centered.Add(control);
+            control.SizeChanged += (_, _) => Place();
+        }
+        Place();
+    }
+
+    readonly HashSet<FrameworkElement> centered = new();
 
     // MARK: Children
 
@@ -186,12 +223,13 @@ abstract class NodeView
 
     public void SetPresentation(Presentation p)
     {
-        presentation = p;
+        presentation = new Presentation(Finite(p.Opacity, 1), Finite(p.ScaleX, 1), Finite(p.ScaleY, 1), Finite(p.AnchorX, 0.5f),
+                                        Finite(p.AnchorY, 0.5f), Finite(p.OffsetX), Finite(p.OffsetY), Finite(p.Rotation));
         UpdateAlpha();
         UpdateTransform();
     }
 
-    void UpdateAlpha() => Element.Opacity = baseAlpha * presentation.Opacity;
+    void UpdateAlpha() => Element.Opacity = Math.Clamp(baseAlpha * presentation.Opacity, 0, 1);
 
     static Matrix3x2 Anchored(float tx, float ty, float sx, float sy, float degrees, float ax, float ay) =>
         Matrix3x2.CreateTranslation(-ax, -ay) * Matrix3x2.CreateScale(sx, sy) * Matrix3x2.CreateRotation(degrees * MathF.PI / 180) *
@@ -205,8 +243,14 @@ abstract class NodeView
         if (EffectTransform is { } e) m = Anchored(e[0], e[1], e[2], e[3], e[4], e[5] * w, e[6] * h);
         var p = presentation;
         if (!p.IsIdentity) m *= Anchored(p.OffsetX, p.OffsetY, p.ScaleX, p.ScaleY, p.Rotation, p.AnchorX * w, p.AnchorY * h);
+        if (!float.IsFinite(m.M11) || !float.IsFinite(m.M12) || !float.IsFinite(m.M21) || !float.IsFinite(m.M22) || !float.IsFinite(m.M31) || !float.IsFinite(m.M32))
+        {
+            Finite(float.NaN);
+            m = Matrix3x2.Identity;
+        }
         if (EffectProjection is { } q)
         {
+            if (q.Any(v => !float.IsFinite(v))) { Finite(float.NaN); EffectProjection = null; UpdateTransform(); return; }
             // [x y 1] · Q · M (row vectors), as a 4x4 projection matrix in local coordinates.
             var a = new Matrix4x4(q[0], q[1], 0, q[2], q[3], q[4], 0, q[5], 0, 0, 1, 0, q[6], q[7], 0, q[8]);
             var b = new Matrix4x4(m.M11, m.M12, 0, 0, m.M21, m.M22, 0, 0, 0, 0, 1, 0, m.M31, m.M32, 0, 1);
