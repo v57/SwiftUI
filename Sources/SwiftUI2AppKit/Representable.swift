@@ -245,7 +245,8 @@ extension NSColor {
 #if canImport(AppKit)
 extension View {
     /// AppKit content types (`.password`, `.username`, `.oneTimeCode`).
-    public func textContentType(_ type: NSTextContentType?) -> some View { self }
+    /// Autofill hints for text fields (username, password, one-time code, ...).
+    public func textContentType(_ type: NSTextContentType?) -> some View { environment(\._textContentType, type?.rawValue) }
 }
 #endif
 

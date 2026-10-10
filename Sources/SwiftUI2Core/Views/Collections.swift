@@ -1474,24 +1474,24 @@ struct _ViewThatFitsLayout: Layout, Equatable {
 
 extension View {
     public func searchable(text: Binding<String>, placement: SearchFieldPlacement = .automatic, prompt: Text? = nil) -> some View {
-        // macOS 26 search field: a 28pt capsule above the content (measured in a sidebar).
-        VStack(spacing: 0) {
-            HStack(spacing: 5) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                _SearchFieldInput(prompt: prompt?.plainString ?? "Search", text: text)
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 28)
-            .background(Capsule().fill(Color.searchFieldFill))
-            .padding(.horizontal, 10)
-            .padding(.top, 9)
-            .padding(.bottom, 12)
-            self
-        }
+        _Searchable(content: self, text: text, isPresented: nil, prompt: prompt?.plainString ?? "Search")
     }
 
     public func searchable<S: StringProtocol>(text: Binding<String>, placement: SearchFieldPlacement = .automatic, prompt: S) -> some View {
         searchable(text: text, placement: placement, prompt: Text(prompt))
+    }
+
+    public func searchable(text: Binding<String>, placement: SearchFieldPlacement = .automatic, prompt: LocalizedStringKey) -> some View {
+        searchable(text: text, placement: placement, prompt: Text(prompt))
+    }
+
+    /// `isPresented` follows (and drives) whether the search field is active.
+    public func searchable(text: Binding<String>, isPresented: Binding<Bool>, placement: SearchFieldPlacement = .automatic, prompt: Text? = nil) -> some View {
+        _Searchable(content: self, text: text, isPresented: isPresented, prompt: prompt?.plainString ?? "Search")
+    }
+
+    public func searchable<S: StringProtocol>(text: Binding<String>, isPresented: Binding<Bool>, placement: SearchFieldPlacement = .automatic, prompt: S) -> some View {
+        searchable(text: text, isPresented: isPresented, placement: placement, prompt: Text(prompt))
     }
 
     public func refreshable(action: @escaping @Sendable () async -> Void) -> some View { self }

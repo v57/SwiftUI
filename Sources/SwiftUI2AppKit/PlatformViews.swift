@@ -426,6 +426,18 @@ final class TextFieldNodeView: FlippedView, PlatformNodeView, NSTextFieldDelegat
                 textView = text
             }
             if textView!.string != model.text { textView!.string = model.text }
+            textView!.isAutomaticSpellingCorrectionEnabled = !model.isAutocorrectionDisabled
+            textView!.isAutomaticTextReplacementEnabled = !model.isAutocorrectionDisabled
+            textView!.usesFontPanel = model.showsFormattingControls
+            textView!.usesRuler = model.showsFormattingControls
+            if #available(macOS 15.0, *) {
+                switch model.writingTools._kind {
+                case .disabled: textView!.writingToolsBehavior = .none
+                case .limited: textView!.writingToolsBehavior = .limited
+                case .complete: textView!.writingToolsBehavior = .complete
+                case .automatic: textView!.writingToolsBehavior = .default
+                }
+            }
             textView!.usesFindBar = model.isFindEnabled
             textView!.isIncrementalSearchingEnabled = model.isFindEnabled
             if model.showsFindNavigator != showsFindBar {
@@ -454,6 +466,9 @@ final class TextFieldNodeView: FlippedView, PlatformNodeView, NSTextFieldDelegat
             }
             let field = self.field!
             if field.stringValue != model.text { field.stringValue = model.text }
+            isAutocorrectionDisabled = model.isAutocorrectionDisabled
+            field.contentType = model.contentType.map { NSTextContentType(rawValue: $0) }
+            field.isAutomaticTextCompletionEnabled = !model.isAutocorrectionDisabled
             field.placeholderString = model.placeholder
             field.isEnabled = model.isEnabled
             field.font = AppKitText.font(model.font)
@@ -493,7 +508,16 @@ final class TextFieldNodeView: FlippedView, PlatformNodeView, NSTextFieldDelegat
         if let field { node?.actions.setText?(field.stringValue) }
     }
 
-    func controlTextDidBeginEditing(_ obj: Notification) { node?.actions.focusChanged?(true) }
+    private var isAutocorrectionDisabled = false
+
+    func controlTextDidBeginEditing(_ obj: Notification) {
+        // The shared field editor takes this field's autocorrection setting.
+        if let editor = obj.userInfo?["NSFieldEditor"] as? NSTextView {
+            editor.isAutomaticSpellingCorrectionEnabled = !isAutocorrectionDisabled
+            editor.isAutomaticTextReplacementEnabled = !isAutocorrectionDisabled
+        }
+        node?.actions.focusChanged?(true)
+    }
     func controlTextDidEndEditing(_ obj: Notification) { node?.actions.focusChanged?(false) }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {

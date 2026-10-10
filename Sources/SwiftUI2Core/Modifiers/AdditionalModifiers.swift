@@ -9,7 +9,6 @@ import CoreGraphics
 
 public enum SymbolVariableValueMode: Sendable { case color, draw }
 public enum SymbolColorRenderingMode: Sendable { case flat, gradient }
-public enum SearchPresentationToolbarBehavior: Sendable { case automatic, avoidHidingContent }
 public enum ContentMarginPlacement: Sendable { case automatic, scrollContent, scrollIndicators }
 public enum HoverEffect: Sendable { case automatic, highlight, lift }
 public enum BadgeProminence: Sendable { case standard, increased, decreased }
@@ -25,10 +24,6 @@ public enum ScrollEdgeEffectStyle: Sendable { case automatic, hard, soft }
 public enum InspectorPlacement: Sendable { case automatic }
 
 extension View {
-    public func searchPresentationToolbarBehavior(_ behavior: SearchPresentationToolbarBehavior) -> some View { self }
-    public func searchSuggestions<S: View>(@ViewBuilder _ suggestions: () -> S) -> some View { self }
-    public func searchScopes<V: Hashable, S: View>(_ scope: Binding<V>, @ViewBuilder scopes: () -> S) -> some View { self }
-    public func searchCompletion<S: StringProtocol>(_ completion: S) -> some View { self }
     public func typesettingLanguage(_ language: Locale.Language, isEnabled: Bool = true) -> some View { self }
     public func toolbarTitleMenu<C: View>(@ViewBuilder content: () -> C) -> some View { self }
     public func labelsVisibility(_ visibility: Visibility) -> some View { environment(\.labelsHidden, visibility == .hidden) }

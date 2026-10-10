@@ -638,7 +638,9 @@ struct _TextInput: View {
                 font: (env.font ?? .body).resolve(), isSecure: field.kind == .secure, isMultiline: field.kind == .editor,
                 style: field.kind == .editor ? (env.textEditorStyle == .plain ? .plain : .automatic) : env.textFieldStyle, wantsFocus: env.focusRequest?.isFocused() ?? false,
                 color: ForegroundStyle()._resolveColor(in: env), wraps: field.kind == .verticalField,
-                isFindEnabled: !env.findDisabled, showsFindNavigator: env.findNavigatorPresented?.wrappedValue ?? false
+                isFindEnabled: !env.findDisabled, showsFindNavigator: env.findNavigatorPresented?.wrappedValue ?? false,
+                isAutocorrectionDisabled: env.autocorrectionDisabled, contentType: env._textContentType,
+                writingTools: env.writingToolsBehavior, showsFormattingControls: env.textInputFormattingControlVisibility == .visible
             ))
         }
         let viewAttribute = view.attribute
@@ -729,16 +731,29 @@ public struct TextField<Label: View>: View {
     var axis: Axis = .horizontal
     @Environment(\.isInForm) private var isInForm
     @Environment(\.labelsHidden) private var labelsHidden
+    @Environment(\.textInputSuggestions) private var suggestions
+    @Environment(\.focusRequest) private var externalFocus
+    @FocusState private var isEditing: Bool
+
+    /// The field with `textInputSuggestions` (tracking its own focus unless `focused` is set).
+    private func input(_ prompt: String) -> some View {
+        let editing = $isEditing
+        return _TextInput(text: text, prompt: prompt, kind: axis == .vertical ? .verticalField : .field)
+            .modifier(_OptionalFocus(binding: suggestions != nil && externalFocus == nil ? editing : nil))
+            .modifier(_SuggestionsPopover(suggestions: suggestions, isEditing: isEditing || (externalFocus?.isFocused() ?? false), text: text) { editing.wrappedValue = false })
+    }
 
     public var body: some View {
         if isInForm && !labelsHidden {
             HStack {
                 Text(prompt)
                 Spacer(minLength: 16)
-                _TextInput(text: text, prompt: "", kind: .field)
+                input("")
                     .textFieldStyle(.plain)
                     .frame(maxWidth: 240)
             }
+        } else if suggestions != nil {
+            input(prompt)
         } else {
             _TextInput(text: text, prompt: prompt, kind: axis == .vertical ? .verticalField : .field)
         }

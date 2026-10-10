@@ -80,6 +80,14 @@ public struct ResolvedTextField: Equatable, Sendable {
     /// Text editors: the find bar is available (`findDisabled`) / shown (`findNavigator`).
     public var isFindEnabled = true
     public var showsFindNavigator = false
+    /// `autocorrectionDisabled`.
+    public var isAutocorrectionDisabled = false
+    /// `textContentType` (an autofill content type identifier).
+    public var contentType: String?
+    /// `writingToolsBehavior` (text editors).
+    public var writingTools = WritingToolsBehavior.automatic
+    /// Text editors offer the rich-text formatting bar (`textInputFormattingControlVisibility`).
+    public var showsFormattingControls = false
 }
 
 public struct ResolvedSlider: Equatable, Sendable {
