@@ -10,9 +10,7 @@ import CoreGraphics
 public enum SymbolVariableValueMode: Sendable { case color, draw }
 public enum SymbolColorRenderingMode: Sendable { case flat, gradient }
 public enum SearchPresentationToolbarBehavior: Sendable { case automatic, avoidHidingContent }
-public enum PresentationSizing: Sendable { case automatic, form, page, fitted }
 public enum ContentMarginPlacement: Sendable { case automatic, scrollContent, scrollIndicators }
-public enum DialogSeverity: Sendable { case automatic, critical, standard }
 public enum HoverEffect: Sendable { case automatic, highlight, lift }
 public enum BadgeProminence: Sendable { case standard, increased, decreased }
 public enum ButtonBorderShape: Sendable {
@@ -31,16 +29,7 @@ extension View {
     public func searchSuggestions<S: View>(@ViewBuilder _ suggestions: () -> S) -> some View { self }
     public func searchScopes<V: Hashable, S: View>(_ scope: Binding<V>, @ViewBuilder scopes: () -> S) -> some View { self }
     public func searchCompletion<S: StringProtocol>(_ completion: S) -> some View { self }
-    public func presentationBackground<S: ShapeStyle>(_ style: S) -> some View { self }
-    public func presentationCornerRadius(_ radius: CGFloat?) -> some View { self }
-    public func presentationSizing(_ sizing: PresentationSizing) -> some View { self }
     public func typesettingLanguage(_ language: Locale.Language, isEnabled: Bool = true) -> some View { self }
-    public func dialogIcon(_ icon: Image?) -> some View { self }
-    public func dialogSeverity(_ severity: DialogSeverity) -> some View { self }
-    public func dialogSuppressionToggle(isSuppressed: Binding<Bool>) -> some View { self }
-    public func fileDialogDefaultDirectory(_ url: URL?) -> some View { self }
-    public func fileDialogMessage(_ message: Text?) -> some View { self }
-    public func fileDialogConfirmationLabel(_ label: Text?) -> some View { self }
     public func toolbarTitleMenu<C: View>(@ViewBuilder content: () -> C) -> some View { self }
     public func labelsVisibility(_ visibility: Visibility) -> some View { environment(\.labelsHidden, visibility == .hidden) }
     public func allowsTightening(_ flag: Bool) -> some View { self }

@@ -23,6 +23,18 @@ final class PresentationEntry {
     /// Presenter frame in host coordinates (anchored presentations).
     let anchor: Attribute<ViewGeometry>?
     let dismiss: @MainActor () -> Void
+    /// The content's `PresentationAppearance` (observed by the chrome): blocks or confirms
+    /// interactive dismissal, sets background, corner radius and sizing.
+    let appearanceBox = _PresentationAppearanceBox()
+    var appearance: PresentationAppearance { appearanceBox.appearance }
+
+    /// Escape key / click outside: honors `interactiveDismissDisabled` and
+    /// `dismissalConfirmationDialog`.
+    func interactiveDismiss() {
+        if let confirm = appearance.dismissConfirmation { confirm(); return }
+        if appearance.isInteractiveDismissDisabled { return }
+        dismiss()
+    }
 
     init(id: Int, kind: Kind, environment: Attribute<EnvironmentValues>, anchor: Attribute<ViewGeometry>?, dismiss: @escaping @MainActor () -> Void, make: @escaping @MainActor (_ViewInputs) -> _ViewOutputs) {
         self.id = id
@@ -136,7 +148,9 @@ struct _PresentationLayer: View {
                     var inputs = placement
                     inputs.environment = entry.environment
                     let chrome = Attribute<_PresentationChrome>(placement.subgraph) {
-                        _PresentationChrome(entry: entry, anchor: entry.anchor?.value.frame)
+                        // Only anchored presentations read the presenter's frame (a presenter
+                        // inside another presentation lives in this layer).
+                        _PresentationChrome(entry: entry, anchor: entry.kind == .popover || entry.kind == .menu ? entry.anchor?.value.frame : nil)
                     }
                     return _PresentationChrome._makeView(view: _GraphValue(chrome), inputs: inputs)
                 }))
@@ -154,7 +168,14 @@ struct _PresentationContent: View {
 
     static func _makeView(view: _GraphValue<Self>, inputs: _ViewInputs) -> _ViewOutputs {
         let entry = AnyAttribute.withoutDependencies { view.attribute.value.entry }
-        return entry.make(inputs)
+        let outputs = entry.make(inputs.requesting(PresentationAppearanceKey.self))
+        if let appearance = outputs.preferences[PresentationAppearanceKey.self] {
+            let host = inputs.host
+            let observer = Attribute<PresentationAppearance>(inputs.subgraph, isEqual: { $0 == $1 }) { appearance.value }
+            observer.onChange = { value in host.enqueueAfterUpdate { entry.appearanceBox.appearance = value } }
+            observer.isEager = true
+        }
+        return outputs
     }
 }
 
@@ -169,14 +190,18 @@ struct _PresentationChrome: View {
     let anchor: CGRect?
 
     var body: some View {
+        let entry = self.entry
+        let appearance = entry.appearanceBox.appearance
+        let radius = appearance.cornerRadius ?? 10
         switch entry.kind {
         case .sheet:
             ZStack {
                 Color.black.opacity(0.25)
                 _PresentationContent(entry: entry)
-                    .frame(minWidth: 320, minHeight: 160)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.controlBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .frame(minWidth: appearance.sizing.minimumSize.width, idealWidth: appearance.sizing.idealSize?.width,
+                           minHeight: appearance.sizing.minimumSize.height, idealHeight: appearance.sizing.idealSize?.height)
+                    .background(RoundedRectangle(cornerRadius: radius).fill(appearance.background ?? AnyShapeStyle(Color.controlBackground)))
+                    .clipShape(RoundedRectangle(cornerRadius: radius))
                     .shadow(color: .black.opacity(0.3), radius: 16, y: 6)
                     .padding(40)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -193,7 +218,7 @@ struct _PresentationChrome: View {
             }
         case .popover, .menu:
             _AnchoredLayout(anchor: anchor ?? .zero, gap: entry.kind == .menu ? 2 : 8) {
-                Color.clear.contentShape(Rectangle()).onTapGesture { entry.dismiss() }
+                Color.clear.contentShape(Rectangle()).onTapGesture { entry.interactiveDismiss() }
                 _PresentationContent(entry: entry)
                     .padding(entry.kind == .menu ? 4 : 12)
                     .background(RoundedRectangle(cornerRadius: 8).fill(Color.controlBackground))
@@ -334,7 +359,6 @@ extension View {
         }, kind: .confirmationDialog))
     }
 
-    public func interactiveDismissDisabled(_ isDisabled: Bool = true) -> some View { self }
     public func presentationDetents(_ detents: Set<PresentationDetent>) -> some View { self }
     public func presentationDragIndicator(_ visibility: Visibility) -> some View { self }
 }
@@ -360,12 +384,28 @@ struct _DialogContent: View {
     let message: AnyView?
     let actions: AnyView
     let vertical: Bool
+    @Environment(\.dialogIcon) private var icon
+    @Environment(\.dialogSeverity) private var severity
+    @Environment(\.dialogSuppression) private var suppression
 
     var body: some View {
         VStack(spacing: 12) {
+            if icon != nil || severity == .critical {
+                ZStack(alignment: .bottomTrailing) {
+                    (icon ?? Image(systemName: "app.dashed")).resizable().scaledToFit().frame(width: 56, height: 56)
+                    if severity == .critical {
+                        Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 22)).foregroundStyle(Color.yellow)
+                    }
+                }
+            }
             title.font(.headline).multilineTextAlignment(.center)
             if let message {
                 message.font(.callout).multilineTextAlignment(.center)
+            }
+            if let suppression {
+                Toggle(isOn: suppression.binding) { suppression.label.font(.callout) }
+                    .toggleStyle(.checkbox)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             if vertical {
                 VStack(spacing: 6) { actions }.buttonStyle(.bordered).frame(maxWidth: .infinity)

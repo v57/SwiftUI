@@ -205,6 +205,10 @@ final class SceneWindowDelegate: NSObject, NSWindowDelegate {
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         MainActor.assumeIsolated {
+            if let confirm = configuration.closeConfirmation {
+                confirm()
+                return false
+            }
             guard isDocument, let handle = AppKitAppRunner.documentHandle(of: sender), handle.isEdited else { return true }
             let alert = NSAlert()
             alert.messageText = "Do you want to save the changes made to the document “\(sender.title)”?"

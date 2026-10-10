@@ -284,7 +284,7 @@ public final class ViewGraph: AttributeGraphDelegate {
     @discardableResult
     public func dismissTopPresentation() -> Bool {
         guard let top = presentations.top else { return false }
-        top.dismiss()
+        top.interactiveDismiss()
         return true
     }
 

@@ -253,8 +253,28 @@ public final class AppKitBackend: RenderBackend {
             panel = NSSavePanel()
             if let name = request.defaultFilename { panel.nameFieldStringValue = name }
         }
-        if !types.isEmpty, !types.contains(.data), !types.contains(.item) { panel.allowedContentTypes = types }
+        if !types.isEmpty, !types.contains(.data), !types.contains(.item), !types.contains(.folder) { panel.allowedContentTypes = types }
+        let options = request.options
+        if let message = options.message { panel.message = message }
+        if let prompt = options.confirmationLabel { panel.prompt = prompt }
+        if let directory = options.defaultDirectory { panel.directoryURL = directory }
+        if let label = options.filenameLabel { panel.nameFieldLabel = label }
+        if let identifier = options.customizationID { panel.identifier = NSUserInterfaceItemIdentifier(identifier) }
+        if let extensions = options.showsFileExtensions { panel.isExtensionHidden = !extensions }
+        panel.showsHiddenFiles = options.showsHiddenFiles
+        panel.treatsFilePackagesAsDirectories = options.treatsPackagesAsDirectories
+        panel.canCreateDirectories = true
+        if let open = panel as? NSOpenPanel {
+            open.resolvesAliases = !options.importsUnresolvedAliases
+            if request.contentTypes == [UTType.folder.identifier] {
+                open.canChooseFiles = false
+                open.canChooseDirectories = true
+            }
+        }
+        let validator = FilePanelValidator(isEnabled: options.isURLEnabled)
+        if options.isURLEnabled != nil { panel.delegate = validator }
         let finish: (NSApplication.ModalResponse) -> Void = { response in
+            _ = validator
             let urls = response == .OK ? ((panel as? NSOpenPanel)?.urls ?? panel.url.map { [$0] }) : nil
             MainActor.assumeIsolated { completion(urls) }
         }
@@ -424,3 +444,10 @@ extension SwiftUI2Core.Path {
     }
 }
 #endif
+
+/// `fileDialogURLEnabled`: which URLs a panel lets the user pick.
+final class FilePanelValidator: NSObject, NSOpenSavePanelDelegate {
+    let isEnabled: (@Sendable (URL) -> Bool)?
+    init(isEnabled: (@Sendable (URL) -> Bool)?) { self.isEnabled = isEnabled }
+    func panel(_ sender: Any, shouldEnable url: URL) -> Bool { isEnabled?(url) ?? true }
+}

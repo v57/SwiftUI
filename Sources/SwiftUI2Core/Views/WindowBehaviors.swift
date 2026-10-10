@@ -33,6 +33,8 @@ public struct WindowConfiguration: Equatable, @unchecked Sendable {
     public var toolbarColorScheme: ColorScheme?
     public var allowsActivationEvents: Bool?
     public var resizeObservers: [WindowResizeObserver] = []
+    /// `dismissalConfirmationDialog` in a window: closing asks first.
+    public var closeConfirmation: (@MainActor () -> Void)?
 
     public init() {}
 
@@ -43,6 +45,7 @@ public struct WindowConfiguration: Equatable, @unchecked Sendable {
             && lhs.isToolbarHidden == rhs.isToolbarHidden && lhs.isToolbarBackgroundHidden == rhs.isToolbarBackgroundHidden
             && lhs.toolbarColorScheme == rhs.toolbarColorScheme && lhs.allowsActivationEvents == rhs.allowsActivationEvents
             && lhs.resizeObservers.map(ObjectIdentifier.init) == rhs.resizeObservers.map(ObjectIdentifier.init)
+            && (lhs.closeConfirmation == nil) == (rhs.closeConfirmation == nil)
     }
 
     /// `next` (a later / inner view) overrides what it sets.
@@ -60,6 +63,7 @@ public struct WindowConfiguration: Equatable, @unchecked Sendable {
         toolbarColorScheme = next.toolbarColorScheme ?? toolbarColorScheme
         allowsActivationEvents = next.allowsActivationEvents ?? allowsActivationEvents
         resizeObservers += next.resizeObservers
+        closeConfirmation = next.closeConfirmation ?? closeConfirmation
     }
 }
 

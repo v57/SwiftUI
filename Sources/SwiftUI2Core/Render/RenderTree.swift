@@ -296,6 +296,31 @@ extension RenderBackend {
     }
 }
 
+/// Panel customization set by `fileDialog…` modifiers.
+public struct FileDialogOptions: Equatable, @unchecked Sendable {
+    public var message: String?
+    public var confirmationLabel: String?
+    public var defaultDirectory: URL?
+    public var showsHiddenFiles = false
+    public var treatsPackagesAsDirectories = false
+    public var showsFileExtensions: Bool?
+    public var customizationID: String?
+    public var importsUnresolvedAliases = false
+    public var filenameLabel: String?
+    /// Which URLs can be chosen (`fileDialogURLEnabled`).
+    public var isURLEnabled: (@Sendable (URL) -> Bool)?
+
+    public init() {}
+
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.message == rhs.message && lhs.confirmationLabel == rhs.confirmationLabel && lhs.defaultDirectory == rhs.defaultDirectory
+            && lhs.showsHiddenFiles == rhs.showsHiddenFiles && lhs.treatsPackagesAsDirectories == rhs.treatsPackagesAsDirectories
+            && lhs.showsFileExtensions == rhs.showsFileExtensions && lhs.customizationID == rhs.customizationID
+            && lhs.importsUnresolvedAliases == rhs.importsUnresolvedAliases && lhs.filenameLabel == rhs.filenameLabel
+            && (lhs.isURLEnabled == nil) == (rhs.isURLEnabled == nil)
+    }
+}
+
 /// A native file panel request (`fileImporter` / `fileExporter`).
 public struct FileDialogRequest: Equatable, Sendable {
     public enum Kind: Equatable, Sendable { case open, save }
@@ -305,6 +330,8 @@ public struct FileDialogRequest: Equatable, Sendable {
     public var allowsMultipleSelection = false
     public var canChooseDirectories = false
     public var defaultFilename: String?
+    /// Options from `fileDialogMessage`, `fileDialogDefaultDirectory`, ...
+    public var options = FileDialogOptions()
 
     public init(kind: Kind, contentTypes: [String], allowsMultipleSelection: Bool = false, canChooseDirectories: Bool = false, defaultFilename: String? = nil) {
         self.kind = kind
