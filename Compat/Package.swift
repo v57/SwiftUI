@@ -10,8 +10,8 @@ let nonApple: [Platform] = [.android, .linux, .windows]
 
 /// A module named `Combine` can't even be built for Apple platforms (Apple's Dispatch imports the
 /// real one), so it only exists when cross-compiling (`Android/scripts/swift-android` sets this)
-/// or building natively on Linux; on macOS the product is an empty placeholder that nothing links.
-#if os(Linux)
+/// or building natively on Linux or Windows; on macOS the product is an empty placeholder that nothing links.
+#if os(Linux) || os(Windows)
 let crossCompiling = true
 #else
 let crossCompiling = Context.environment["SWIFTUI2_CROSS_COMPILE"] != nil

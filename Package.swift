@@ -12,8 +12,7 @@ import PackageDescription
 //
 //   SwiftUI2Gtk        Linux backend (GTK 3: cairo/Pango drawing, native text entry).
 //   SwiftUI2Android    Android backend (Swift renderer + Kotlin host).
-//
-// Future backends (SwiftUI2WinUI) plug in exactly like SwiftUI2AppKit.
+//   SwiftUI2WinUI      Windows backend (Swift renderer + C# WinUI 3 host, see Windows/).
 
 let nonApple: [Platform] = [.android, .linux, .windows]
 
@@ -71,6 +70,9 @@ let package = Package(
             linkerSettings: [.linkedLibrary("android", .when(platforms: [.android])), .linkedLibrary("log", .when(platforms: [.android]))]
         ),
         .target(name: "SwiftUI2Android", dependencies: ["SwiftUI2Core", "CSwiftUI2Android"]),
+        // Windows backend: Swift renderer + C exports; the C# WinUI 3 host lives in Windows/.
+        .target(name: "CSwiftUI2WinUI"),
+        .target(name: "SwiftUI2WinUI", dependencies: ["SwiftUI2Core", "CSwiftUI2WinUI"]),
         // GTK 3 backend (Linux): `apt install libgtk-3-dev`.
         .systemLibrary(name: "CGtk3", pkgConfig: "gtk+-3.0", providers: [.apt(["libgtk-3-dev"])]),
         .target(name: "SwiftUI2Gtk", dependencies: ["SwiftUI2Core", .target(name: "CGtk3", condition: .when(platforms: [.linux]))]),
@@ -85,6 +87,7 @@ let package = Package(
                 .target(name: "SwiftUI2AppKit", condition: .when(platforms: [.macOS])),
                 .target(name: "SwiftUI2Android", condition: .when(platforms: [.android])),
                 .target(name: "SwiftUI2Gtk", condition: .when(platforms: [.linux])),
+                .target(name: "SwiftUI2WinUI", condition: .when(platforms: [.windows])),
                 .target(name: "SwiftUI2SwiftData", condition: .when(platforms: [.macOS, .iOS])),
             ]
         ),
@@ -123,6 +126,12 @@ let buildingOnLinux = true
 let buildingOnLinux = false
 #endif
 
+#if os(Windows)
+let buildingOnWindows = true
+#else
+let buildingOnWindows = false
+#endif
+
 if buildingOnLinux {
     // Native Linux build (GTK backend): Apple-SwiftUI-only and other platforms' backends are left out.
     let excluded: Set<String> = ["ReferenceApp", "parity-recorder", "ParityScenariosSwiftUI", "SwiftUI2AppKit", "SwiftUI2SwiftData",
@@ -135,6 +144,21 @@ if buildingOnLinux {
     // GTK smoke-test app (the Android Gallery's sources).
     package.targets += [.executableTarget(name: "GalleryGtk", dependencies: ["SwiftUI2"])]
     package.products += [.executable(name: "GalleryGtk", targets: ["GalleryGtk"])]
+} else if buildingOnWindows {
+    // Native Windows build (WinUI backend): Apple-SwiftUI-only and other platforms' backends are left out.
+    let excluded: Set<String> = ["ReferenceApp", "ReferenceApp2", "Demo", "parity-recorder", "ParityScenariosSwiftUI",
+                                 "SwiftUI2AppKit", "SwiftUI2SwiftData", "CSwiftUI2Android", "SwiftUI2Android", "CGtk3", "SwiftUI2Gtk"]
+    package.targets.removeAll { excluded.contains($0.name) }
+    package.products.removeAll { excluded.contains($0.name) }
+    for target in package.targets where target.name == "SwiftUI2" {
+        target.dependencies = ["SwiftUI2Core", "SwiftUI2WinUI"]
+    }
+    // Windows apps are DLLs the C# host loads (Windows/scripts/build-app.ps1); the DLL's `main`
+    // (from `@main`) registers the app's scenes. Same sources as the Android apps.
+    package.targets += [.target(name: "DemoWinUI", dependencies: ["SwiftUI2"], path: "Sources/DemoAndroid")]
+    package.products += [.library(name: "DemoWinUI", type: .dynamic, targets: ["DemoWinUI"])]
+    package.targets += [.target(name: "GalleryWinUI", dependencies: ["SwiftUI2"], path: "Sources/GalleryAndroid")]
+    package.products += [.library(name: "GalleryWinUI", type: .dynamic, targets: ["GalleryWinUI"])]
 } else if !crossCompiling {
     package.targets += [
         .testTarget(name: "SwiftUI2AppKitTests", dependencies: ["SwiftUI2"]),

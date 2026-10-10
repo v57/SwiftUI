@@ -21,6 +21,9 @@
 #if os(Linux)
 @_exported import SwiftUI2Gtk
 #endif
+#if os(Windows)
+@_exported import SwiftUI2WinUI
+#endif
 #if canImport(SwiftData)
 @_exported import SwiftUI2SwiftData
 #endif
@@ -31,6 +34,9 @@ extension App {
         #if os(Android)
         // The activity owns the main loop: register the scenes and return to the host.
         AndroidAppRunner.register(AppRuntime.prepare(Self.self))
+        #elseif os(Windows)
+        // The C# host owns the message loop: register the scenes and return to the host.
+        WinUIAppRunner.register(AppRuntime.prepare(Self.self))
         #else
         #if canImport(AppKit)
         AppKitAppRunner.install()
