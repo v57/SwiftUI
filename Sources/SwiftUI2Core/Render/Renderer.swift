@@ -135,12 +135,68 @@ public final class RenderNode {
     }
 }
 
-struct NodeAnimation {
+/// One animation of a node's frame and content. An animation interrupted by a newer one keeps
+/// running underneath it: the newer one starts from the interrupted one's *moving* value, so
+/// motion (and velocity) stays continuous, like SwiftUI's additive/merging animations — e.g. a
+/// spring retargeted on every mouse move follows the pointer instead of restarting from rest.
+@MainActor
+final class NodeAnimation {
     var fromFrame: CGRect
     var fromContent: RenderContent
-    var animation: Animation
-    var start: Double
+    /// The values this animation heads to (kept current while it is the node's top animation).
+    var toFrame: CGRect
+    var toContent: RenderContent
+    let animation: Animation
+    let start: Double
     var group: CompletionGroup?
+    /// The animation this one interrupted (its value is this one's starting point).
+    var previous: NodeAnimation?
+
+    init(fromFrame: CGRect, fromContent: RenderContent, toFrame: CGRect, toContent: RenderContent, animation: Animation, start: Double, group: CompletionGroup?, previous: NodeAnimation? = nil) {
+        self.fromFrame = fromFrame
+        self.fromContent = fromContent
+        self.toFrame = toFrame
+        self.toContent = toContent
+        self.animation = animation
+        self.start = start
+        self.group = group
+        self.previous = previous
+        trim()
+    }
+
+    /// Bounds the chain (rapid retargeting): the oldest animations are frozen at their value.
+    private func trim(depth: Int = 0) {
+        guard let previous else { return }
+        if depth >= 12 {
+            fromFrame = previous.frame(at: start)
+            fromContent = previous.content(at: start)
+            self.previous = nil
+        } else {
+            previous.trim(depth: depth + 1)
+        }
+    }
+
+    /// Samples the chain at `now`; drops interrupted animations that have finished.
+    func value(at now: Double) -> (frame: CGRect, content: RenderContent, finished: Bool) {
+        var from = (fromFrame, fromContent)
+        if let previous {
+            let underlying = previous.value(at: now)
+            if underlying.finished {
+                fromFrame = previous.toFrame
+                fromContent = previous.toContent
+                self.previous = nil
+                from = (fromFrame, fromContent)
+            } else {
+                from = (underlying.frame, underlying.content)
+            }
+        }
+        let (progress, finished) = animation.sample(at: now - start)
+        if finished, previous == nil { return (toFrame, toContent, true) }
+        return (Renderer.lerp(from.0, toFrame, progress), RenderContent.interpolate(from.1, toContent, progress), false)
+    }
+
+    private func frame(at now: Double) -> CGRect { value(at: now).frame }
+    private func content(at now: Double) -> RenderContent { value(at: now).content }
 }
 
 struct TransitionAnimation {
@@ -334,7 +390,7 @@ public final class Renderer {
                         let start = from.offsetBy(dx: -origin.x, dy: -origin.y)
                         let group = groupForCommit()
                         group?.remaining += 1
-                        child.animation = NodeAnimation(fromFrame: start, fromContent: child.content, animation: animation, start: now, group: group)
+                        child.animation = NodeAnimation(fromFrame: start, fromContent: child.content, toFrame: child.targetFrame, toContent: child.targetContent, animation: animation, start: now, group: group)
                         child.frame = start
                         backend.setFrame(of: child.handle!, node: child)
                         animating[ObjectIdentifier(child)] = child
@@ -375,7 +431,9 @@ public final class Renderer {
             if let animation = animation(for: node), created[ObjectIdentifier(node)] == nil {
                 let group = groupForCommit()
                 if node.animation?.group == nil { group?.remaining += 1 }
-                node.animation = NodeAnimation(fromFrame: node.frame, fromContent: node.content, animation: animation, start: now, group: group ?? node.animation?.group)
+                let interrupted = node.animation
+                let canContinue = interrupted != nil && (!contentChanged || RenderContent.canInterpolate(node.content, node.targetContent))
+                node.animation = NodeAnimation(fromFrame: node.frame, fromContent: node.content, toFrame: node.targetFrame, toContent: node.targetContent, animation: animation, start: now, group: group ?? interrupted?.group, previous: canContinue ? interrupted : nil)
                 animating[ObjectIdentifier(node)] = node
                 if contentChanged, !RenderContent.canInterpolate(node.content, node.targetContent) {
                     node.content = node.targetContent
@@ -383,9 +441,11 @@ public final class Renderer {
                     backend.updateContent(of: handle, node: node)
                     node.contentAnimation = nil
                 }
-            } else if node.animation != nil {
+            } else if let running = node.animation {
                 // A non-animated change during a running animation (e.g. an Animatable view's
                 // per-frame value) retargets it instead of cancelling it.
+                running.toFrame = node.targetFrame
+                running.toContent = node.targetContent
                 if contentChanged, !RenderContent.canInterpolate(node.content, node.targetContent) {
                     node.content = node.targetContent
                     backend.updateContent(of: handle, node: node)
@@ -433,15 +493,17 @@ public final class Renderer {
             }
             var active = false
             if let running = node.animation {
-                let (progress, finished) = running.animation.sample(at: now - running.start)
-                if finished {
+                running.toFrame = node.targetFrame
+                running.toContent = node.targetContent
+                let sample = running.value(at: now)
+                if sample.finished {
                     node.animation = nil
                     node.frame = node.targetFrame
                     node.content = node.targetContent
                     running.group?.finishOne(schedule)
                 } else {
-                    node.frame = Self.lerp(running.fromFrame, node.targetFrame, progress)
-                    node.content = RenderContent.interpolate(running.fromContent, node.targetContent, progress)
+                    node.frame = sample.frame
+                    node.content = sample.content
                     active = true
                 }
                 backend.setFrame(of: handle, node: node)

@@ -313,7 +313,8 @@ struct AnimationTests {
         withAnimation(.linear(duration: 1)) { model.wide = false }
         host.flush()
         host.advance(by: 0.5)
-        // From 150 back towards 100: halfway is 125.
-        #expect(abs(blueFrame(host).width - 125) < 0.5)
+        // Like SwiftUI, the interrupted animation keeps running underneath (measured on Apple's
+        // SwiftUI: the value is back at the midpoint, 150, when the first animation ends).
+        #expect(abs(blueFrame(host).width - 150) < 0.5)
     }
 }

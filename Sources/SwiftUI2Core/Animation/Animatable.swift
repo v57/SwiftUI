@@ -119,14 +119,19 @@ public protocol AnimatableModifier: Animatable, ViewModifier {}
 
 // MARK: - Runtime support
 
+/// Additive animation state (like SwiftUI): every animated change adds a layer animating its own
+/// delta; earlier layers keep running, so retargeting mid-flight (e.g. on every mouse move)
+/// keeps the motion's velocity instead of restarting from rest.
 @MainActor
 private final class AnimatorState<Data: VectorArithmetic> {
+    struct Layer {
+        var delta: Data
+        var animation: Animation
+        var start: Double
+    }
     var target: Data?
-    var presented: Data?
-    var from: Data?
-    var animation: Animation?
-    var start: Double = 0
-    var isRunning: Bool { animation != nil }
+    var layers: [Layer] = []
+    var isRunning: Bool { !layers.isEmpty }
 }
 
 /// If `V` is `Animatable` with non-empty data, returns an attribute that interpolates the value's
@@ -147,40 +152,42 @@ private func makeAnimator<A: Animatable>(_ source: Attribute<A>, host: ViewGraph
     let state = AnimatorState<A.AnimatableData>()
     subgraph.onDestroy { [weak host] in
         if state.isRunning { host?.animatorStopped() }
-        state.animation = nil
+        state.layers.removeAll()
     }
     let attribute = Attribute<A>(subgraph) {
         var value = source.value
         let target = value.animatableData
         defer { state.target = target }
-        guard let previous = state.target else {
-            state.presented = target
-            return value
-        }
+        guard let previous = state.target else { return value }
         if previous != target {
             let transaction = scope?.resolve(host.currentTransaction) ?? host.currentTransaction
             if let animation = transaction.animation, !transaction.disablesAnimations {
                 if !state.isRunning { host.animatorStarted() }
-                state.from = state.presented ?? previous
-                state.animation = animation
-                state.start = host.now
+                var delta = target
+                delta -= previous
+                state.layers.append(AnimatorState.Layer(delta: delta, animation: animation, start: host.now))
+                // Bound rapid retargeting: the oldest layers settle immediately.
+                if state.layers.count > 24 { state.layers.removeFirst(state.layers.count - 24) }
             } else {
                 if state.isRunning { host.animatorStopped() }
-                state.animation = nil
-                state.presented = target
+                state.layers.removeAll()
             }
         }
-        guard let animation = state.animation, let from = state.from else { return value }
+        guard state.isRunning else { return value }
         let time = host.animationTime.value
-        let (progress, finished) = animation.sample(at: time - state.start)
-        if finished {
-            state.animation = nil
-            state.presented = target
+        var presented = target
+        state.layers.removeAll { layer in
+            let (progress, finished) = layer.animation.sample(at: time - layer.start)
+            if finished { return true }
+            var remaining = layer.delta
+            remaining.scale(by: 1 - progress)
+            presented -= remaining
+            return false
+        }
+        if !state.isRunning {
             host.animatorStopped()
             return value
         }
-        let presented = A.AnimatableData.interpolate(from, target, progress)
-        state.presented = presented
         value.animatableData = presented
         return value
     }
