@@ -12,6 +12,12 @@ import PackageDescription
 //
 // Future backends (SwiftUI2Gtk, SwiftUI2WinUI, SwiftUI2Android) plug in exactly like SwiftUI2AppKit.
 
+let nonApple: [Platform] = [.android, .linux, .windows]
+
+/// Set by `Android/scripts/swift-android`: Apple-SwiftUI-only targets (the reference app, the
+/// parity recorder) and the AppKit tests can't be cross-compiled, so they are left out.
+let crossCompiling = Context.environment["SWIFTUI2_CROSS_COMPILE"] != nil
+
 let package = Package(
     name: "SwiftUI2",
     platforms: [.macOS(.v14)],
@@ -28,6 +34,8 @@ let package = Package(
     dependencies: [
         // Macros (@Entry, #Preview).
         .package(url: "https://github.com/swiftlang/swift-syntax", "600.0.0"..<"700.0.0"),
+        // Stand-ins for Apple-only modules (UniformTypeIdentifiers, ...) on other platforms.
+        .package(path: "Compat"),
     ],
     targets: [
         .target(name: "SwiftUI2Graph"),
@@ -38,7 +46,17 @@ let package = Package(
                 .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
             ]
         ),
-        .target(name: "SwiftUI2Core", dependencies: ["SwiftUI2Graph", "SwiftUI2Macros"]),
+        // Foundation/CoreGraphics types missing from swift-corelibs-foundation (empty on Apple).
+        .target(name: "SwiftUI2Portability"),
+        .target(
+            name: "SwiftUI2Core",
+            dependencies: [
+                "SwiftUI2Graph", "SwiftUI2Macros",
+                .target(name: "SwiftUI2Portability", condition: .when(platforms: nonApple)),
+                .product(name: "UniformTypeIdentifiers", package: "Compat", condition: .when(platforms: nonApple)),
+                .product(name: "Combine", package: "Compat", condition: .when(platforms: nonApple)),
+            ]
+        ),
         .target(name: "SwiftUI2Headless", dependencies: ["SwiftUI2Core"]),
         .target(name: "SwiftUI2AppKit", dependencies: ["SwiftUI2Core"]),
         // A Swift Charts subset (import SwiftUI2Charts instead of Charts).
@@ -74,7 +92,6 @@ let package = Package(
 
         .testTarget(name: "SwiftUI2GraphTests", dependencies: ["SwiftUI2Graph"]),
         .testTarget(name: "SwiftUI2CoreTests", dependencies: ["SwiftUI2Core", "SwiftUI2Headless"]),
-        .testTarget(name: "SwiftUI2AppKitTests", dependencies: ["SwiftUI2"]),
         .testTarget(
             name: "ParityTests",
             dependencies: ["ParityScenarios", "SwiftUI2Headless"],
@@ -82,3 +99,13 @@ let package = Package(
         ),
     ]
 )
+
+if !crossCompiling {
+    package.targets += [
+        .testTarget(name: "SwiftUI2AppKitTests", dependencies: ["SwiftUI2"]),
+    ]
+} else {
+    let appleOnly: Set<String> = ["ReferenceApp", "parity-recorder", "ParityScenariosSwiftUI"]
+    package.targets.removeAll { appleOnly.contains($0.name) }
+    package.products.removeAll { appleOnly.contains($0.name) }
+}

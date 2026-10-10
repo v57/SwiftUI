@@ -932,8 +932,18 @@ extension TextField where Label == Text {
 
     static func formatterBinding<V>(_ value: Binding<V>, _ formatter: Formatter) -> Binding<String> {
         Binding(get: { formatter.string(for: value.wrappedValue) ?? "" }, set: { string in
+            #if canImport(Darwin)
             var object: AnyObject?
             if formatter.getObjectValue(&object, for: string, errorDescription: nil), let typed = object as? V { value.wrappedValue = typed }
+            #else
+            // swift-corelibs-foundation doesn't expose `getObjectValue`; parse what its formatters
+            // produce.
+            if let typed = (formatter as? NumberFormatter)?.number(from: string).flatMap({ number -> V? in
+                (number as? V) ?? (number.doubleValue as? V) ?? (number.intValue as? V) ?? (Float(number.doubleValue) as? V)
+            }) ?? (formatter as? DateFormatter)?.date(from: string) as? V {
+                value.wrappedValue = typed
+            }
+            #endif
         })
     }
 }

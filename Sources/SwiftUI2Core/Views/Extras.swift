@@ -402,7 +402,7 @@ public struct _ReceiveModifier<P: Publisher>: ViewModifier where P.Failure == Ne
                 AnyAttribute.withoutDependencies { source.value.action(output) }
                 host.onNeedsUpdate?()
             }
-            if Thread.isMainThread { MainActor.assumeIsolated(deliver) } else { DispatchQueue.main.async { MainActor.assumeIsolated(deliver) } }
+            if isOnMainQueue { MainActor.assumeIsolated(deliver) } else { DispatchQueue.main.async { MainActor.assumeIsolated(deliver) } }
         }
         inputs.subgraph.onDestroy { cancellable.cancel() }
         return body(inputs)

@@ -3,6 +3,13 @@ import Foundation
 import CoreGraphics
 #endif
 @_exported import SwiftUI2Graph
+// Like SwiftUI: `@Observable` is available with just the UI framework imported.
+@_exported import Observation
+#if !canImport(Darwin)
+// CGAffineTransform, NSItemProvider, FileWrapper, ... (part of Apple's SDKs) and UTType.
+@_exported import SwiftUI2Portability
+@_exported import UniformTypeIdentifiers
+#endif
 
 /// A piece of user interface. Mirrors `SwiftUI.View`.
 ///

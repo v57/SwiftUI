@@ -5,3 +5,4 @@ DerivedData/
 .DS_Store
 Ports/
 *.md
+.build-android/

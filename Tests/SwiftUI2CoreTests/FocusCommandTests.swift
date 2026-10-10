@@ -52,6 +52,7 @@ struct FocusCommandTests {
         #expect(host.texts.first == "note - title Doc")
     }
 
+    #if canImport(ObjectiveC) && canImport(CoreTransferable)
     @Test func commandsReachTheirHandlers() {
         let log = ScrollLog()
         var written: [Any] = []
@@ -68,6 +69,7 @@ struct FocusCommandTests {
         #expect(written as? [String] == ["copied text"])
         #expect(log.events == ["archive"])
     }
+    #endif
 
     @Test func modifierKeysAndHaptics() {
         let log = ScrollLog()

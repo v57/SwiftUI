@@ -288,7 +288,110 @@ extension Text {
         }
         return parts.isEmpty ? [Text(verbatim: "")] : parts
         #else
-        return [Text(verbatim: string)]
+        // swift-corelibs-foundation can't parse Markdown.
+        let runs = InlineMarkdown.parse(string)
+        let parts = runs.map { run -> Text in
+            var part = Text(verbatim: run.text)
+            if run.style.contains(.bold) { part = part.bold() }
+            if run.style.contains(.italic) { part = part.italic() }
+            if run.style.contains(.code) { part = part.fontDesign(.monospaced) }
+            if run.style.contains(.strikethrough) { part = part.strikethrough() }
+            if let link = run.link { part.modifiers.append(.link(link)) }
+            return part
+        }
+        return parts.isEmpty ? [Text(verbatim: "")] : parts
         #endif
+    }
+}
+
+/// Inline Markdown as SwiftUI interprets it in string keys: `**bold**`/`__bold__`,
+/// `*italic*`/`_italic_`, `` `code` ``, `~~strike~~`, `[text](url)` and backslash escapes.
+enum InlineMarkdown {
+    struct Style: OptionSet, Hashable {
+        let rawValue: Int
+        static let bold = Style(rawValue: 1), italic = Style(rawValue: 2), code = Style(rawValue: 4), strikethrough = Style(rawValue: 8)
+    }
+
+    struct Run: Equatable {
+        var text: String
+        var style: Style
+        var link: URL?
+    }
+
+    static func parse(_ string: String) -> [Run] {
+        var runs: [Run] = []
+        parse(Array(string), style: [], link: nil, into: &runs)
+        return runs
+    }
+
+    private static func append(_ text: String, _ style: Style, _ link: URL?, to runs: inout [Run]) {
+        guard !text.isEmpty else { return }
+        if let last = runs.last, last.style == style, last.link == link {
+            runs[runs.count - 1].text += text
+        } else {
+            runs.append(Run(text: text, style: style, link: link))
+        }
+    }
+
+    /// Index of the next unescaped `delimiter` at or after `start`.
+    private static func find(_ delimiter: [Character], in chars: [Character], from start: Int) -> Int? {
+        var index = start
+        while index + delimiter.count <= chars.count {
+            if chars[index] == "\\" { index += 2; continue }
+            if Array(chars[index..<index + delimiter.count]) == delimiter {
+                // A single delimiter must not be half of a double one (`*a **b** c*`).
+                if delimiter.count == 1, index + 1 < chars.count, chars[index + 1] == delimiter[0] { index += 2; continue }
+                return index
+            }
+            index += 1
+        }
+        return nil
+    }
+
+    private static func parse(_ chars: [Character], style: Style, link: URL?, into runs: inout [Run]) {
+        var literal = ""
+        func flush() { append(literal, style, link, to: &runs); literal = "" }
+        var i = 0
+        while i < chars.count {
+            let c = chars[i]
+            let next: Character? = i + 1 < chars.count ? chars[i + 1] : nil
+            if c == "\\", let next, next.isPunctuation || next.isSymbol {
+                literal.append(next); i += 2; continue
+            }
+            if c == "`", let end = chars[(i + 1)...].firstIndex(of: "`") {
+                flush()
+                append(String(chars[(i + 1)..<end]), style.union(.code), link, to: &runs)
+                i = end + 1; continue
+            }
+            if c == "[", let close = find(["]"], in: chars, from: i + 1), close + 1 < chars.count, chars[close + 1] == "(",
+               let paren = chars[(close + 2)...].firstIndex(of: ")") {
+                flush()
+                let target = String(chars[(close + 2)..<paren]).trimmingCharacters(in: .whitespaces)
+                parse(Array(chars[(i + 1)..<close]), style: style, link: URL(string: target) ?? link, into: &runs)
+                i = paren + 1; continue
+            }
+            if (c == "*" || c == "_" || c == "~"), next == c {
+                let delimiter: [Character] = [c, c]
+                if var end = find(delimiter, in: chars, from: i + 2), end > i + 2 {
+                    // `***`: the closing pair is the last two (the first one closes an inner `*`).
+                    while end + 2 < chars.count, chars[end + 2] == c { end += 1 }
+                    flush()
+                    parse(Array(chars[(i + 2)..<end]), style: style.union(c == "~" ? .strikethrough : .bold), link: link, into: &runs)
+                    i = end + 2; continue
+                }
+            }
+            if c == "*" || c == "_" {
+                // `_` inside a word (snake_case) is literal.
+                let intraword = c == "_" && i > 0 && (chars[i - 1].isLetter || chars[i - 1].isNumber)
+                if !intraword, let next, !next.isWhitespace, let end = find([c], in: chars, from: i + 1), end > i + 1 {
+                    flush()
+                    parse(Array(chars[(i + 1)..<end]), style: style.union(.italic), link: link, into: &runs)
+                    i = end + 1; continue
+                }
+            }
+            literal.append(c)
+            i += 1
+        }
+        flush()
     }
 }

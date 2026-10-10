@@ -1,0 +1,35 @@
+#!/bin/bash
+# Runs a cross-compiled SwiftPM test bundle on the connected Android device.
+# Usage: Android/scripts/run-tests-on-device <path/to/Package.xctest> [test-args...]
+# Pushes the bundle, its resource bundles and the Swift runtime to /data/local/tmp/swiftui2-tests.
+set -e
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/Android/scripts/env.sh"
+SERIAL="${ANDROID_SERIAL:-$($ADB devices | awk 'NR>1 && $2=="device" && $1 !~ /^emulator-/ {print $1; exit}')}"
+[ -n "$SERIAL" ] || { echo "No physical Android device connected (adb devices)." >&2; exit 1; }
+BUNDLE="$1"; shift
+DIR=/data/local/tmp/swiftui2-tests
+BUILD_DIR="$(dirname "$BUNDLE")"
+$ADB -s "$SERIAL" shell mkdir -p $DIR/lib
+# Runtime libraries (pushed once; adb push skips unchanged files quickly).
+push() { $ADB -s "$SERIAL" push --sync "$@" >/dev/null 2>&1 || $ADB -s "$SERIAL" push --sync "$@"; }
+push "$SWIFT_ANDROID_RUNTIME_LIBS"/*.so $DIR/lib/
+push "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" $DIR/lib/
+# Resource bundles (SwiftPM symlinks copied resources; the device can't create symlinks).
+STAGE="$(mktemp -d)"
+for resources in "$BUILD_DIR"/*.resources; do
+  [ -d "$resources" ] || continue
+  bundle="$(basename "$resources")"; target="${bundle#*_}"; target="${target%.resources}"
+  mkdir -p "$STAGE/$bundle"
+  for entry in "$resources"/*; do
+    name="$(basename "$entry")"
+    # SwiftPM copies relative symlinks verbatim; resolve them from the target's directory.
+    if [ -e "$entry" ]; then cp -RL "$entry" "$STAGE/$bundle/"
+    else for base in Tests Sources; do [ -e "$ROOT/$base/$target/$name" ] && cp -RL "$ROOT/$base/$target/$name" "$STAGE/$bundle/"; done; fi
+  done
+done
+[ -n "$(ls "$STAGE")" ] && push "$STAGE"/. $DIR/
+rm -rf "$STAGE"
+push "$BUNDLE" $DIR/
+NAME="$(basename "$BUNDLE")"
+$ADB -s "$SERIAL" shell "cd $DIR && chmod +x $NAME && LD_LIBRARY_PATH=$DIR/lib HOME=$DIR TMPDIR=$DIR ./$NAME $*"

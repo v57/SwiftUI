@@ -89,3 +89,19 @@ struct TextLocalizationTests {
         #expect(scaled.frame.height < 16)
     }
 }
+
+/// The portable inline-Markdown parser (used where Foundation can't parse Markdown).
+@Suite struct InlineMarkdownTests {
+    @Test func stylesLinksAndEscapes() {
+        let runs = InlineMarkdown.parse("Hello **World** and *you*, `x*y`, ~~old~~ [docs](https://example.com) \\*lit\\* snake_case")
+        #expect(runs.map(\.text).joined() == "Hello World and you, x*y, old docs *lit* snake_case")
+        #expect(runs.first { $0.text == "World" }?.style == .bold)
+        #expect(runs.first { $0.text == "you" }?.style == .italic)
+        #expect(runs.first { $0.text == "x*y" }?.style == .code)
+        #expect(runs.first { $0.text == "old" }?.style == .strikethrough)
+        #expect(runs.first { $0.text == "docs" }?.link == URL(string: "https://example.com"))
+        let nested = InlineMarkdown.parse("**bold *both***")
+        #expect(nested.first { $0.text == "both" }?.style == [.bold, .italic])
+        #expect(InlineMarkdown.parse("2 * 3 * 4").map(\.text).joined() == "2 * 3 * 4")
+    }
+}

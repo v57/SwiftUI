@@ -47,11 +47,24 @@ func observingChanges<R>(invalidating attribute: AnyAttribute, _ body: () -> R) 
 
 nonisolated func invalidateOnMain(_ attribute: AnyAttribute?) {
     guard let attribute else { return }
-    if Thread.isMainThread {
+    if isOnMainQueue {
         MainActor.assumeIsolated { attribute.invalidate() }
     } else {
         DispatchQueue.main.async { attribute.invalidate() }
     }
+}
+
+private let mainQueueKey: DispatchSpecificKey<Bool> = {
+    let key = DispatchSpecificKey<Bool>()
+    DispatchQueue.main.setSpecific(key: key, value: true)
+    return key
+}()
+
+/// Whether the caller runs on the main queue, i.e. on the main actor. Usually that's the main
+/// thread, but not always: after `dispatch_main()` (e.g. test runners on Linux/Android) worker
+/// threads drain the main queue.
+nonisolated var isOnMainQueue: Bool {
+    Thread.isMainThread || DispatchQueue.getSpecific(key: mainQueueKey) == true
 }
 
 /// An attribute whose rule runs with Observation tracking (for rules that call user closures or

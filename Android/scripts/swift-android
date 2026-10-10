@@ -1,0 +1,17 @@
+#!/bin/bash
+# `swift build` / `swift test --build-tests` for Android (aarch64), in a separate scratch path so
+# macOS builds stay intact. Usage: Android/scripts/swift-android build [--target X] [-c release]
+set -e
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/Android/scripts/env.sh"
+cd "$ROOT"
+cmd="$1"; shift
+# Each package gets its own scratch directory (`--package-path Compat` → Compat/.build-android).
+SCRATCH="$ROOT/.build-android"
+prev=""
+for arg in "$@"; do
+  [ "$prev" = "--package-path" ] && SCRATCH="$(cd "$arg" && pwd)/.build-android"
+  prev="$arg"
+done
+export SWIFTUI2_CROSS_COMPILE=android
+exec "$SWIFT_ANDROID_TOOLCHAIN/usr/bin/swift" "$cmd" --swift-sdk "$SWIFT_ANDROID_TRIPLE" --scratch-path "$SCRATCH" "$@"

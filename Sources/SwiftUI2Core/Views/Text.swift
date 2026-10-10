@@ -396,6 +396,12 @@ public struct Text: Equatable {
             formatter.timeStyle = .none
             return formatter.string(from: date)
         case .relative, .offset:
+            #if !canImport(Darwin)
+            // swift-corelibs-foundation has no DateComponentsFormatter.
+            let interval = date.timeIntervalSince(now)
+            let text = componentsString(abs(interval).rounded(.down), short: style == .relative, maximumUnits: style == .relative ? 2 : 1)
+            return style == .offset ? (interval < 0 ? "-" : "+") + text : text
+            #else
             let formatter = DateComponentsFormatter()
             formatter.unitsStyle = style == .relative ? .short : .full
             formatter.allowedUnits = [.year, .month, .day, .hour, .minute, .second]
@@ -403,9 +409,26 @@ public struct Text: Equatable {
             let interval = date.timeIntervalSince(now)
             let text = formatter.string(from: abs(interval).rounded(.down)) ?? ""
             return style == .offset ? (interval < 0 ? "-" : "+") + text : text
+            #endif
         case .timer:
             return timerString(abs(date.timeIntervalSince(now)), showsHours: true)
         }
+    }
+
+    /// "2 hr, 5 min" / "2 hours" (DateComponentsFormatter's English short/full unit styles).
+    static func componentsString(_ seconds: TimeInterval, short: Bool, maximumUnits: Int) -> String {
+        var remaining = Int(seconds)
+        let units: [(Int, String, String)] = [(31_536_000, "yr", "year"), (2_592_000, "mth", "month"), (86_400, "day", "day"),
+                                              (3600, "hr", "hour"), (60, "min", "minute"), (1, "sec", "second")]
+        var parts: [String] = []
+        for (size, shortName, longName) in units where parts.count < maximumUnits {
+            let count = remaining / size
+            guard count > 0 || (size == 1 && parts.isEmpty) else { continue }
+            remaining -= count * size
+            let name = short ? (shortName == "day" && count != 1 ? "days" : shortName) : longName + (count == 1 ? "" : "s")
+            parts.append("\(count) \(name)")
+        }
+        return parts.joined(separator: ", ")
     }
 
     static func timerString(_ seconds: TimeInterval, showsHours: Bool) -> String {
