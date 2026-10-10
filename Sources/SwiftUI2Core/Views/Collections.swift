@@ -1119,23 +1119,107 @@ struct _TabItemModifier: ViewModifier {
 }
 
 /// iOS 18 style `Tab("Title", systemImage:, value:) { content }`.
+/// What a tab is for (`.search` tabs hold the search UI).
+public struct TabRole: Hashable, Sendable {
+    let value: Int
+    public static let search = TabRole(value: 0)
+}
+
 public struct Tab<Value: Hashable, Content: View>: View {
-    let title: String
+    let title: Text?
     let systemImage: String?
-    let value: Value
+    let image: String?
+    let value: Value?
+    let role: TabRole?
     let content: Content
 
-    public init(_ title: String, systemImage: String, value: Value, @ViewBuilder content: () -> Content) {
+    init(title: Text?, systemImage: String?, image: String? = nil, value: Value?, role: TabRole?, content: Content) {
         self.title = title
         self.systemImage = systemImage
+        self.image = image
         self.value = value
-        self.content = content()
+        self.role = role
+        self.content = content
+    }
+
+    public init(_ titleKey: LocalizedStringKey, systemImage: String, value: Value, role: TabRole? = nil, @ViewBuilder content: () -> Content) {
+        self.init(title: Text(titleKey), systemImage: systemImage, value: value, role: role, content: content())
+    }
+
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, systemImage: String, value: Value, role: TabRole? = nil, @ViewBuilder content: () -> Content) {
+        self.init(title: Text(title), systemImage: systemImage, value: value, role: role, content: content())
+    }
+
+    public init(_ titleKey: LocalizedStringKey, image: String, value: Value, role: TabRole? = nil, @ViewBuilder content: () -> Content) {
+        self.init(title: Text(titleKey), systemImage: nil, image: image, value: value, role: role, content: content())
+    }
+
+    public init(value: Value, role: TabRole? = nil, @ViewBuilder content: () -> Content) {
+        self.init(title: nil, systemImage: role == .search ? "magnifyingglass" : nil, value: value, role: role, content: content())
     }
 
     public var body: some View {
         content
-            .tabItem { if let systemImage { Label(title, systemImage: systemImage) } else { Text(title) } }
-            .tag(value)
+            .tabItem {
+                if let systemImage, let title { Label { title } icon: { Image(systemName: systemImage) } }
+                else if let image, let title { Label { title } icon: { Image(image) } }
+                else if let title { title }
+                else if let systemImage { Image(systemName: systemImage) }
+            }
+            .modifier(_OptionalTag(value: value))
+    }
+}
+
+/// Tabs of a TabView without a selection (identified by position).
+extension Tab where Value == Never {
+    public init(_ titleKey: LocalizedStringKey, systemImage: String, role: TabRole? = nil, @ViewBuilder content: () -> Content) {
+        self.init(title: Text(titleKey), systemImage: systemImage, value: nil, role: role, content: content())
+    }
+
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, systemImage: String, role: TabRole? = nil, @ViewBuilder content: () -> Content) {
+        self.init(title: Text(title), systemImage: systemImage, value: nil, role: role, content: content())
+    }
+
+    public init(role: TabRole?, @ViewBuilder content: () -> Content) {
+        self.init(title: nil, systemImage: role == .search ? "magnifyingglass" : nil, value: nil, role: role, content: content())
+    }
+}
+
+struct _OptionalTag<Value: Hashable>: ViewModifier {
+    let value: Value?
+    func body(content: Content) -> some View {
+        if let value { content.tag(value) } else { content }
+    }
+}
+
+/// Groups tabs (sidebar-adaptable tab views show them under a header; others flatten them).
+public struct TabSection<Header: View, Content: View, Footer: View>: View {
+    let header: Header
+    let content: Content
+    let footer: Footer
+
+    public init(@ViewBuilder content: () -> Content, @ViewBuilder header: () -> Header, @ViewBuilder footer: () -> Footer) {
+        self.header = header()
+        self.content = content()
+        self.footer = footer()
+    }
+
+    public var body: some View { content }
+}
+
+extension TabSection where Footer == EmptyView {
+    public init(@ViewBuilder content: () -> Content, @ViewBuilder header: () -> Header) {
+        self.init(content: content, header: header, footer: { EmptyView() })
+    }
+}
+
+extension TabSection where Header == Text, Footer == EmptyView {
+    public init(_ titleKey: LocalizedStringKey, @ViewBuilder content: () -> Content) {
+        self.init(content: content, header: { Text(titleKey) }, footer: { EmptyView() })
+    }
+
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content) {
+        self.init(content: content, header: { Text(title) }, footer: { EmptyView() })
     }
 }
 

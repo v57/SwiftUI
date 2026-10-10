@@ -85,6 +85,20 @@ public struct Image: Equatable {
         isTemplate = false
     }
 
+    /// An image from the asset catalog / bundle resources (looked up by name).
+    public init(_ name: String, bundle: Bundle?) {
+        self.init(name)
+    }
+
+    public init(_ name: String, bundle: Bundle? = nil, label: Text) {
+        self.init(name)
+    }
+
+    /// An image ignored by accessibility.
+    public init(decorative name: String, bundle: Bundle? = nil) {
+        self.init(name)
+    }
+
     public func resizable() -> Image {
         var copy = self
         copy.isResizable = true

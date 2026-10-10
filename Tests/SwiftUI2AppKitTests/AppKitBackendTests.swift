@@ -70,6 +70,14 @@ struct AppKitBackendTests {
         #expect(scaled.layer?.transform.m11 == 0.5)
     }
 
+    @Test func imageRendererRasterizesViews() throws {
+        let renderer = ImageRenderer(content: Color.red.frame(width: 30, height: 20))
+        renderer.scale = 2
+        let image = try #require(renderer.cgImage)
+        #expect(image.width == 60 && image.height == 40)
+        #expect(renderer.nsImage?.size == CGSize(width: 30, height: 20))
+    }
+
     @Test func accessibilityReachesNativeViews() throws {
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 300, height: 200), styleMask: [.titled], backing: .buffered, defer: true)
         var pressed = 0

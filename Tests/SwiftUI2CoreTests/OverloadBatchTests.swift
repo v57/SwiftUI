@@ -190,4 +190,27 @@ struct OverloadBatchTests {
         let color = host.allViews.first { if case .color = $0.content { true } else { false } }
         #expect(color?.frame.width == 100) // the content's frame change is not animated
     }
+
+    @Test func timersColorsMixAndTabs() {
+        let start = Date().addingTimeInterval(-65)
+        #expect(Text(timerInterval: start...start.addingTimeInterval(3600), countsDown: false).plainString == "1:05")
+        #expect(Text(timerInterval: start...start.addingTimeInterval(3600), pauseTime: start.addingTimeInterval(3700), countsDown: true).plainString == "0:00")
+        #expect(Text(Date().addingTimeInterval(-3661), style: .timer).plainString == "1:01:01")
+        #expect(Text(Date().addingTimeInterval(-150), style: .relative).plainString.contains("2 minutes"))
+        #expect(Text(Date().addingTimeInterval(7300), style: .offset).plainString.hasPrefix("+2 hours"))
+        let mixed = Color.black.mix(with: .white, by: 0.5).resolve(in: EnvironmentValues())
+        #expect(abs(mixed.red - 0.5) < 0.01)
+        struct Tabs: View {
+            var body: some View {
+                TabView {
+                    Tab("First", systemImage: "1.circle") { Text("one") }
+                    TabSection("More") { Tab("Second", systemImage: "2.circle") { Text("two") } }
+                }
+            }
+        }
+        let host = TestHost(Tabs())
+        #expect(host.texts.contains("one"))
+        let unavailable = TestHost(ContentUnavailableView.search(text: "kiwi"))
+        #expect(unavailable.texts.contains("No Results"))
+    }
 }

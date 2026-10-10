@@ -25,6 +25,7 @@ public struct Color: Hashable, Sendable, CustomStringConvertible {
         case dynamic(light: Resolved, dark: Resolved)
         case accent
         case opacity(Storage, Double)
+        case mix(Storage, Storage, Double)
     }
 
     let storage: Storage
@@ -103,6 +104,8 @@ public struct Color: Hashable, Sendable, CustomStringConvertible {
             var resolved = resolve(base, environment)
             resolved.opacity *= Float(opacity)
             return resolved
+        case let .mix(a, b, fraction):
+            return .interpolate(resolve(a, environment), resolve(b, environment), fraction)
         }
     }
 
@@ -391,4 +394,22 @@ extension ShapeStyle {
 extension Color {
     static let secondaryBackground = dynamic(rgb(0.965, 0.965, 0.965), rgb(0.157, 0.157, 0.157))
     static let tertiaryBackground = dynamic(rgb(0.925, 0.925, 0.925), rgb(0.2, 0.2, 0.2))
+}
+
+extension Color {
+    /// This color mixed with `other` (`fraction` 0 is this color, 1 the other).
+    public func mix(with other: Color, by fraction: Double, in colorSpace: Gradient.ColorSpace = .perceptual) -> Color {
+        Color(storage: .mix(storage, other.storage, min(max(fraction, 0), 1)))
+    }
+}
+
+extension Gradient {
+    /// The space colors are interpolated in (interpolation here is in sRGB).
+    public struct ColorSpace: Hashable, Sendable {
+        let value: Int
+        public static let device = ColorSpace(value: 0)
+        public static let perceptual = ColorSpace(value: 1)
+    }
+
+    public func colorSpace(_ space: ColorSpace) -> Gradient { self }
 }

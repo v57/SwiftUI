@@ -305,6 +305,9 @@ public struct Text: Equatable {
         case localized(LocalizedStringKey, tableName: String?, bundle: Bundle?)
         /// An inline image (`Text(Image)`, `"\(Image(...))"` interpolation).
         case image(Image)
+        /// A date shown relative to now (`.relative`, `.offset`, `.timer`): formatted when resolved.
+        case date(Date, DateStyle)
+        case timerInterval(ClosedRange<Date>, pauseTime: Date?, countsDown: Bool, showsHours: Bool)
     }
 
     enum Modifier: Equatable {
@@ -338,26 +341,59 @@ public struct Text: Equatable {
         storage = .verbatim(format.format(input))
     }
 
-    public enum DateStyle: Sendable { case time, date, relative, offset, timer }
+    public enum DateStyle: Hashable, Sendable { case time, date, relative, offset, timer }
 
     public init(_ date: Date, style: DateStyle) {
-        let formatter = DateFormatter()
+        switch style {
+        case .time, .date: storage = .verbatim(Text.format(date, style: style, now: Date()))
+        case .relative, .offset, .timer: storage = .date(date, style)
+        }
+    }
+
+    /// A timer counting within `timerInterval` (live; frozen at `pauseTime`).
+    public init(timerInterval: ClosedRange<Date>, pauseTime: Date? = nil, countsDown: Bool = true, showsHours: Bool = true) {
+        storage = .timerInterval(timerInterval, pauseTime: pauseTime, countsDown: countsDown, showsHours: showsHours)
+    }
+
+    /// Whether the text changes with time (updated every second while shown).
+    var isTimeDependent: Bool {
+        switch storage {
+        case .date, .timerInterval: return true
+        case .concatenated(let parts): return parts.contains(where: \.isTimeDependent)
+        default: return false
+        }
+    }
+
+    static func format(_ date: Date, style: DateStyle, now: Date) -> String {
         switch style {
         case .time:
+            let formatter = DateFormatter()
             formatter.dateStyle = .none
             formatter.timeStyle = .short
-            storage = .verbatim(formatter.string(from: date))
+            return formatter.string(from: date)
         case .date:
+            let formatter = DateFormatter()
             formatter.dateStyle = .long
             formatter.timeStyle = .none
-            storage = .verbatim(formatter.string(from: date))
+            return formatter.string(from: date)
         case .relative, .offset:
-            let relative = RelativeDateTimeFormatter()
-            storage = .verbatim(relative.localizedString(for: date, relativeTo: Date()))
+            let formatter = DateComponentsFormatter()
+            formatter.unitsStyle = .full
+            formatter.allowedUnits = [.year, .month, .day, .hour, .minute, .second]
+            formatter.maximumUnitCount = style == .relative ? 2 : 1
+            let interval = date.timeIntervalSince(now)
+            let text = formatter.string(from: abs(interval).rounded(.down)) ?? ""
+            return style == .offset ? (interval < 0 ? "-" : "+") + text : text
         case .timer:
-            let seconds = Int(abs(date.timeIntervalSinceNow))
-            storage = .verbatim(String(format: "%d:%02d", seconds / 60, seconds % 60))
+            return timerString(abs(date.timeIntervalSince(now)), showsHours: true)
         }
+    }
+
+    static func timerString(_ seconds: TimeInterval, showsHours: Bool) -> String {
+        let total = Int(seconds.rounded(.down))
+        let hours = total / 3600, minutes = (total % 3600) / 60, secs = total % 60
+        if showsHours, hours > 0 { return String(format: "%d:%02d:%02d", hours, minutes, secs) }
+        return String(format: "%d:%02d", showsHours ? minutes : total / 60, secs)
     }
 
     public init(_ range: ClosedRange<Date>) {
@@ -435,6 +471,11 @@ public struct Text: Equatable {
         case .concatenated(let parts): return parts.map(\.plainString).joined()
         case .localized: return expanded.plainString
         case .image: return ""
+        case let .date(date, style): return Text.format(date, style: style, now: Date())
+        case let .timerInterval(range, pauseTime, countsDown, showsHours):
+            let now = min(max(pauseTime ?? Date(), range.lowerBound), range.upperBound)
+            let elapsed = countsDown ? range.upperBound.timeIntervalSince(now) : now.timeIntervalSince(range.lowerBound)
+            return Text.timerString(elapsed, showsHours: showsHours)
         }
     }
 

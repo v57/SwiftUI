@@ -413,6 +413,9 @@ public struct Stepper<Label: View>: View {
     let label: Label
     let onIncrement: (@MainActor () -> Void)?
     let onDecrement: (@MainActor () -> Void)?
+    /// `format:` steppers show the value in an editable field.
+    var valueField: AnyView?
+    var onEditingChanged: (Bool) -> Void = { _ in }
     @Environment(\.labelsHidden) private var labelsHidden
     @Environment(\.isInForm) private var isInForm
 
@@ -434,10 +437,23 @@ public struct Stepper<Label: View>: View {
         self.onDecrement = { value.wrappedValue = value.wrappedValue.advanced(by: -step) }
     }
 
+    public init<V: Strideable, F: ParseableFormatStyle>(value: Binding<V>, in bounds: ClosedRange<V>, step: V.Stride = 1, format: F, @ViewBuilder label: () -> Label, onEditingChanged: @escaping (Bool) -> Void = { _ in }) where F.FormatInput == V, F.FormatOutput == String {
+        self.init(value: value, in: bounds, step: step, label: label)
+        self.valueField = AnyView(TextField("", value: value, format: format).frame(width: 60).labelsHidden())
+        self.onEditingChanged = onEditingChanged
+    }
+
+    public init<V: Strideable, F: ParseableFormatStyle>(value: Binding<V>, step: V.Stride = 1, format: F, @ViewBuilder label: () -> Label, onEditingChanged: @escaping (Bool) -> Void = { _ in }) where F.FormatInput == V, F.FormatOutput == String {
+        self.init(value: value, step: step, label: label)
+        self.valueField = AnyView(TextField("", value: value, format: format).frame(width: 60).labelsHidden())
+        self.onEditingChanged = onEditingChanged
+    }
+
     public var body: some View {
         HStack(spacing: 6) {
             if !labelsHidden { label }
             if isInForm { Spacer(minLength: 8) }
+            if let valueField { valueField }
             VStack(spacing: 0) {
                 Button { onIncrement?() } label: { Image(systemName: "chevron.up").font(.system(size: 8, weight: .bold)).frame(width: 15, height: 10) }
                     .buttonStyle(.plain)
@@ -466,6 +482,18 @@ extension Stepper where Label == Text {
 
     public init<V: Strideable>(_ titleKey: LocalizedStringKey, value: Binding<V>, step: V.Stride = 1) {
         self.init(value: value, step: step) { Text(titleKey) }
+    }
+
+    public init<V: Strideable, F: ParseableFormatStyle>(_ titleKey: LocalizedStringKey, value: Binding<V>, in bounds: ClosedRange<V>, step: V.Stride = 1, format: F) where F.FormatInput == V, F.FormatOutput == String {
+        self.init(value: value, in: bounds, step: step, format: format) { Text(titleKey) }
+    }
+
+    @_disfavoredOverload public init<S: StringProtocol, V: Strideable, F: ParseableFormatStyle>(_ title: S, value: Binding<V>, in bounds: ClosedRange<V>, step: V.Stride = 1, format: F) where F.FormatInput == V, F.FormatOutput == String {
+        self.init(value: value, in: bounds, step: step, format: format) { Text(title) }
+    }
+
+    public init<V: Strideable, F: ParseableFormatStyle>(_ titleKey: LocalizedStringKey, value: Binding<V>, step: V.Stride = 1, format: F) where F.FormatInput == V, F.FormatOutput == String {
+        self.init(value: value, step: step, format: format) { Text(titleKey) }
     }
 
     @_disfavoredOverload public init<S: StringProtocol>(_ title: S, onIncrement: (@MainActor () -> Void)?, onDecrement: (@MainActor () -> Void)?) {
@@ -861,9 +889,42 @@ public struct ContentUnavailableView<Label: View, Description: View, Actions: Vi
     }
 }
 
+/// The parts of `ContentUnavailableView.search`.
+public struct SearchUnavailableContent {
+    public struct Label: View {
+        public var body: some View { SwiftUI2Core.Label("No Results", systemImage: "magnifyingglass") }
+    }
+
+    public struct Description: View {
+        let text: String?
+        public var body: some View {
+            if let text, !text.isEmpty {
+                Text("Check the spelling or try a new search for “\(text)”.")
+            } else {
+                Text("Check the spelling or try a new search.")
+            }
+        }
+    }
+
+    public struct Actions: View {
+        public var body: some View { EmptyView() }
+    }
+}
+
+extension ContentUnavailableView where Label == SearchUnavailableContent.Label, Description == SearchUnavailableContent.Description, Actions == SearchUnavailableContent.Actions {
+    /// The standard "No Results" view for searches.
+    public static var search: ContentUnavailableView {
+        ContentUnavailableView(label: { SearchUnavailableContent.Label() }, description: { SearchUnavailableContent.Description(text: nil) }, actions: { SearchUnavailableContent.Actions() })
+    }
+
+    public static func search(text: String) -> ContentUnavailableView {
+        ContentUnavailableView(label: { SearchUnavailableContent.Label() }, description: { SearchUnavailableContent.Description(text: text) }, actions: { SearchUnavailableContent.Actions() })
+    }
+}
+
 /// Whether a builder result is statically empty (`EmptyView`, or a `nil` optional view).
 func _isEmptyContent<V: View>(_ view: V) -> Bool {
-    if V.self == EmptyView.self { return true }
+    if V.self == EmptyView.self || V.self == SearchUnavailableContent.Actions.self { return true }
     if let optional = view as? any _OptionalView { return optional._isNil }
     return false
 }

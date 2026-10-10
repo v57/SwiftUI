@@ -9,8 +9,20 @@ extension Text: View {
     public static func _makeView(view: _GraphValue<Text>, inputs: _ViewInputs) -> _ViewOutputs {
         let inputs = inputs.with(path: "Text")
         let environment = inputs.environment
+        // Relative dates and timers re-resolve every second while shown.
+        var clock: Attribute<Date>?
+        if AnyAttribute.withoutDependencies({ view.attribute.value.isTimeDependent }) {
+            let now = Attribute<Date>(inputs.subgraph, value: Date(), isEqual: { $0 == $1 })
+            let timer = Timer(timeInterval: 1, repeats: true) { [weak now] _ in
+                MainActor.assumeIsolated { now?.setValue(Date()) }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            inputs.subgraph.onDestroy { timer.invalidate() }
+            clock = now
+        }
         let resolved = Attribute<ResolvedText>(inputs.subgraph, isEqual: { $0 == $1 }) {
-            view.attribute.value.resolve(in: environment.value)
+            _ = clock?.value
+            return view.attribute.value.resolve(in: environment.value)
         }
         resolved.label = "resolved \(inputs.path)"
         let content = Attribute<RenderContent>(inputs.subgraph, isEqual: { $0 == $1 }) { .text(resolved.value) }

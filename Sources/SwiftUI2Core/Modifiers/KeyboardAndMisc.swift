@@ -361,14 +361,146 @@ struct _ScrollPositionModifier<ID: Hashable>: ViewModifier {
     @Binding var id: ID?
     let anchor: UnitPoint?
     @State private var box = ScrollProxyBox()
+    @State private var reported: ID?
 
     func body(content: Content) -> some View {
         content
             .environment(\.scrollProxyBox, box)
             .onChange(of: id, initial: true) { _, newValue in
-                guard let newValue else { return }
+                // Ids reported from user scrolling don't scroll back.
+                guard let newValue, newValue != reported else { return }
                 ScrollViewProxy(box: box).scrollTo(newValue, anchor: anchor)
             }
+            .onScrollGeometryChange(for: CGRect.self, of: \.visibleRect) { _, visible in
+                // The binding follows scrolling: the first target whose frame reaches into view.
+                guard let targets = box.targets else { return }
+                let vertical = targets.axes.contains(.vertical)
+                let first = targets.allIDs.compactMap { key -> (ID, CGFloat)? in
+                    guard let typed = key.base as? ID, let frame = targets.frame(for: key) else { return nil }
+                    let visibleEnd = vertical ? frame.maxY > visible.minY + 0.5 : frame.maxX > visible.minX + 0.5
+                    return visibleEnd ? (typed, vertical ? frame.minY : frame.minX) : nil
+                }.min { $0.1 < $1.1 }?.0
+                guard let first, first != id else { return }
+                reported = first
+                id = first
+            }
+    }
+}
+
+/// A scroll view's position: an edge, a view id or a point (`scrollPosition(_:)`).
+public struct ScrollPosition: Equatable {
+    enum Target: Equatable {
+        case none
+        case edge(Edge)
+        case id(AnyHashable, UnitPoint?)
+        case point(CGPoint)
+        case x(CGFloat)
+        case y(CGFloat)
+    }
+
+    var target: Target
+    /// Bumped by every `scrollTo` so repeated requests scroll again.
+    var request = 0
+    public private(set) var isPositionedByUser = false
+    /// The current offset (updated as the scroll view scrolls).
+    var offset: CGPoint?
+
+    public init<T: Hashable>(idType: T.Type = Never.self) { target = .none }
+    public init<T: Hashable>(idType: T.Type = Never.self, edge: Edge) { target = .edge(edge) }
+    public init<T: Hashable>(idType: T.Type = Never.self, point: CGPoint) { target = .point(point) }
+    public init<T: Hashable>(idType: T.Type = Never.self, x: CGFloat) { target = .x(x) }
+    public init<T: Hashable>(idType: T.Type = Never.self, y: CGFloat) { target = .y(y) }
+    public init(id: some Hashable, anchor: UnitPoint? = nil) { target = .id(AnyHashable(id), anchor) }
+
+    public var edge: Edge? { if case .edge(let edge) = target { edge } else { nil } }
+    public var point: CGPoint? {
+        switch target {
+        case .point(let point): point
+        default: isPositionedByUser ? offset : nil
+        }
+    }
+    public var viewID: AnyHashable? { if case .id(let id, _) = target { id } else { nil } }
+    public func viewID<T: Hashable>(type: T.Type) -> T? { viewID?.base as? T }
+
+    public mutating func scrollTo(edge: Edge) { set(.edge(edge)) }
+    public mutating func scrollTo(id: some Hashable, anchor: UnitPoint? = nil) { set(.id(AnyHashable(id), anchor)) }
+    public mutating func scrollTo(point: CGPoint) { set(.point(point)) }
+    public mutating func scrollTo(x: CGFloat) { set(.x(x)) }
+    public mutating func scrollTo(y: CGFloat) { set(.y(y)) }
+
+    private mutating func set(_ target: Target) {
+        self.target = target
+        request += 1
+        isPositionedByUser = false
+    }
+
+    mutating func userScrolled(to offset: CGPoint, viewID: AnyHashable?) {
+        self.offset = offset
+        isPositionedByUser = true
+        target = viewID.map { .id($0, nil) } ?? .point(offset)
+    }
+}
+
+struct _ScrollPositionBindingModifier: ViewModifier {
+    @Binding var position: ScrollPosition
+    let anchor: UnitPoint?
+    @State private var box = ScrollProxyBox()
+    @State private var geometry: ScrollGeometry?
+    @State private var lastRequest = -1
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.scrollProxyBox, box)
+            .onScrollGeometryChange(for: ScrollGeometry.self, of: { $0 }) { _, new in
+                geometry = new
+                if lastRequest != position.request {
+                    perform()
+                } else if position.offset != new.contentOffset {
+                    position.userScrolled(to: new.contentOffset, viewID: firstVisibleID(in: new.visibleRect))
+                }
+            }
+            .onChange(of: position.request, initial: true) { perform() }
+    }
+
+    private func firstVisibleID(in visible: CGRect) -> AnyHashable? {
+        guard let targets = box.targets else { return nil }
+        let vertical = targets.axes.contains(.vertical)
+        return targets.allIDs.compactMap { key -> (AnyHashable, CGFloat)? in
+            guard let frame = targets.frame(for: key) else { return nil }
+            return (vertical ? frame.maxY > visible.minY + 0.5 : frame.maxX > visible.minX + 0.5) ? (key, vertical ? frame.minY : frame.minX) : nil
+        }.min { $0.1 < $1.1 }?.0
+    }
+
+    private func perform() {
+        guard let targets = box.targets, let geometry else { return }
+        lastRequest = position.request
+        let size = geometry.containerSize
+        let content = geometry.contentSize
+        var frame: CGRect?
+        var targetAnchor: UnitPoint? = .topLeading
+        switch position.target {
+        case .none: return
+        case .edge(.top): frame = CGRect(x: geometry.contentOffset.x, y: 0, width: 1, height: 1)
+        case .edge(.bottom): frame = CGRect(x: geometry.contentOffset.x, y: max(0, content.height - 1), width: 1, height: 1); targetAnchor = .bottom
+        case .edge(.leading): frame = CGRect(x: 0, y: geometry.contentOffset.y, width: 1, height: 1)
+        case .edge(.trailing): frame = CGRect(x: max(0, content.width - 1), y: geometry.contentOffset.y, width: 1, height: 1); targetAnchor = .trailing
+        case .id(let id, let anchor):
+            frame = targets.frame(for: id)
+            targetAnchor = anchor ?? self.anchor
+        case .point(let point): frame = CGRect(origin: point, size: size)
+        case .x(let x): frame = CGRect(x: x, y: geometry.contentOffset.y, width: size.width, height: size.height)
+        case .y(let y): frame = CGRect(x: geometry.contentOffset.x, y: y, width: size.width, height: size.height)
+        }
+        guard let frame else { return }
+        targets.scroll?(frame, targetAnchor)
+        position.offset = nil
+    }
+}
+
+extension View {
+    /// Binds the scroll view's position (scrolls when it is set; follows user scrolling).
+    public func scrollPosition(_ position: Binding<ScrollPosition>, anchor: UnitPoint? = nil) -> some View {
+        modifier(_ScrollPositionBindingModifier(position: position, anchor: anchor))
     }
 }
 
