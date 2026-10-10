@@ -110,6 +110,8 @@ public enum DisplayEffect: Equatable, Sendable {
     case mask
     /// The mask content: drawn only as the alpha mask of its `.mask` parent.
     case maskSource
+    /// A plain container (e.g. an accessibility element grouping its children).
+    case group
 }
 
 public struct ResolvedShadow: Equatable, Sendable {
@@ -253,6 +255,8 @@ public protocol RenderBackend: PlatformServices {
     func share(_ items: [Any])
     /// Called after the renderer applied a batch of changes (e.g. to refresh view masks).
     func didCommit()
+    /// Applies `node.accessibility` to the node's view.
+    func updateAccessibility(of view: AnyObject, node: RenderNode)
 }
 
 extension RenderBackend {
@@ -260,6 +264,7 @@ extension RenderBackend {
     public func openURL(_ url: URL) {}
     public func share(_ items: [Any]) {}
     public func didCommit() {}
+    public func updateAccessibility(of view: AnyObject, node: RenderNode) {}
     public func presentFileDialog(_ request: FileDialogRequest, completion: @escaping @MainActor ([URL]?) -> Void) {
         completion(nil)
     }

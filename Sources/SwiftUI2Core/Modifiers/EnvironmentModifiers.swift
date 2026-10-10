@@ -198,12 +198,6 @@ extension View {
     }
     public func symbolRenderingMode(_ mode: SymbolRenderingMode?) -> some View { self }
     public func symbolVariant(_ variant: SymbolVariants) -> some View { environment(\.symbolVariants, variant) }
-    public func accessibilityLabel<S: StringProtocol>(_ label: S) -> some View { self }
-    public func accessibilityLabel(_ label: Text) -> some View { self }
-    public func accessibilityHint<S: StringProtocol>(_ hint: S) -> some View { self }
-    public func accessibilityIdentifier(_ identifier: String) -> some View { self }
-    public func accessibilityHidden(_ hidden: Bool) -> some View { self }
-    public func accessibilityElement(children: AccessibilityChildBehavior = .ignore) -> some View { self }
     public func ignoresSafeArea(_ regions: SafeAreaRegions = .all, edges: Edge.Set = .all) -> some View { self }
     public func edgesIgnoringSafeArea(_ edges: Edge.Set) -> some View { self }
     public func statusBarHidden(_ hidden: Bool = true) -> some View { self }
@@ -237,7 +231,6 @@ public struct SymbolVariants: Hashable, Sendable {
     public var slash: SymbolVariants { SymbolVariants(names: names + ["slash"]) }
     public func contains(_ other: SymbolVariants) -> Bool { other.names.allSatisfy(names.contains) }
 }
-public enum AccessibilityChildBehavior: Sendable { case ignore, contain, combine }
 public struct SafeAreaRegions: OptionSet, Sendable {
     public let rawValue: Int
     public init(rawValue: Int) { self.rawValue = rawValue }

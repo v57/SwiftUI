@@ -54,6 +54,8 @@ public final class RenderNode {
     public internal(set) var children: [RenderNode] = []
     public internal(set) weak var parent: RenderNode?
     public internal(set) var actions = RenderActions()
+    /// Accessibility properties attached by accessibility modifiers.
+    public internal(set) var accessibility: AccessibilityProperties?
     /// Backend view. Backends own its type.
     public var handle: AnyObject?
 
@@ -245,6 +247,11 @@ public final class Renderer {
         node.actions = actions
     }
 
+    func setAccessibility(_ node: RenderNode, _ properties: AccessibilityProperties) {
+        node.accessibility = properties
+        if let handle = node.handle { backend.updateAccessibility(of: handle, node: node) }
+    }
+
     public var hasPendingChanges: Bool { !needsChildSync.isEmpty || !pending.isEmpty || !removed.isEmpty }
     public var hasActiveAnimations: Bool { !animating.isEmpty }
 
@@ -308,6 +315,7 @@ public final class Renderer {
                     child.needsFrame = false
                     child.needsContent = false
                     child.handle = backend.makeView(for: child)
+                    if child.accessibility != nil { backend.updateAccessibility(of: child.handle!, node: child) }
                     created[ObjectIdentifier(child)] = true
                     tracer.record(.renderInsert, child.path)
                     if !child.children.isEmpty { needsChildSync[ObjectIdentifier(child)] = child }

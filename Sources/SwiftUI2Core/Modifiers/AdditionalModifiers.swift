@@ -33,15 +33,6 @@ public struct SensoryFeedback: Sendable {
     public static let alignment = SensoryFeedback(), levelChange = SensoryFeedback(), pathComplete = SensoryFeedback()
     public static func impact(weight: Int = 0, intensity: Double = 1) -> SensoryFeedback { SensoryFeedback() }
 }
-public struct AccessibilityTraits: OptionSet, Sendable {
-    public let rawValue: Int
-    public init(rawValue: Int) { self.rawValue = rawValue }
-    public static let isButton = AccessibilityTraits(rawValue: 1), isHeader = AccessibilityTraits(rawValue: 2)
-    public static let isSelected = AccessibilityTraits(rawValue: 4), isLink = AccessibilityTraits(rawValue: 8)
-    public static let isImage = AccessibilityTraits(rawValue: 16), isStaticText = AccessibilityTraits(rawValue: 32)
-    public static let isSummaryElement = AccessibilityTraits(rawValue: 64), updatesFrequently = AccessibilityTraits(rawValue: 128)
-}
-public enum AccessibilityActionKind: Sendable { case `default`, escape, magicTap, delete, showMenu }
 
 extension View {
     public func searchPresentationToolbarBehavior(_ behavior: SearchPresentationToolbarBehavior) -> some View { self }
@@ -57,13 +48,6 @@ extension View {
     public func listRowSpacing(_ spacing: CGFloat?) -> some View { self }
     public func listSectionSpacing(_ spacing: CGFloat) -> some View { self }
     public func typesettingLanguage(_ language: Locale.Language, isEnabled: Bool = true) -> some View { self }
-    public func accessibilityValue<S: StringProtocol>(_ value: S) -> some View { self }
-    public func accessibilityValue(_ value: Text) -> some View { self }
-    public func accessibilityAddTraits(_ traits: AccessibilityTraits) -> some View { self }
-    public func accessibilityRemoveTraits(_ traits: AccessibilityTraits) -> some View { self }
-    public func accessibilityAction(_ actionKind: AccessibilityActionKind = .default, _ handler: @escaping () -> Void) -> some View { self }
-    public func accessibilityAction<S: StringProtocol>(named name: S, _ handler: @escaping () -> Void) -> some View { self }
-    public func accessibilitySortPriority(_ priority: Double) -> some View { self }
     public func focusSection() -> some View { self }
     public func prefersDefaultFocus(_ prefersDefaultFocus: Bool = true, in namespace: Namespace.ID) -> some View { self }
     public func dialogIcon(_ icon: Image?) -> some View { self }

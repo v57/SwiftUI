@@ -58,6 +58,10 @@ public final class AppKitBackend: RenderBackend {
     /// Mask containers whose alpha mask is re-rendered after each commit.
     private let maskedViews = NSHashTable<EffectNodeView>.weakObjects()
 
+    public func updateAccessibility(of view: AnyObject, node: RenderNode) {
+        (view as? FlippedView)?.applyAccessibility(node.accessibility)
+    }
+
     public func didCommit() {
         for view in maskedViews.allObjects { view.refreshMask() }
     }

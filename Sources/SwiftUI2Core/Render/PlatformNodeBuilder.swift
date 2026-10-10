@@ -27,6 +27,13 @@ extension _ViewInputs {
         renderer.setActions(node, actions)
         renderer.append(node, to: render.parent)
         subgraph.onDestroy { renderer.remove(node) }
+        if let attachment = accessibility, !attachment.isConsumed {
+            attachment.isConsumed = true
+            let properties = attachment.properties
+            let sink = Attribute<AccessibilityProperties>(subgraph, isEqual: { $0 == $1 }) { properties.value }
+            sink.onChange = { renderer.setAccessibility(node, $0) }
+            sink.isEager = true
+        }
 
         let geometry = self.geometry
         let origin = render.origin

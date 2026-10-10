@@ -50,6 +50,95 @@ class FlippedView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    // MARK: Accessibility
+
+    /// Properties from accessibility modifiers (nil: the view's default accessibility).
+    private(set) var accessibilityProperties: AccessibilityProperties?
+
+    /// The view that represents this node to assistive technologies (a wrapped control, if any).
+    var accessibilityTarget: NSView { self }
+
+    func applyAccessibility(_ properties: AccessibilityProperties?) {
+        accessibilityProperties = properties
+        guard let properties else { return }
+        let target = accessibilityTarget
+        if properties.isHidden {
+            target.setAccessibilityElement(false)
+            return
+        }
+        let traits = properties.traits
+        let isElement = properties.children != nil || properties.label != nil || properties.value != nil || !traits.isEmpty || !properties.actions.isEmpty
+        if isElement, target === self { setAccessibilityElement(true) }
+        var label = properties.label
+        if label == nil, properties.children == .combine { label = combinedAccessibilityLabel(of: self) }
+        if let label { target.setAccessibilityLabel(label) }
+        if let value = properties.value { target.setAccessibilityValue(value) }
+        if let hint = properties.hint { target.setAccessibilityHelp(hint) }
+        if let identifier = properties.identifier { target.setAccessibilityIdentifier(identifier) }
+        if !properties.inputLabels.isEmpty { target.setAccessibilityUserInputLabels(properties.inputLabels) }
+        if traits.contains(.isSelected) { target.setAccessibilitySelected(true) }
+        if properties.headingLevel != nil || traits.contains(.isHeader) { target.setAccessibilityRoleDescription("heading") }
+        if target === self {
+            let role: NSAccessibility.Role? =
+                traits.contains(.isButton) ? .button
+                : traits.contains(.isLink) ? .link
+                : traits.contains(.isToggle) ? .checkBox
+                : traits.contains(.isSearchField) ? .textField
+                : traits.contains(.isImage) ? .image
+                : traits.contains(.isStaticText) || traits.contains(.isHeader) ? .staticText
+                : properties.children != nil ? .group : nil
+            if let role { setAccessibilityRole(role) }
+        }
+        let custom = properties.actions.compactMap { handler -> NSAccessibilityCustomAction? in
+            let name: String
+            switch handler.kind {
+            case .named(let title): name = title
+            case .standard(.delete): name = "Delete"
+            case .standard(.magicTap): name = "Magic Tap"
+            case .scroll(let edge): name = "Scroll \(edge)"
+            case .zoom(let direction): name = direction == .zoomIn ? "Zoom In" : "Zoom Out"
+            default: return nil
+            }
+            let perform = handler.perform
+            return NSAccessibilityCustomAction(name: name) { MainActor.assumeIsolated { perform() }; return true }
+        }
+        target.setAccessibilityCustomActions(custom.isEmpty ? nil : custom)
+    }
+
+    private func combinedAccessibilityLabel(of view: NSView) -> String? {
+        var parts: [String] = []
+        func visit(_ view: NSView) {
+            for child in view.subviews {
+                if let text = child.accessibilityLabel() ?? (child.accessibilityValue() as? String), !text.isEmpty { parts.append(text) } else { visit(child) }
+            }
+        }
+        visit(view)
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
+
+    private func performAccessibilityAction(_ kind: AccessibilityActionHandler.Kind) -> Bool {
+        guard let handler = accessibilityProperties?.actions.last(where: { $0.kind == kind }) else { return false }
+        handler.perform()
+        return true
+    }
+
+    override func accessibilityPerformPress() -> Bool { performAccessibilityAction(.standard(.default)) || super.accessibilityPerformPress() }
+    override func accessibilityPerformIncrement() -> Bool { performAccessibilityAction(.adjust(.increment)) || super.accessibilityPerformIncrement() }
+    override func accessibilityPerformDecrement() -> Bool { performAccessibilityAction(.adjust(.decrement)) || super.accessibilityPerformDecrement() }
+    override func accessibilityPerformCancel() -> Bool { performAccessibilityAction(.standard(.escape)) || super.accessibilityPerformCancel() }
+    override func accessibilityPerformShowMenu() -> Bool { performAccessibilityAction(.standard(.showMenu)) || super.accessibilityPerformShowMenu() }
+
+    override func accessibilityChildren() -> [Any]? {
+        if let properties = accessibilityProperties, properties.isHidden || properties.children == .ignore || properties.children == .combine { return [] }
+        return super.accessibilityChildren()
+    }
+
+    override func accessibilityActivationPoint() -> NSPoint {
+        guard let point = accessibilityProperties?.activationPoint, let window else { return super.accessibilityActivationPoint() }
+        let local = CGPoint(x: bounds.width * point.x, y: bounds.height * point.y)
+        return window.convertPoint(toScreen: convert(local, to: nil))
+    }
 }
 
 final class TextNodeView: FlippedView, PlatformNodeView {
@@ -58,6 +147,10 @@ final class TextNodeView: FlippedView, PlatformNodeView {
     func apply(_ content: RenderContent, backend: AppKitBackend) {
         guard case .text(let text) = content else { return }
         string = AppKitText.attributedString(text)
+        // Like SwiftUI, text is a static-text accessibility element (modifiers may override).
+        setAccessibilityElement(accessibilityProperties?.isHidden != true)
+        setAccessibilityRole(.staticText)
+        setAccessibilityValue(text.string)
         needsDisplay = true
     }
 
@@ -638,7 +731,7 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
             isTapTarget = true
         case .mask:
             isMaskContainer = true
-        case .maskSource:
+        case .maskSource, .group:
             break
         case let .transform(offset, scale, rotation):
             let center = CGPoint(x: bounds.midX, y: bounds.midY)

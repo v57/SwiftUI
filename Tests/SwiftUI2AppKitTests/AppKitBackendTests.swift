@@ -51,6 +51,26 @@ struct AppKitBackendTests {
         })
     }
 
+    @Test func accessibilityReachesNativeViews() throws {
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 300, height: 200), styleMask: [.titled], backing: .buffered, defer: true)
+        var pressed = 0
+        let host = NSHostingView(rootView: VStack {
+            Text("5").accessibilityLabel("Count").accessibilityHint("Number of items")
+            Color.red.frame(width: 20, height: 20).accessibilityAddTraits(.isButton).accessibilityAction { pressed += 1 }
+        })
+        window.contentView = host
+        host.frame = CGRect(x: 0, y: 0, width: 300, height: 200)
+        host.graph.update()
+        let views = descendants(of: host)
+        let text = try #require(views.first { $0 is TextNodeView })
+        #expect(text.accessibilityLabel() == "Count")
+        #expect(text.accessibilityHelp() == "Number of items")
+        #expect(text.accessibilityValue() as? String == "5")
+        let button = try #require(views.first { $0.accessibilityRole() == .button })
+        #expect(button.accessibilityPerformPress())
+        #expect(pressed == 1)
+    }
+
     @Test func textMeasurementMatchesDrawing() {
         let backend = AppKitBackend(rootView: NSView())
         let text = Text("Hello, world").resolve(in: EnvironmentValues())

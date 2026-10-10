@@ -15,6 +15,7 @@ public final class HeadlessView {
     public internal(set) var contentUpdates = 0
     public internal(set) var frameUpdates = 0
     public internal(set) var presentation = RenderPresentation.identity
+    public internal(set) var accessibility: AccessibilityProperties?
 
     init() {}
 
@@ -96,6 +97,10 @@ public final class HeadlessBackend: RenderBackend {
         let view = view as! HeadlessView
         view.content = node.content
         view.contentUpdates += 1
+    }
+
+    public func updateAccessibility(of view: AnyObject, node: RenderNode) {
+        (view as! HeadlessView).accessibility = node.accessibility
     }
 
     public func setFrame(of view: AnyObject, node: RenderNode) {

@@ -213,6 +213,10 @@ extension _ViewInputs {
     /// `ViewListContainer`, measured by a `LayoutEngineComputer` and placed by `layout`.
     func makeLayoutContainer<L: Layout>(layout layoutAttribute: Attribute<L>, list: ViewList, component: String? = nil) -> _ViewOutputs {
         var inputs = self
+        // Accessibility modifiers on a stack make it an element grouping its children.
+        if let attachment = inputs.accessibility, !attachment.isConsumed {
+            inputs.render = inputs.makePlatformNode(content: inputs.constant(RenderContent.effect(.group)))
+        }
         if let component { inputs.path = path.appending(component) }
         let container = ViewListContainer(list: list, inputs: inputs, childAxis: L.layoutProperties.stackOrientation)
         let path = inputs.path

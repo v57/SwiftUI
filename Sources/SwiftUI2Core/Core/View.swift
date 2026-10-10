@@ -123,6 +123,8 @@ public struct _ViewInputs {
     var scrollTargets: ScrollTargets?
     /// Position of a container child among its siblings (set by list containers).
     var listItemPosition: Attribute<ListItemPosition>?
+    /// Accessibility properties waiting for the next platform node (consumed once).
+    var accessibility: AccessibilityAttachment?
 
     var listInputs: _ViewListInputs {
         _ViewListInputs(host: host, subgraph: subgraph, environment: environment, depth: depth, path: path, modifierContent: modifierContent, animationScope: animationScope)
