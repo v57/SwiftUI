@@ -502,7 +502,8 @@ public struct Stepper<Label: View>: View {
                 }
             }
         } else {
-            // Measured (classic): label, 8pt, an 80pt value field, 3pt, the 13pt stepper.
+            // Measured (classic): label, 8pt, an 80pt value field, 3pt, the 13pt stepper. The
+            // whole stepper spaces like a control (not like its label text).
             HStack(spacing: design == .modern ? 8 : 6) {
                 if !labelsHidden { label }
                 if isInForm { Spacer(minLength: 8) }
@@ -518,6 +519,7 @@ public struct Stepper<Label: View>: View {
                     }
                 }
             }
+            .modifier(_ControlSpacingLayout())
         }
     }
 

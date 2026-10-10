@@ -19,6 +19,23 @@ extension UnaryLayoutModifier {
     }
 }
 
+// MARK: - Control spacing
+
+/// Composite controls (a stepper with its label, ...) space like one platform control rather
+/// than like the text inside them.
+struct _ControlSpacingLayout: UnaryLayoutModifier, Equatable {
+    static var pathComponent: String { "controlSpacing" }
+
+    func makeComputer(child: LayoutComputer, path: ViewPath, tracer: UpdateTracer) -> UnaryLayoutComputer {
+        ControlSpacingComputer(child: child, path: path, tracer: tracer)
+    }
+}
+
+final class ControlSpacingComputer: UnaryLayoutComputer {
+    override var spacing: ViewSpacing { .default }
+    override func hasSameParameters(as other: LayoutComputer) -> Bool { other is ControlSpacingComputer }
+}
+
 // MARK: - Padding
 
 public struct _PaddingLayout: UnaryLayoutModifier, Equatable {
@@ -53,7 +70,18 @@ final class PaddingComputer: UnaryLayoutComputer {
         return child.explicitAlignment(key, in: inner).map { $0 + (key.axis == .horizontal ? insets.leading : insets.top) }
     }
 
-    override var spacing: ViewSpacing { .default }
+    /// Padded edges prefer the default spacing; unpadded ones keep the child's (measured:
+    /// `.padding(.horizontal, 5)` or zero padding leave text spacing above and below intact).
+    override var spacing: ViewSpacing {
+        var spacing = child.spacing
+        let padded = ViewSpacing.default
+        if insets.top != 0 { spacing.topEdge = padded.topEdge }
+        if insets.bottom != 0 { spacing.bottomEdge = padded.bottomEdge }
+        if insets.leading != 0 { spacing.leadingEdge = padded.leadingEdge }
+        if insets.trailing != 0 { spacing.trailingEdge = padded.trailingEdge }
+        if insets != EdgeInsets() { spacing.isSpacer = false }
+        return spacing
+    }
 
     override func placeChild(in geometry: ViewGeometry, child: LayoutComputer) -> ViewGeometry {
         let size = CGSize(width: max(0, geometry.size.width - insets.horizontal), height: max(0, geometry.size.height - insets.vertical))

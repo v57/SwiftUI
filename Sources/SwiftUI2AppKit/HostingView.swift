@@ -31,6 +31,16 @@ open class GraphHostingView: NSView {
 
     open override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        // The display link belongs to the old window (or none): recreate it for the new one.
+        displayLink?.invalidate()
+        displayLink = nil
+        if graph.hasActiveAnimations { startDisplayLink() }
+        occlusionObserver.map(NotificationCenter.default.removeObserver)
+        occlusionObserver = window.map { window in
+            NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.occlusionChanged() }
+            }
+        }
         keyObservers.forEach(NotificationCenter.default.removeObserver)
         keyObservers = []
         firstResponderObservation = nil
@@ -114,6 +124,7 @@ open class GraphHostingView: NSView {
 
     isolated deinit {
         displayLink?.invalidate()
+        offscreenTimer?.invalidate()
         if let observer { CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes) }
         graph?.tearDown()
     }
@@ -213,11 +224,56 @@ open class GraphHostingView: NSView {
 
     private var displayLink: CADisplayLink?
 
+    /// Drives frames while the window is off screen or occluded (a view's display link only
+    /// fires for visible windows; animations and their completions must still finish).
+    private var offscreenTimer: Timer?
+
+    private var windowIsShowing: Bool {
+        guard let window else { return false }
+        return window.screen != nil && window.isVisible && window.occlusionState.contains(.visible)
+    }
+
     private func startDisplayLink() {
         guard displayLink == nil else { return }
+        guard windowIsShowing else {
+            // Animations started before the window is shown (e.g. from onAppear) still run.
+            guard offscreenTimer == nil else { return }
+            offscreenTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.offscreenFrame() }
+            }
+            return
+        }
+        offscreenTimer?.invalidate()
+        offscreenTimer = nil
         let link = displayLink(target: self, selector: #selector(displayLinkFired(_:)))
         link.add(to: .main, forMode: .common)
         displayLink = link
+    }
+
+    private func offscreenFrame() {
+        if windowIsShowing {
+            offscreenTimer?.invalidate()
+            offscreenTimer = nil
+            if graph.hasActiveAnimations { startDisplayLink() }
+            return
+        }
+        graph.renderAnimationFrame()
+        if !graph.hasActiveAnimations {
+            offscreenTimer?.invalidate()
+            offscreenTimer = nil
+        }
+    }
+
+    private var occlusionObserver: NSObjectProtocol?
+
+    /// Switches between the display link and the timer as the window becomes (in)visible.
+    private func occlusionChanged() {
+        guard graph.hasActiveAnimations else { return }
+        if !windowIsShowing, displayLink != nil {
+            displayLink?.invalidate()
+            displayLink = nil
+        }
+        startDisplayLink()
     }
 
     @objc private func displayLinkFired(_ link: CADisplayLink) {

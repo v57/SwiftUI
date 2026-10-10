@@ -160,6 +160,11 @@ public struct Color: Hashable, Sendable, CustomStringConvertible {
     /// Split view sidebar column (the window background on macOS 26+).
     static let sidebarBackground = dynamic(rgb(0, 0, 0, 0), rgb(1, 1, 1, 0))
     static let listSelection = dynamic(rgb(0, 0, 0, 0.1), rgb(1, 1, 1, 0.12))
+    /// NSLevelIndicator (continuous capacity) and accessory ring gauges.
+    static let levelFill = Color(red: 0.396, green: 0.769, blue: 0.4)
+    static let levelTrack = dynamic(rgb(0.898, 0.898, 0.898), rgb(1, 1, 1, 0.15))
+    static let levelBorder = dynamic(rgb(0, 0, 0, 0.2), rgb(1, 1, 1, 0.2))
+    static let ringTrack = dynamic(rgb(0.68, 0.68, 0.68), rgb(1, 1, 1, 0.3))
     /// Group box (classic): a faint fill with a hairline border.
     static let groupBoxFill = dynamic(rgb(0, 0, 0, 0.016), rgb(1, 1, 1, 0.03))
     static let groupBoxBorder = dynamic(rgb(0, 0, 0, 0.07), rgb(1, 1, 1, 0.1))

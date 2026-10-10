@@ -1487,7 +1487,7 @@ struct _GridLayout: Layout, Equatable {
     let verticalSpacing: CGFloat
 
     private struct Row {
-        var cells: [(index: Int, span: Int, unsizedWidth: Bool)] = []
+        var cells: [(index: Int, span: Int, unsizedWidth: Bool, unsizedHeight: Bool)] = []
         var isFullWidth = false
     }
 
@@ -1498,46 +1498,108 @@ struct _GridLayout: Layout, Equatable {
             let traits = subviews[index].traits
             let rowID = traits.value(GridRowTraitKey.self)
             let span = max(1, traits.value(GridCellColumnsTraitKey.self))
-            let unsized = traits.value(GridCellUnsizedAxesTraitKey.self).contains(.horizontal)
+            let unsized = traits.value(GridCellUnsizedAxesTraitKey.self)
             if let rowID {
                 if lastRowID != .some(rowID) { rows.append(Row()) }
-                rows[rows.count - 1].cells.append((index, span, unsized))
+                rows[rows.count - 1].cells.append((index, span, unsized.contains(.horizontal), unsized.contains(.vertical)))
             } else {
-                rows.append(Row(cells: [(index, 1, true)], isFullWidth: true))
+                rows.append(Row(cells: [(index, 1, true, unsized.contains(.vertical))], isFullWidth: true))
             }
             lastRowID = .some(rowID)
         }
         return rows
     }
 
-    private func measure(_ subviews: Subviews) -> (rows: [Row], widths: [CGFloat], heights: [CGFloat]) {
+    /// Distributes `available` among tracks like a stack: least flexible first, each offered an
+    /// equal share of what is left (`size(track, proposal)` measures a track).
+    private func distribute(_ count: Int, available: CGFloat, size: (Int, CGFloat?) -> CGFloat) -> [CGFloat] {
+        let mins = (0..<count).map { size($0, 0) }
+        let maxs = (0..<count).map { size($0, .infinity) }
+        var result = Array(repeating: CGFloat(0), count: count)
+        var remaining = max(0, available)
+        var left = count
+        for track in (0..<count).sorted(by: { (maxs[$0] - mins[$0], $0) < (maxs[$1] - mins[$1], $1) }) {
+            let share = max(0, remaining / CGFloat(left))
+            result[track] = size(track, share)
+            remaining -= result[track]
+            left -= 1
+        }
+        return result
+    }
+
+    /// Column widths (stack-like when the width is proposed; cells marked unsized and spanning
+    /// cells don't size columns, spans then widen their columns evenly) and row heights.
+    private func measure(_ subviews: Subviews, proposal: ProposedViewSize) -> (rows: [Row], widths: [CGFloat], heights: [CGFloat]) {
         let rows = rows(subviews)
-        let columns = rows.filter { !$0.isFullWidth }.map { $0.cells.reduce(0) { $0 + $1.span } }.max() ?? 1
-        var widths = Array(repeating: CGFloat(0), count: max(columns, 1))
-        var heights: [CGFloat] = []
-        for row in rows {
+        let columns = max(rows.filter { !$0.isFullWidth }.map { $0.cells.reduce(0) { $0 + $1.span } }.max() ?? 1, 1)
+        var columnCells = Array(repeating: [Int](), count: columns)
+        for row in rows where !row.isFullWidth {
             var column = 0
-            var height: CGFloat = 0
             for cell in row.cells {
-                let size = subviews[cell.index].sizeThatFits(cell.unsizedWidth ? ProposedViewSize(width: 0, height: nil) : .unspecified)
-                if !row.isFullWidth, cell.span == 1, !cell.unsizedWidth, column < widths.count { widths[column] = max(widths[column], size.width) }
-                height = max(height, size.height)
+                if cell.span == 1, !cell.unsizedWidth, column < columns { columnCells[column].append(cell.index) }
                 column += cell.span
             }
-            heights.append(height)
+        }
+        func columnWidth(_ column: Int, _ width: CGFloat?) -> CGFloat {
+            columnCells[column].map { subviews[$0].sizeThatFits(ProposedViewSize(width: width, height: nil)).width }.max() ?? 0
+        }
+        var widths: [CGFloat]
+        if let width = proposal.width, width.isFinite {
+            widths = distribute(columns, available: width - horizontalSpacing * CGFloat(columns - 1), size: columnWidth)
+        } else {
+            widths = (0..<columns).map { columnWidth($0, nil) }
+        }
+        for row in rows where !row.isFullWidth {
+            var column = 0
+            for cell in row.cells {
+                if cell.span > 1, !cell.unsizedWidth, column < columns {
+                    let end = min(column + cell.span, columns)
+                    let current = widths[column..<end].reduce(0, +) + horizontalSpacing * CGFloat(end - column - 1)
+                    let needed = subviews[cell.index].sizeThatFits(.unspecified).width
+                    if needed > current {
+                        let extra = (needed - current) / CGFloat(end - column)
+                        for index in column..<end { widths[index] += extra }
+                    }
+                }
+                column += cell.span
+            }
+        }
+        let totalWidth = widths.reduce(0, +) + horizontalSpacing * CGFloat(columns - 1)
+        func cellWidth(_ row: Row, _ column: Int, _ span: Int) -> CGFloat {
+            if row.isFullWidth { return totalWidth }
+            let end = min(column + span, columns)
+            return widths[column..<end].reduce(0, +) + horizontalSpacing * CGFloat(max(end - column - 1, 0))
+        }
+        func rowHeight(_ rowIndex: Int, _ height: CGFloat?) -> CGFloat {
+            var column = 0
+            var result: CGFloat = 0
+            for cell in rows[rowIndex].cells {
+                if !cell.unsizedHeight {
+                    let width = cellWidth(rows[rowIndex], column, cell.span)
+                    result = max(result, subviews[cell.index].sizeThatFits(ProposedViewSize(width: width, height: height)).height)
+                }
+                column += cell.span
+            }
+            return result
+        }
+        let heights: [CGFloat]
+        if let height = proposal.height, height.isFinite {
+            heights = distribute(rows.count, available: height - verticalSpacing * CGFloat(max(rows.count - 1, 0)), size: rowHeight)
+        } else {
+            heights = rows.indices.map { rowHeight($0, nil) }
         }
         return (rows, widths, heights)
     }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
-        let (rows, widths, heights) = measure(subviews)
+        let (rows, widths, heights) = measure(subviews, proposal: proposal)
         let width = widths.reduce(0, +) + horizontalSpacing * CGFloat(max(widths.count - 1, 0))
         let height = heights.reduce(0, +) + verticalSpacing * CGFloat(max(rows.count - 1, 0))
         return CGSize(width: width, height: height)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
-        let (rows, widths, heights) = measure(subviews)
+        let (rows, widths, heights) = measure(subviews, proposal: proposal)
         let totalWidth = widths.reduce(0, +) + horizontalSpacing * CGFloat(max(widths.count - 1, 0))
         // A column takes the `gridColumnAlignment` of any of its cells.
         var columnAlignments: [Int: HorizontalAlignment] = [:]

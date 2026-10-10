@@ -174,11 +174,13 @@ struct _AutomaticLabeledContent: View {
         if isInForm, !labelsHidden {
             _FormLabeledRow { configuration.label } control: { configuration.content.foregroundStyle(.secondary) }
         } else {
+            // Spaces like a control, not like its texts (measured).
             HStack(alignment: .firstTextBaseline) {
                 if !labelsHidden { configuration.label }
                 if isInForm { Spacer(minLength: 8) }
                 configuration.content.foregroundStyle(.secondary)
             }
+            .modifier(_ControlSpacingLayout())
         }
     }
 }
@@ -346,35 +348,54 @@ public protocol GaugeStyle {
     @ViewBuilder func makeBody(configuration: Configuration) -> Body
 }
 
-/// Label and current value over a bar, with optional range labels.
+/// macOS gauge (measured): the label centered above a 16pt level-indicator bar (range labels
+/// 8pt beside it), the current value centered below; stack spacing between them.
 public struct DefaultGaugeStyle: GaugeStyle {
     public init() {}
     public func makeBody(configuration: Configuration) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                configuration.label
-                Spacer()
-                if let current = configuration.currentValueLabel { current.foregroundStyle(.secondary) }
-            }
-            HStack(spacing: 6) {
-                if let minimum = configuration.minimumValueLabel { minimum.font(.caption).foregroundStyle(.secondary) }
-                _LinearProgressBar(fraction: configuration.value)
-                if let maximum = configuration.maximumValueLabel { maximum.font(.caption).foregroundStyle(.secondary) }
-            }
-        }
+        _LinearCapacityGauge(configuration: configuration)
     }
 }
 
 public typealias LinearCapacityGaugeStyle = AccessoryLinearCapacityGaugeStyle
 
-/// A thin capacity bar under the label.
+/// On macOS the same as the automatic style (a capacity level indicator).
 public struct AccessoryLinearCapacityGaugeStyle: GaugeStyle {
     public init() {}
     public func makeBody(configuration: Configuration) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            configuration.label.font(.caption)
-            _LinearProgressBar(fraction: configuration.value, height: 6)
+        _LinearCapacityGauge(configuration: configuration)
+    }
+}
+
+struct _LinearCapacityGauge: View {
+    let configuration: GaugeStyleConfiguration
+    var body: some View {
+        VStack {
+            configuration.label
+            HStack(spacing: 8) {
+                if let minimum = configuration.minimumValueLabel { minimum }
+                _LevelIndicatorBar(fraction: configuration.value)
+                if let maximum = configuration.maximumValueLabel { maximum }
+            }
+            if let current = configuration.currentValueLabel { current }
         }
+    }
+}
+
+/// NSLevelIndicator's continuous capacity bar: a green fill in a light track with a hairline.
+struct _LevelIndicatorBar: View {
+    let fraction: Double
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Rectangle().fill(Color.levelTrack)
+                Rectangle().fill(Color.levelFill)
+                    .frame(width: proxy.size.width * CGFloat(min(max(fraction, 0), 1)))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 2.5))
+            .overlay(RoundedRectangle(cornerRadius: 2.5).strokeBorder(Color.levelBorder, lineWidth: 0.5))
+        }
+        .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, minHeight: 16, maxHeight: 16)
     }
 }
 
@@ -398,14 +419,26 @@ public struct AccessoryLinearGaugeStyle: GaugeStyle {
     }
 }
 
-/// A ring with the current value in the middle.
+/// A 58pt ring (6pt gray track, label-colored value arc with round caps from the top) with
+/// the current value, or else the label, in the middle (measured).
 public struct AccessoryCircularCapacityGaugeStyle: GaugeStyle {
     public init() {}
     public func makeBody(configuration: Configuration) -> some View {
         ZStack {
-            _CircularProgress(fraction: configuration.value, size: 44)
-            configuration.currentValueLabel?.font(.caption)
+            Circle().stroke(Color.ringTrack, lineWidth: 6)
+            Circle().trim(from: 0, to: CGFloat(min(max(configuration.value, 0), 1)))
+                .stroke(Color.primary, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Group {
+                if let current = configuration.currentValueLabel { current } else { configuration.label }
+            }
+            .font(.system(size: 24))
+            .minimumScaleFactor(0.3)
+            .lineLimit(1)
+            .frame(width: 40)
         }
+        .padding(3)
+        .frame(width: 58, height: 58)
     }
 }
 

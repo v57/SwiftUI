@@ -24,9 +24,9 @@ static void dumpAnimations(NSView *view) {
 static void dumpLayers(NSView *view, int depth) {
     CALayer *l = view.layer;
     if (l && (getenv("SNAP_DUMP_ALL") || !CATransform3DIsIdentity(l.transform) || l.anchorPoint.x != 0 || l.anchorPoint.y != 0))
-        fprintf(stderr, "%*s%s frame=%s anchor=(%.2f,%.2f) affine=%d t=[%.2f %.2f %.2f %.2f | %.2f %.2f]\n", depth, "", view.className.UTF8String,
+        fprintf(stderr, "%*s%s frame=%s anchor=(%.2f,%.2f) affine=%d t=[%.2f %.2f %.2f %.2f | %.2f %.2f] alpha=%.2f hidden=%d\n", depth, "", view.className.UTF8String,
             NSStringFromRect(view.frame).UTF8String, l.anchorPoint.x, l.anchorPoint.y, CATransform3DIsAffine(l.transform),
-            l.transform.m11, l.transform.m12, l.transform.m21, l.transform.m22, l.transform.m41, l.transform.m42);
+            l.transform.m11, l.transform.m12, l.transform.m21, l.transform.m22, l.transform.m41, l.transform.m42, l.opacity, view.isHidden);
     for (NSView *sub in view.subviews) dumpLayers(sub, depth + 1);
 }
 __attribute__((constructor)) static void snapInit(void) {

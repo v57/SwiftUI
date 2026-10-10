@@ -69,12 +69,24 @@ struct StackAlgorithm {
         return sizes
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, _ subviews: LayoutSubviews) -> CGSize {
+    func sizeThatFits(_ proposal: ProposedViewSize, _ subviews: LayoutSubviews, crossGuide: (AlignmentKey, any AlignmentID.Type)? = nil) -> CGSize {
         guard !subviews.isEmpty else { return .zero }
         let spacings = spacings(subviews)
         let sizes = childSizes(proposal, subviews, spacings: spacings)
         let main = sizes.reduce(0) { $0 + $1[axis] } + spacings.reduce(0, +)
-        let cross = sizes.reduce(0) { max($0, $1[axis.other]) }
+        var cross = sizes.reduce(0) { max($0, $1[axis.other]) }
+        if let crossGuide, subviews.count > 1 {
+            // Children are aligned on the guide: the stack spans the union of their extents
+            // (alignment guides can make it larger than any child).
+            var above: CGFloat = 0
+            var below: CGFloat = 0
+            for index in subviews.indices {
+                let value = subviews[index].computer.dimensions(size: sizes[index])[crossGuide.0, crossGuide.1]
+                above = max(above, value)
+                below = max(below, sizes[index][axis.other] - value)
+            }
+            cross = max(cross, above + below)
+        }
         return CGSize(main: main, cross: cross, axis: axis)
     }
 
@@ -119,7 +131,7 @@ public struct _VStackLayout: Layout, Equatable {
     }
 
     public func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
-        StackAlgorithm(axis: .vertical, spacing: spacing).sizeThatFits(proposal, subviews)
+        StackAlgorithm(axis: .vertical, spacing: spacing).sizeThatFits(proposal, subviews, crossGuide: (alignment.key, alignment.id))
     }
 
     public func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
@@ -168,7 +180,7 @@ public struct _HStackLayout: Layout, Equatable {
     }
 
     public func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
-        StackAlgorithm(axis: .horizontal, spacing: spacing).sizeThatFits(proposal, subviews)
+        StackAlgorithm(axis: .horizontal, spacing: spacing).sizeThatFits(proposal, subviews, crossGuide: (alignment.key, alignment.id))
     }
 
     public func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {

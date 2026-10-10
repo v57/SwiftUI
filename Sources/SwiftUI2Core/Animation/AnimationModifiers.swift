@@ -42,7 +42,15 @@ final class AnimationScope {
 extension _ViewInputs {
     /// The transaction a change of this view was made in.
     var transaction: Transaction {
-        animationScope?.resolve(host.currentTransaction) ?? host.currentTransaction
+        let resolved = animationScope?.resolve(host.currentTransaction) ?? host.currentTransaction
+        // Like SwiftUI, the initial build of a graph never animates (transaction modifiers
+        // included); changes made from onAppear land in the next pass.
+        guard host.updateSequence > 1 else {
+            var initial = resolved
+            initial.animation = nil
+            return initial
+        }
+        return resolved
     }
 }
 
@@ -110,6 +118,43 @@ public struct _TransactionModifier: ViewModifier {
     }
 }
 
+/// `transaction(value:_:)`: transforms the transaction only in updates where `value` changed.
+public struct _ValueTransactionModifier<Value: Equatable>: ViewModifier {
+    let value: Value
+    let transform: @MainActor (inout Transaction) -> Void
+    public typealias Body = Never
+
+    public static func _makeView(modifier: _GraphValue<Self>, inputs: _ViewInputs, body: @escaping @MainActor (_ViewInputs) -> _ViewOutputs) -> _ViewOutputs {
+        let host = inputs.host
+        let source = modifier.attribute
+        let changedInUpdate = LastValue<Int>()
+        let observer = Attribute<Value>(inputs.subgraph, isEqual: { $0 == $1 }) { source.value.value }
+        observer.order = inputs.depth
+        var first = true
+        observer.onChange = { _ in
+            if first { first = false; return }
+            changedInUpdate.value = host.updateSequence
+        }
+        observer.isEager = true
+        var childInputs = inputs
+        childInputs.animationScope = AnimationScope(parent: inputs.animationScope, kind: .transform { transaction in
+            _ = observer.value // make sure the comparison ran in this update
+            if changedInUpdate.value == host.updateSequence { source.value.transform(&transaction) }
+        })
+        return body(childInputs)
+    }
+
+    public static func _makeViewList(modifier: _GraphValue<Self>, inputs: _ViewListInputs, body: @escaping @MainActor (_ViewListInputs) -> _ViewListOutputs) -> _ViewListOutputs {
+        let content = body(inputs)
+        let list = content.list.mapElements(in: inputs.subgraph) { element in
+            ViewListElement(traits: element.traits) { placement in
+                Self._makeView(modifier: modifier, inputs: inputs.instantiate(placement)) { element.make($0) }
+            }
+        }
+        return _ViewListOutputs(list: list)
+    }
+}
+
 extension View {
     public func animation<V: Equatable>(_ animation: Animation?, value: V) -> some View {
         modifier(_ValueAnimationModifier(animation: animation, value: value))
@@ -125,7 +170,7 @@ extension View {
     }
 
     public func transaction<V: Equatable>(value: V, _ transform: @escaping @MainActor (inout Transaction) -> Void) -> some View {
-        modifier(_TransactionModifier(transform: transform))
+        modifier(_ValueTransactionModifier(value: value, transform: transform))
     }
 }
 
