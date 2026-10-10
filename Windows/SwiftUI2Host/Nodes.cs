@@ -148,7 +148,11 @@ abstract class NodeView
             child.ParentNode = this;
             index++;
         }
+        ChildrenChanged();
     }
+
+    /// <summary>The node's children were replaced (SetChildren).</summary>
+    protected virtual void ChildrenChanged() { }
 
     public void RemoveFromParent()
     {
@@ -262,7 +266,9 @@ sealed class MaskSourceNode : NodeView
 {
     public MaskSourceNode(HostView host, int id) : base(host, id, Kinds.MaskSource)
     {
-        Element.Visibility = Visibility.Collapsed;
+        // Rendered (for its parent's mask snapshot) but not seen.
+        Element.Opacity = 0;
+        Element.IsHitTestVisible = false;
     }
 
     public override void ApplyContent(Reader r)

@@ -31,7 +31,8 @@ sealed class HostView
 
     readonly Grid content = new();
     readonly Canvas measuring = new() { Opacity = 0, IsHitTestVisible = false };
-    readonly ContentControl focusSink = new() { IsTabStop = true, Width = 0, Height = 0, Opacity = 0 };
+    /// Holds keyboard focus when no control has it (key events only reach a focused element).
+    readonly ContentControl focusSink = new() { IsTabStop = true, Width = 1, Height = 1, Opacity = 0, UseSystemFocusVisuals = false, IsHitTestVisible = false };
     readonly CommandBar commandBar = new() { DefaultLabelPosition = CommandBarDefaultLabelPosition.Right, Visibility = Visibility.Collapsed, IsDynamicOverflowEnabled = true };
     readonly MenuBar menuBar = new() { Visibility = Visibility.Collapsed };
     readonly ContainerNode root;
@@ -66,6 +67,9 @@ sealed class HostView
         content.SizeChanged += (_, _) => UpdateSize();
         RootElement.ActualThemeChanged += (_, _) => UpdateTheme();
         RootElement.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler((_, e) => OnKey(e, e.KeyStatus.WasKeyDown ? 1 : 0)), true);
+        RootElement.Loaded += (_, _) => EnsureFocus();
+        Window.Activated += (_, _) => EnsureFocus();
+        RootElement.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, _) => EnsureFocus()), true);
         RootElement.AddHandler(UIElement.KeyUpEvent, new KeyEventHandler((_, e) => OnKey(e, 2)), true);
 
         var self = GCHandle.Alloc(this);
@@ -106,6 +110,12 @@ sealed class HostView
 
     /// <summary>Moves keyboard focus off text fields.</summary>
     public void FocusRoot() => focusSink.Focus(FocusState.Programmatic);
+
+    /// Keeps keyboard focus in the window (SwiftUI's own views aren't XAML controls).
+    void EnsureFocus()
+    {
+        if (RootElement.XamlRoot != null && FocusManager.GetFocusedElement(RootElement.XamlRoot) == null) FocusRoot();
+    }
 
     // MARK: Commands
 
@@ -253,6 +263,8 @@ sealed class HostView
 
     // MARK: Keyboard
 
+    static readonly bool DebugKeys = Environment.GetEnvironmentVariable("SWIFTUI2_DEBUG_KEYS") != null;
+
     static bool Down(VirtualKey key) =>
         (InputKeyboardSource.GetKeyStateForCurrentThread(key) & CoreVirtualKeyStates.Down) == CoreVirtualKeyStates.Down;
 
@@ -260,6 +272,7 @@ sealed class HostView
     /// field is typing them; Escape that SwiftUI doesn't handle dismisses / goes back.
     void OnKey(KeyRoutedEventArgs e, int phase)
     {
+        if (DebugKeys) Console.Error.WriteLine($"[keys] {e.Key} phase {phase} handled {e.Handled} focus {FocusManager.GetFocusedElement(RootElement.XamlRoot)?.GetType().Name}");
         if (Handle == 0 || e.Handled && phase != 2) return;
         var shift = Down(VirtualKey.Shift);
         var modifiers = (shift ? 1 : 0) | (Down(VirtualKey.Control) ? 2 : 0) | (Down(VirtualKey.Menu) ? 4 : 0) | (Down(VirtualKey.LeftWindows) || Down(VirtualKey.RightWindows) ? 8 : 0);
@@ -387,7 +400,7 @@ sealed class HostView
                 {
                     var picker = new Microsoft.Windows.Storage.Pickers.FileSavePicker(windowId);
                     if (filename.Length > 0) picker.SuggestedFileName = filename;
-                    if (extensions.Count > 0) picker.FileTypeChoices.Add(extensions[0].TrimStart('.').ToUpperInvariant() + " file", extensions);
+                    if (extensions.Count > 0) picker.FileTypeChoices.Add(extensions.Count == 1 ? extensions[0].TrimStart('.').ToUpperInvariant() + " file" : "Supported files", extensions);
                     if (confirm.Length > 0) picker.CommitButtonText = confirm;
                     var result = await picker.PickSaveFileAsync();
                     if (result != null) paths = [result.Path];

@@ -48,6 +48,39 @@ sealed class PathData
         return minX > maxX ? new Rect() : new Rect(minX, minY, maxX - minX, maxY - minY);
     }
 
+    /// <summary>The path as Win2D geometry (composition clips: CompositionPath).</summary>
+    public Microsoft.Graphics.Canvas.Geometry.CanvasGeometry CanvasGeometry(bool evenOdd = false)
+    {
+        var builder = new Microsoft.Graphics.Canvas.Geometry.CanvasPathBuilder(Microsoft.Graphics.Canvas.CanvasDevice.GetSharedDevice());
+        builder.SetFilledRegionDetermination(evenOdd ? Microsoft.Graphics.Canvas.Geometry.CanvasFilledRegionDetermination.Alternate
+                                                     : Microsoft.Graphics.Canvas.Geometry.CanvasFilledRegionDetermination.Winding);
+        var open = false;
+        System.Numerics.Vector2 current = default;
+        System.Numerics.Vector2 V(float[] p, int i) => new(p[i], p[i + 1]);
+        void Begin() { if (!open) { builder.BeginFigure(current); open = true; } }
+        foreach (var (verb, p) in Elements)
+        {
+            switch (verb)
+            {
+                case 0:
+                    if (open) builder.EndFigure(Microsoft.Graphics.Canvas.Geometry.CanvasFigureLoop.Open);
+                    current = V(p, 0);
+                    builder.BeginFigure(current);
+                    open = true;
+                    break;
+                case 1: Begin(); current = V(p, 0); builder.AddLine(current); break;
+                case 2: Begin(); current = V(p, 2); builder.AddQuadraticBezier(V(p, 0), current); break;
+                case 3: Begin(); current = V(p, 4); builder.AddCubicBezier(V(p, 0), V(p, 2), current); break;
+                default:
+                    if (open) builder.EndFigure(Microsoft.Graphics.Canvas.Geometry.CanvasFigureLoop.Closed);
+                    open = false;
+                    break;
+            }
+        }
+        if (open) builder.EndFigure(Microsoft.Graphics.Canvas.Geometry.CanvasFigureLoop.Open);
+        return Microsoft.Graphics.Canvas.Geometry.CanvasGeometry.CreatePath(builder);
+    }
+
     /// <summary>The geometry, scaled by (sx, sy).</summary>
     public PathGeometry Geometry(double sx = 1, double sy = 1, bool evenOdd = false)
     {
@@ -209,8 +242,10 @@ sealed record Shadow(uint Color, float Radius, float Dx, float Dy)
 /// <summary>A filled and/or stroked path; the path is scaled from the size it was built for to the frame.</summary>
 sealed class ShapeNode : NodeView
 {
+    readonly Canvas shadowLayer = new();
     readonly XamlPath fillPath = new();
     readonly XamlPath strokePath = new();
+    Shadow? shadow;
     PathData path = new();
     float pathWidth, pathHeight;
     uint? fill, stroke;
@@ -220,12 +255,13 @@ sealed class ShapeNode : NodeView
 
     public ShapeNode(HostView host, int id) : base(host, id, Kinds.Shape)
     {
+        Element.Children.Add(shadowLayer);
         Element.Children.Add(fillPath);
         Element.Children.Add(strokePath);
         Element.IsHitTestVisible = false;
     }
 
-    protected override int FirstNodeChildIndex => 2;
+    protected override int FirstNodeChildIndex => 3;
 
     public override void ApplyContent(Reader r)
     {
@@ -236,7 +272,7 @@ sealed class ShapeNode : NodeView
         lineWidth = r.F32();
         strokeStyle = StrokeStyle.Read(r);
         gradient = r.Bool() ? Gradient.Read(r) : null;
-        if (r.Bool()) Shadow.Read(r); // shape shadows are not drawn yet
+        shadow = r.Bool() ? Shadow.Read(r) : null;
         Redraw();
     }
 
@@ -270,6 +306,29 @@ sealed class ShapeNode : NodeView
             if (strokeStyle != null) strokeStyle.Apply(strokePath, lineWidth);
             else strokePath.StrokeDashArray = null;
         }
+        UpdateShadow(fills ? fillPath : strokePath, fills || strokes);
+    }
+
+    /// A drop shadow of the drawn path (its alpha mask), behind it.
+    void UpdateShadow(XamlPath shape, bool visible)
+    {
+        if (shadow == null || !visible || FrameWidth <= 0 || FrameHeight <= 0)
+        {
+            Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetElementChildVisual(shadowLayer, null);
+            return;
+        }
+        var compositor = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(shadowLayer).Compositor;
+        var sprite = compositor.CreateSpriteVisual();
+        sprite.Size = new System.Numerics.Vector2((float)FrameWidth, (float)FrameHeight);
+        var drop = compositor.CreateDropShadow();
+        drop.Mask = shape.GetAlphaMask();
+        var c = Colors.From(shadow.Color);
+        drop.Color = Windows.UI.Color.FromArgb(255, c.R, c.G, c.B);
+        drop.Opacity = c.A / 255f;
+        drop.BlurRadius = shadow.Radius * 2;
+        drop.Offset = new System.Numerics.Vector3(shadow.Dx, shadow.Dy, 0);
+        sprite.Shadow = drop;
+        Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetElementChildVisual(shadowLayer, sprite);
     }
 }
 
@@ -303,7 +362,7 @@ sealed class ImageNode : NodeView
         {
             case 0:
                 glyphName = r.String();
-                r.Bool(); // filled (the variable font's FILL axis isn't settable from XAML)
+                glyph.FontFamily = r.Bool() ? Fonts.SymbolsFilled : Fonts.Symbols;
                 glyphSize = r.F32();
                 glyph.FontWeight = Fonts.Weight(Math.Clamp(r.I32(), 100, 700));
                 break;

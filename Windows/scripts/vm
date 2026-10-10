@@ -9,6 +9,9 @@
 #   vm run <exe> [args…]       runs a program on the VM's desktop (interactive session) and waits
 #   vm screenshot <local.png>  captures the VM's desktop
 #   vm pull <remote> <local>   copies a file from the VM
+#   vm click <x> <y> | keys <SendKeys> | text <text>   real input on the VM's desktop (physical px)
+#   vm steps "click:146,72; wait:400; click:204,175"  several inputs in one go (menus stay open)
+#   vm last <local.png>        the screenshot taken right after the last input
 set -e
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 MAC="${WINDOWS_VM_MAC:-02:57:57:0a:11:01}"
@@ -48,10 +51,15 @@ case "$1" in
     remote "& '$REMOTE\\Windows\\scripts\\run-interactive.ps1' -Command '$exe' -Arguments '$*'"
     ;;
   screenshot)
-    remote "& '$REMOTE\\Windows\\scripts\\run-interactive.ps1' -Command powershell.exe -Arguments '-NoProfile -ExecutionPolicy Bypass -File $REMOTE\\Windows\\scripts\\screenshot.ps1 -Path C:\\dev\\screen.png' -TimeoutSeconds 60" >/dev/null
+    remote "& '$REMOTE\\Windows\\scripts\\run-interactive.ps1' -Command powershell.exe -Arguments '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File $REMOTE\\Windows\\scripts\\screenshot.ps1 -Path C:\\dev\\screen.png' -TimeoutSeconds 60" >/dev/null
     copy "$USER_NAME@$(vm_ip):C:/dev/screen.png" "$2"
     echo "$2"
     ;;
   pull) copy "$USER_NAME@$(vm_ip):$2" "$3" ;;
+  click|keys|text|steps)
+    case "$1" in click) args="-X $2 -Y $3" ;; keys) args="-Keys \"$2\"" ;; text) args="-Text \"$2\"" ;; steps) args="-Steps \"$2\"" ;; esac
+    remote "& '$REMOTE\\Windows\\scripts\\run-interactive.ps1' -Command powershell.exe -Arguments '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File $REMOTE\\Windows\\scripts\\input.ps1 $args -Shot C:\\dev\\last.png' -TimeoutSeconds 30" >/dev/null
+    ;;
+  last) copy "$USER_NAME@$(vm_ip):C:/dev/last.png" "$2"; echo "$2" ;;
   *) sed -n '2,10p' "$0"; exit 1 ;;
 esac

@@ -242,8 +242,14 @@ final class WinUIFileDialogs {
         let kind = request.kind == .save ? "save" : folders ? "folder" : "open"
         var extensions: [String] = []
         for identifier in request.contentTypes {
-            guard let type = UTType(identifier), let ext = type.preferredFilenameExtension else { extensions = []; break }
-            extensions.append(ext)
+            if let known = Self.abstractExtensions[identifier] {
+                extensions += known
+            } else if let type = UTType(identifier), let ext = type.preferredFilenameExtension {
+                extensions.append(ext)
+            } else {
+                extensions = [] // a type without extensions (e.g. public.data): anything
+                break
+            }
         }
         let fields = [String(id), kind, request.allowsMultipleSelection ? "1" : "0", request.defaultFilename ?? "",
                       request.options.message ?? "", request.options.confirmationLabel ?? "", extensions.joined(separator: ";")]
@@ -252,6 +258,17 @@ final class WinUIFileDialogs {
             complete(id: id, paths: nil)
         }
     }
+
+    /// Abstract types the pickers can still filter by their common extensions.
+    static let abstractExtensions: [String: [String]] = [
+        "public.image": ["png", "jpg", "jpeg", "gif", "bmp", "webp", "heic", "tiff", "ico"],
+        "public.text": ["txt", "md", "csv", "json", "xml", "html", "log"],
+        "public.plain-text": ["txt", "text", "log"],
+        "public.movie": ["mp4", "mov", "m4v", "avi", "mkv", "wmv"],
+        "public.video": ["mp4", "mov", "m4v", "avi", "mkv", "wmv"],
+        "public.audio": ["mp3", "m4a", "wav", "aac", "flac", "wma"],
+        "public.source-code": ["swift", "c", "h", "cpp", "cs", "js", "ts", "py"],
+    ]
 
     func complete(id: Int, paths: [String]?) {
         guard let completion = pending.removeValue(forKey: id) else { return }

@@ -159,6 +159,11 @@ if buildingOnLinux {
     package.products += [.library(name: "DemoWinUI", type: .dynamic, targets: ["DemoWinUI"])]
     package.targets += [.target(name: "GalleryWinUI", dependencies: ["SwiftUI2"], path: "Sources/GalleryAndroid")]
     package.products += [.library(name: "GalleryWinUI", type: .dynamic, targets: ["GalleryWinUI"])]
+    // Desktop/drawing feature tour (commands, shortcuts, file dialogs, effects) and the reference app.
+    package.targets += [.target(name: "FeatureTourWinUI", dependencies: ["SwiftUI2"], path: "Sources/FeatureTour")]
+    package.products += [.library(name: "FeatureTourWinUI", type: .dynamic, targets: ["FeatureTourWinUI"])]
+    package.targets += [.target(name: "ReferenceAppWinUI", dependencies: ["SwiftUI2"], path: "Sources/ReferenceApp", swiftSettings: [.define("SWIFTUI2")])]
+    package.products += [.library(name: "ReferenceAppWinUI", type: .dynamic, targets: ["ReferenceAppWinUI"])]
 } else if !crossCompiling {
     package.targets += [
         .testTarget(name: "SwiftUI2AppKitTests", dependencies: ["SwiftUI2"]),

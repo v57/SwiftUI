@@ -15,6 +15,10 @@ static class Fonts
 
     /// <summary>The Material Symbols font (Image(systemName:) glyphs, by ligature name).</summary>
     public static readonly FontFamily Symbols = new("ms-appx:///Assets/MaterialSymbolsOutlined.ttf#Material Symbols Outlined");
+    /// <summary>Its FILL=1 instance (`.fill` symbols); the outlined font if it wasn't fetched.</summary>
+    public static readonly FontFamily SymbolsFilled =
+        File.Exists(Path.Combine(AppContext.BaseDirectory, "Assets", "MaterialSymbolsOutlinedFilled.ttf"))
+            ? new FontFamily("ms-appx:///Assets/MaterialSymbolsOutlinedFilled.ttf#Material Symbols Outlined Filled") : Symbols;
 
     /// <summary>The family for a design (0 default, 1 monospaced, 2 serif, 3 rounded) or name; null keeps the theme font.</summary>
     public static FontFamily? Family(int design, string? name)
@@ -143,7 +147,7 @@ sealed class TextSpec
             var run = new Run { Text = spec.Text };
             if (spec.IsSymbol)
             {
-                run.FontFamily = Fonts.Symbols;
+                run.FontFamily = spec.Filled ? Fonts.SymbolsFilled : Fonts.Symbols;
                 run.FontSize = Math.Max(spec.GlyphSize, 1);
                 run.FontWeight = Fonts.Weight(Math.Clamp(spec.GlyphWeight, 100, 700));
             }
