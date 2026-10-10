@@ -288,6 +288,11 @@ public struct ControlMetrics: Hashable, Sendable {
     /// The backend's own control-size table (height, horizontal inset); nil uses SwiftUI's
     /// macOS sizes for the design.
     public var sizeTable: [ControlSize: SizeVariant]?
+    /// Switches: the size of the compact (mini) switch grouped forms use; nil uses SwiftUI's
+    /// macOS size (26 × 16). Backends whose native switch can't shrink set their own.
+    public var compactSize: CGSize?
+    /// Check boxes: the size of a radio group's buttons; nil uses SwiftUI's macOS size (14 × 14).
+    public var radioSize: CGSize?
 
     public struct SizeVariant: Hashable, Sendable {
         public var height: CGFloat

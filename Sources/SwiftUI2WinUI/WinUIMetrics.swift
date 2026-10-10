@@ -104,8 +104,16 @@ enum WinUIControls {
                 metrics.sizeTable = buttonSizes
                 return metrics
             }
-        case .checkbox: return ControlMetrics(minSize: native.checkbox)
-        case .switch: return ControlMetrics(minSize: native.switchSize)
+        case .checkbox:
+            // Radio groups use the native radio button's size (it doesn't shrink to SwiftUI's 14 × 14).
+            var metrics = ControlMetrics(minSize: native.checkbox)
+            metrics.radioSize = native.radio
+            return metrics
+        case .switch:
+            // Grouped forms' compact switches stay native size (WinUI has no mini switch).
+            var metrics = ControlMetrics(minSize: native.switchSize)
+            metrics.compactSize = native.switchSize
+            return metrics
         case .textField(let style):
             switch style {
             case .plain: return ControlMetrics(contentInsets: EdgeInsets(), idealWidth: 120)

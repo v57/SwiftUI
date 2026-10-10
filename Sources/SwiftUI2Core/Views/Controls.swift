@@ -615,12 +615,16 @@ public struct _ToggleControl: View {
         let layout = inputs.makeLayoutAttribute {
             let env = environment.value
             let kind: ControlKind = env.toggleStyle == .switch ? .switch : .checkbox
-            var size = services.controlMetrics(kind).minSize
+            let metrics = services.controlMetrics(kind)
+            var size = metrics.minSize
             if kind == .checkbox, env.controlSize == .small || env.controlSize == .mini {
                 size = CGSize(width: max(0, size.width - 2), height: max(0, size.height - 2))
             }
-            // Mini switches (grouped forms) are 26 × 16, as SwiftUI draws them.
-            if kind == .switch, env.controlSize == .mini { size = CGSize(width: 26, height: env._controlDesign == .modern ? 16.5 : 16) }
+            // Mini switches (grouped forms) are 26 × 16, as SwiftUI draws them (unless the backend
+            // has its own compact size).
+            if kind == .switch, env.controlSize == .mini {
+                size = metrics.compactSize ?? CGSize(width: 26, height: env._controlDesign == .modern ? 16.5 : 16)
+            }
             return FixedLayoutComputer(size: size, path: path, tracer: tracer)
         }
         return _ViewOutputs(layout: layout)
@@ -647,8 +651,9 @@ struct _RadioControl: View {
             AnyAttribute.withoutDependencies { viewAttribute.value.select() }
         }
         inputs.makePlatformNode(content: content, actions: actions)
-        let layout = inputs.makeLayoutAttribute { [path = inputs.path, tracer = inputs.tracer] in
-            FixedLayoutComputer(size: CGSize(width: 14, height: 14), path: path, tracer: tracer)
+        let layout = inputs.makeLayoutAttribute { [path = inputs.path, tracer = inputs.tracer, services = inputs.services] in
+            // 14 × 14 like SwiftUI's, unless the backend has its own radio button size.
+            FixedLayoutComputer(size: services.controlMetrics(.checkbox).radioSize ?? CGSize(width: 14, height: 14), path: path, tracer: tracer)
         }
         return _ViewOutputs(layout: layout)
     }

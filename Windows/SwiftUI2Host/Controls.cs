@@ -170,7 +170,7 @@ sealed class ToggleNode : NodeView
         Element.Children.Add(box);
     }
 
-    protected override int FirstNodeChildIndex => 1;
+    protected override int FirstNodeChildIndex => widget is ToggleSwitch ? 2 : 1;
 
     public override void ApplyContent(Reader r)
     {
@@ -181,8 +181,14 @@ sealed class ToggleNode : NodeView
         r.U8(); // control size
         if (style != widgetStyle)
         {
+            if (widget is ToggleSwitch old) Element.Children.Remove(old);
             widget = Widgets.Toggle(style);
-            box.Child = widget;
+            // Switches render at their natural size: the track (the switch's metrics) is at the
+            // template's leading edge, centered vertically. Check boxes and radio buttons scale
+            // into their frames.
+            box.Child = null;
+            if (widget is ToggleSwitch) Element.Children.Insert(0, widget);
+            else box.Child = widget;
             switch (widget)
             {
                 case ToggleSwitch s: s.Toggled += (_, _) => Changed(s.IsOn); break;
@@ -217,6 +223,7 @@ sealed class ToggleNode : NodeView
         if (widget == null) return;
         box.Width = Math.Max(0, FrameWidth);
         box.Height = Math.Max(0, FrameHeight);
+        if (widget is ToggleSwitch) CenterVertically(widget, double.NaN);
     }
 }
 
