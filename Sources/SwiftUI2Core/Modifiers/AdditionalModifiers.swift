@@ -37,8 +37,6 @@ extension View {
     public func presentationBackground<S: ShapeStyle>(_ style: S) -> some View { self }
     public func presentationCornerRadius(_ radius: CGFloat?) -> some View { self }
     public func presentationSizing(_ sizing: PresentationSizing) -> some View { self }
-    public func listRowSpacing(_ spacing: CGFloat?) -> some View { self }
-    public func listSectionSpacing(_ spacing: CGFloat) -> some View { self }
     public func typesettingLanguage(_ language: Locale.Language, isEnabled: Bool = true) -> some View { self }
     public func dialogIcon(_ icon: Image?) -> some View { self }
     public func dialogSeverity(_ severity: DialogSeverity) -> some View { self }
@@ -63,12 +61,6 @@ extension View {
     public func buttonRepeatBehavior(_ behavior: ButtonRepeatBehavior) -> some View { self }
     public func springLoadingBehavior(_ behavior: SpringLoadingBehavior) -> some View { self }
     public func textScale(_ scale: TextScale, isEnabled: Bool = true) -> some View { self }
-    public func headerProminence(_ prominence: Prominence) -> some View { self }
-    public func badgeProminence(_ prominence: BadgeProminence) -> some View { self }
-    public func listItemTint(_ tint: Color?) -> some View { self }
-    public func listRowSeparatorTint(_ color: Color?, edges: VerticalEdge.Set = .all) -> some View { self }
-    public func listSectionSeparatorTint(_ color: Color?, edges: VerticalEdge.Set = .all) -> some View { self }
-    public func selectionDisabled(_ isDisabled: Bool = true) -> some View { self }
     public func horizontalRadioGroupLayout() -> some View { self }
     public func navigationDocument(_ url: URL) -> some View { self }
     public func scrollEdgeEffectStyle(_ style: ScrollEdgeEffectStyle?, for edges: Edge.Set) -> some View { self }

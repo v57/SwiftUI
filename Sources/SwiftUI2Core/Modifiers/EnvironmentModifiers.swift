@@ -202,8 +202,6 @@ extension View {
     public func edgesIgnoringSafeArea(_ edges: Edge.Set) -> some View { self }
     public func statusBarHidden(_ hidden: Bool = true) -> some View { self }
     public func persistentSystemOverlays(_ visibility: Visibility) -> some View { self }
-    public func badge(_ count: Int) -> some View { self }
-    public func badge<S: StringProtocol>(_ label: S?) -> some View { self }
 }
 
 public enum SymbolRenderingMode: Sendable { case monochrome, multicolor, hierarchical, palette }

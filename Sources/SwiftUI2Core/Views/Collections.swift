@@ -189,10 +189,6 @@ extension View {
         }
         return environment(\.listStyleKind, kind)
     }
-    public func listRowInsets(_ insets: EdgeInsets?) -> some View { self }
-    public func listRowSeparator(_ visibility: Visibility, edges: VerticalEdge.Set = .all) -> some View { self }
-    public func listSectionSeparator(_ visibility: Visibility, edges: VerticalEdge.Set = .all) -> some View { self }
-    public func scrollContentBackground(_ visibility: Visibility) -> some View { self }
 }
 
 public enum VerticalEdge: Int8, Hashable, Sendable {
@@ -277,6 +273,19 @@ struct _ListRowModifier: ViewModifier {
     var style: ResolvedListStyle = .automatic
     var role: ListElementRole = .row
     var position = ListItemPosition()
+    var rowInsets: EdgeInsets?
+    var separator = ListRowSeparatorConfiguration()
+    var sectionSeparator = ListRowSeparatorConfiguration()
+    var badge: Text?
+    var itemTint: Color?
+    var swipeActions: [AnyView] = []
+    var reorder: (token: Int, index: Int, move: @MainActor (IndexSet, Int) -> Void)?
+    var typeSelect: String?
+    var tag: AnyHashable?
+    var sectionActions: AnyView?
+    var rowSpacing: CGFloat?
+    var sectionSpacing: CGFloat?
+    var headerProminence = Prominence.standard
 
     func body(content: Content) -> some View {
         if isForm {
@@ -284,17 +293,23 @@ struct _ListRowModifier: ViewModifier {
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .modifier(_OptionalTap(action: select))
-                .modifier(_OptionalDeleteMenu(delete: delete))
+                .modifier(_RowContextMenu(swipeActions: swipeActions, delete: delete))
         } else if role == .header {
             header(content)
         } else if role == .sectionGap {
             // Between sections: 20pt; a leading gap stands in for the list's top inset.
-            Color.clear.frame(height: position.index == 0 ? style.contentInsets.top : 20)
+            Color.clear.frame(height: position.index == 0 ? style.contentInsets.top : sectionSpacing ?? 20)
         } else {
-            let insets = style.rowInsets
+            let insets = rowInsets ?? style.rowInsets
+            let showsBottomSeparator = separator.bottomVisibility == .visible
+                || (separator.bottomVisibility == .automatic && style.showsSeparators && role == .row && position.next == .row)
             content
+                .tint(itemTint)
                 .padding(insets)
                 .frame(maxWidth: .infinity, minHeight: style.minRowHeight, alignment: .leading)
+                .overlay(alignment: .trailing) {
+                    if let badge { _ListRowBadge(badge: badge, isSidebar: style.isSidebar).padding(.trailing, insets.trailing) }
+                }
                 .background {
                     if isSelected {
                         RoundedRectangle(cornerRadius: 5).fill(Color.listSelection)
@@ -304,19 +319,37 @@ struct _ListRowModifier: ViewModifier {
                 }
                 .overlay(alignment: .bottom) {
                     // Separators between consecutive rows (and below section headers).
-                    if style.showsSeparators, role == .row, position.next == .row {
-                        Rectangle().fill(Color.separator).frame(height: 1).padding(.horizontal, insets.leading)
+                    if showsBottomSeparator {
+                        Rectangle().fill(separator.bottomTint ?? Color.separator).frame(height: 1).padding(.horizontal, insets.leading)
+                    }
+                }
+                .overlay(alignment: .top) {
+                    if separator.topVisibility == .visible {
+                        Rectangle().fill(separator.topTint ?? Color.separator).frame(height: 1).padding(.horizontal, insets.leading)
                     }
                 }
                 .padding(.top, position.index == 0 ? style.contentInsets.top : 0)
+                .padding(.bottom, position.next == .row ? rowSpacing ?? 0 : 0)
                 .modifier(_OptionalTap(action: select))
-                .modifier(_OptionalDeleteMenu(delete: delete))
+                .modifier(_RowContextMenu(swipeActions: swipeActions, delete: delete))
+                .modifier(_OptionalReorder(reorder: reorder))
+                .modifier(_TypeSelectRow(text: typeSelect, tag: tag))
         }
     }
 
     /// Section headers (measured: 11pt semibold; inset lists add 20pt between sections and a
     /// separator below; a leading header is pinned with a full-width line).
     @ViewBuilder private func header(_ content: Content) -> some View {
+        headerChrome(content)
+            .font(headerProminence == .increased ? .headline : nil)
+            .overlay(alignment: .trailing) {
+                if let sectionActions {
+                    sectionActions.buttonStyle(.borderless).labelStyle(.iconOnly).padding(.trailing, style.rowInsets.trailing)
+                }
+            }
+    }
+
+    @ViewBuilder private func headerChrome(_ content: Content) -> some View {
         let isFirst = position.index == 0
         if style.isSidebar {
             content
@@ -331,8 +364,10 @@ struct _ListRowModifier: ViewModifier {
                 .padding(.bottom, 7)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .overlay(alignment: .bottom) {
-                    if style.showsSeparators, !isFirst, position.next == .row {
-                        Rectangle().fill(Color.separator).frame(height: 1).padding(.horizontal, style.rowInsets.leading)
+                    if sectionSeparator.bottomVisibility == .hidden {
+                        EmptyView()
+                    } else if style.showsSeparators || sectionSeparator.bottomVisibility == .visible, !isFirst, position.next == .row {
+                        Rectangle().fill(sectionSeparator.bottomTint ?? Color.separator).frame(height: 1).padding(.horizontal, style.rowInsets.leading)
                     } else if isFirst, style.hasBackground {
                         Rectangle().fill(Color.separator).frame(height: 1).padding(.horizontal, -style.contentInsets.leading)
                     }
@@ -347,6 +382,17 @@ struct _OptionalTap: ViewModifier {
     let action: (@MainActor () -> Void)?
     func body(content: Content) -> some View {
         if let action { content.onTapGesture(perform: action) } else { content }
+    }
+}
+
+struct _OptionalReorder: ViewModifier {
+    let reorder: (token: Int, index: Int, move: @MainActor (IndexSet, Int) -> Void)?
+    func body(content: Content) -> some View {
+        #if canImport(UniformTypeIdentifiers)
+        if let reorder { content.modifier(_RowReorder(token: reorder.token, index: reorder.index, move: reorder.move)) } else { content }
+        #else
+        content
+        #endif
     }
 }
 
@@ -391,12 +437,14 @@ private func makeListRowModifier(traits: ViewTraits, environment: EnvironmentVal
     if let selection {
         select = { selection.select(tag) }
     }
+    if traits.value(SelectionDisabledTraitKey.self) { select = nil }
     var delete: (@MainActor () -> Void)?
-    if let action = traits.value(DeleteActionTraitKey.self), let index = traits.value(DeleteIndexTraitKey.self) {
+    let index = traits.value(DeleteIndexTraitKey.self)
+    if let action = traits.value(DeleteActionTraitKey.self), let index, !traits.value(DeleteDisabledTraitKey.self) {
         delete = { action(IndexSet(integer: index)) }
     }
     let isSelected = tag != nil && (selection?.isSelected(tag) ?? false)
-    return _ListRowModifier(
+    var row = _ListRowModifier(
         isSelected: isSelected,
         select: select,
         background: traits.value(ListRowBackgroundTraitKey.self),
@@ -404,6 +452,22 @@ private func makeListRowModifier(traits: ViewTraits, environment: EnvironmentVal
         isForm: context?.isForm ?? false,
         style: context?.style ?? .automatic
     )
+    row.rowInsets = traits.value(ListRowInsetsTraitKey.self)
+    row.separator = traits.value(ListRowSeparatorTraitKey.self)
+    row.sectionSeparator = traits.value(ListSectionSeparatorTraitKey.self)
+    row.badge = traits.value(ListBadgeTraitKey.self)
+    row.itemTint = traits.value(ListItemTintTraitKey.self)
+    row.swipeActions = traits.value(SwipeActionsTraitKey.self)
+    if let move = traits.value(MoveActionTraitKey.self), let index, !traits.value(MoveDisabledTraitKey.self) {
+        row.reorder = (traits.value(MoveTokenTraitKey.self), index, move)
+    }
+    row.typeSelect = traits.value(TypeSelectEquivalentTraitKey.self)
+    row.tag = tag
+    row.sectionActions = traits.value(SectionActionsTraitKey.self)
+    row.rowSpacing = environment.listRowSpacing
+    row.sectionSpacing = environment.listSectionSpacing
+    row.headerProminence = environment.headerProminence
+    return row
 }
 
 public struct List<SelectionValue: Hashable, Content: View>: View {
@@ -423,9 +487,14 @@ public struct List<SelectionValue: Hashable, Content: View>: View {
         }
     }
 
+    @Environment(\.scrollContentBackground) private var contentBackground
+    @State private var typeSelect = TypeSelectRegistry()
+
     public var body: some View {
         let style = self.style
         let insets = style.contentInsets
+        let selection = self.selection
+        let typeSelect = self.typeSelect
         // The first row/header carries the top inset (a leading section header is pinned there).
         ScrollView {
             _ListRows(content: content)
@@ -434,11 +503,18 @@ public struct List<SelectionValue: Hashable, Content: View>: View {
                 // Sidebar rows use the body text style (stacked texts get its leading).
                 .transformEnvironment(\.font) { font in if style.isSidebar, font == nil { font = .body } }
         }
-        .background(style.hasBackground ? Color.controlBackground : Color.clear)
+        .background(style.hasBackground && contentBackground != .hidden ? Color.controlBackground : Color.clear)
         .overlay {
             if style == .bordered { Rectangle().strokeBorder(Color.listBorder, lineWidth: 1) }
         }
         .environment(\.listContext, ListContext(selection: selection, isForm: false, style: style))
+        .environment(\.typeSelectRegistry, typeSelect)
+        .onKeyPress(characters: .alphanumerics, phases: .down) { press in
+            // Type-select: typing a row's equivalent selects it.
+            guard press.modifiers.isEmpty, let selection, let tag = typeSelect.match(press.characters) else { return .ignored }
+            selection.select(tag)
+            return .handled
+        }
     }
 }
 
@@ -519,25 +595,41 @@ extension ForEach where Content: View {
         _DeletableForEach(base: self, action: action)
     }
 
-    public func onMove(perform action: ((IndexSet, Int) -> Void)?) -> ForEach { self }
+    /// Rows can be dragged to reorder them inside List.
+    public func onMove(perform action: (@MainActor (IndexSet, Int) -> Void)?) -> _DeletableForEach<Data, ID, Content> {
+        _DeletableForEach(base: self, action: nil, moveAction: action)
+    }
     public func onInsert(of types: [String], perform action: @escaping (Int, [Any]) -> Void) -> ForEach { self }
 }
 
 public struct _DeletableForEach<Data: RandomAccessCollection, ID: Hashable, Content: View>: View {
     let base: ForEach<Data, ID, Content>
     let action: (@MainActor (IndexSet) -> Void)?
+    var moveAction: (@MainActor (IndexSet, Int) -> Void)?
 
     public var body: Never { primitiveBody(Self.self) }
 
-    public func onMove(perform action: ((IndexSet, Int) -> Void)?) -> _DeletableForEach { self }
+    public func onMove(perform action: (@MainActor (IndexSet, Int) -> Void)?) -> _DeletableForEach {
+        var copy = self
+        copy.moveAction = action
+        return copy
+    }
+
+    public func onDelete(perform action: (@MainActor (IndexSet) -> Void)?) -> _DeletableForEach {
+        _DeletableForEach(base: base, action: action, moveAction: moveAction)
+    }
 
     public static func _makeViewList(view: _GraphValue<Self>, inputs: _ViewListInputs) -> _ViewListOutputs {
         let base = ForEach<Data, ID, Content>._makeViewList(view: view.project(inputs) { $0.base }, inputs: inputs).list
         let action = Attribute<(@MainActor (IndexSet) -> Void)?>(inputs.subgraph) { view.attribute.value.action }
+        let moveAction = Attribute<(@MainActor (IndexSet, Int) -> Void)?>(inputs.subgraph) { view.attribute.value.moveAction }
+        let token = Attribute<Int>(inputs.subgraph, value: ObjectIdentifier(moveAction).hashValue)
         let forEach = view.project(inputs) { $0.base }
         let list = base.mapElements(in: inputs.subgraph) { element in
             var copy = element
             copy.traits[DeleteActionTraitKey.self] = action
+            copy.traits[MoveActionTraitKey.self] = moveAction
+            copy.traits[MoveTokenTraitKey.self] = token
             if let tag = element.traits[TagTraitKey.self] {
                 copy.traits[DeleteIndexTraitKey.self] = Attribute<Int?>(inputs.subgraph) {
                     let current = forEach.attribute.value
