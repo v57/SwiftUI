@@ -27,7 +27,7 @@ extension View {
     public func typesettingLanguage(_ language: Locale.Language, isEnabled: Bool = true) -> some View { self }
     public func toolbarTitleMenu<C: View>(@ViewBuilder content: () -> C) -> some View { self }
     public func labelsVisibility(_ visibility: Visibility) -> some View { environment(\.labelsHidden, visibility == .hidden) }
-    public func allowsTightening(_ flag: Bool) -> some View { self }
+    public func allowsTightening(_ flag: Bool) -> some View { environment(\.allowsTightening, flag) }
     public func invalidatableContent(_ invalidatable: Bool = true) -> some View { self }
     public func handlesExternalEvents(preferring: Set<String>, allowing: Set<String>) -> some View { self }
     public func userActivity(_ activityType: String, isActive: Bool = true, _ update: @escaping (NSUserActivity) -> Void) -> some View { self }

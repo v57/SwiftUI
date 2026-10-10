@@ -204,9 +204,13 @@ class FlippedView: NSView {
 
 final class TextNodeView: FlippedView, PlatformNodeView {
     private var string = NSAttributedString()
+    private var resolved: ResolvedText?
+    private var fittedWidth: CGFloat?
 
     func apply(_ content: RenderContent, backend: AppKitBackend) {
         guard case .text(let text) = content else { return }
+        resolved = text
+        fittedWidth = nil
         string = AppKitText.attributedString(text, placeholders: true)
         // Like SwiftUI, text is a static-text accessibility element (modifiers may override).
         setAccessibilityElement(accessibilityProperties?.isHidden != true)
@@ -216,6 +220,11 @@ final class TextNodeView: FlippedView, PlatformNodeView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        // `minimumScaleFactor`: shrink to the frame's width, as measured.
+        if let resolved, resolved.minimumScaleFactor < 1, fittedWidth != bounds.width {
+            fittedWidth = bounds.width
+            string = AppKitText.attributedString(resolved.scaled(by: AppKitText.fittingScale(resolved, width: bounds.width)), placeholders: true)
+        }
         string.draw(with: bounds, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         drawInlineImages()
     }

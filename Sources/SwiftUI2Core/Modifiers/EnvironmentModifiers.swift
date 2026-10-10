@@ -184,15 +184,59 @@ extension View {
     }
 }
 
-public enum TruncationMode: Sendable { case head, tail, middle }
+public enum TruncationMode: Hashable, Sendable { case head, tail, middle }
+
+extension Text {
+    public typealias TruncationMode = SwiftUI2Core.TruncationMode
+}
+
+struct TruncationModeKey: EnvironmentKey { static let defaultValue = TruncationMode.tail }
+struct MinimumScaleFactorKey: EnvironmentKey { static let defaultValue: CGFloat = 1 }
+struct LineSpacingKey: EnvironmentKey { static let defaultValue: CGFloat = 0 }
+struct AllowsTighteningKey: EnvironmentKey { static let defaultValue = false }
+struct TextCaseKey: EnvironmentKey { static let defaultValue: Text.Case? = nil }
+struct TextTrackingKey: EnvironmentKey { static let defaultValue: CGFloat? = nil }
+struct TextBaselineOffsetKey: EnvironmentKey { static let defaultValue: CGFloat? = nil }
+
+extension EnvironmentValues {
+    public var truncationMode: TruncationMode {
+        get { self[TruncationModeKey.self] }
+        set { self[TruncationModeKey.self] = newValue }
+    }
+    public var minimumScaleFactor: CGFloat {
+        get { self[MinimumScaleFactorKey.self] }
+        set { self[MinimumScaleFactorKey.self] = newValue }
+    }
+    public var lineSpacing: CGFloat {
+        get { self[LineSpacingKey.self] }
+        set { self[LineSpacingKey.self] = newValue }
+    }
+    public var allowsTightening: Bool {
+        get { self[AllowsTighteningKey.self] }
+        set { self[AllowsTighteningKey.self] = newValue }
+    }
+    public var textCase: Text.Case? {
+        get { self[TextCaseKey.self] }
+        set { self[TextCaseKey.self] = newValue }
+    }
+    var _textTracking: CGFloat? {
+        get { self[TextTrackingKey.self] }
+        set { self[TextTrackingKey.self] = newValue }
+    }
+    var _textBaselineOffset: CGFloat? {
+        get { self[TextBaselineOffsetKey.self] }
+        set { self[TextBaselineOffsetKey.self] = newValue }
+    }
+}
 
 extension View {
-    public func truncationMode(_ mode: TruncationMode) -> some View { self }
-    public func minimumScaleFactor(_ factor: CGFloat) -> some View { self }
-    public func lineSpacing(_ spacing: CGFloat) -> some View { self }
-    public func kerning(_ kerning: CGFloat) -> some View { self }
-    public func tracking(_ tracking: CGFloat) -> some View { self }
-    public func textCase(_ textCase: Text.Case?) -> some View { self }
+    public func truncationMode(_ mode: TruncationMode) -> some View { environment(\.truncationMode, mode) }
+    public func minimumScaleFactor(_ factor: CGFloat) -> some View { environment(\.minimumScaleFactor, factor) }
+    public func lineSpacing(_ spacing: CGFloat) -> some View { environment(\.lineSpacing, spacing) }
+    public func kerning(_ kerning: CGFloat) -> some View { environment(\._textTracking, kerning) }
+    public func tracking(_ tracking: CGFloat) -> some View { environment(\._textTracking, tracking) }
+    public func baselineOffset(_ offset: CGFloat) -> some View { environment(\._textBaselineOffset, offset) }
+    public func textCase(_ textCase: Text.Case?) -> some View { environment(\.textCase, textCase) }
     public func textSelection<S: TextSelectability>(_ selectability: S) -> some View {
         environment(\.isTextSelectable, S.allowsSelection)
     }

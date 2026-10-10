@@ -94,9 +94,10 @@ public final class AppKitBackend: RenderBackend {
     }
 
     public func measureText(_ text: ResolvedText, proposal: ProposedViewSize) -> CGSize {
-        let string = AppKitText.attributedString(text, placeholders: true)
         // Infinite proposals (stack flexibility probes) mean "unconstrained".
         let width = proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? .greatestFiniteMagnitude
+        let text = text.scaled(by: AppKitText.fittingScale(text, width: width))
+        let string = AppKitText.attributedString(text, placeholders: true)
         // Like SwiftUI: line height without the font's leading, sizes rounded up to device pixels.
         var rect = string.boundingRect(with: CGSize(width: max(width, 1), height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin])
         var usedWidth = min(rect.width, width)
@@ -119,7 +120,9 @@ public final class AppKitBackend: RenderBackend {
     }
 
     public func firstBaseline(of text: ResolvedText) -> CGFloat {
-        AppKitText.font(text.font).ascender.rounded()
+        // Raised runs (`baselineOffset`) make the line taller above the baseline.
+        let raise = max(0, text.baselineOffset, text.runs.map(\.baselineOffset).max() ?? 0)
+        return AppKitText.font(text.font).ascender.rounded() + raise
     }
 
     /// SwiftUI's (macOS) text spacing, measured: a view above text keeps `1 + descent` (plus a
@@ -358,6 +361,16 @@ enum AppKitText {
     static func attributedString(_ text: ResolvedText, placeholders: Bool = false) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byWordWrapping
+        if text.lineLimit == 1 {
+            // Single lines truncate where the text asks (multi-line text ends its last line in "…").
+            switch text.truncationMode {
+            case .head: paragraph.lineBreakMode = .byTruncatingHead
+            case .middle: paragraph.lineBreakMode = .byTruncatingMiddle
+            case .tail: paragraph.lineBreakMode = .byTruncatingTail
+            }
+        }
+        paragraph.lineSpacing = text.lineSpacing
+        paragraph.allowsDefaultTighteningForTruncation = text.allowsTightening
         switch text.alignment {
         case .leading: paragraph.alignment = .natural
         case .center: paragraph.alignment = .center
@@ -399,6 +412,22 @@ enum AppKitText {
     }
 
     static let inlineImageKey = NSAttributedString.Key("SwiftUI2InlineImage")
+
+    /// `minimumScaleFactor`: the largest font scale (down to the factor) at which single-line
+    /// text fits `width`.
+    static func fittingScale(_ text: ResolvedText, width: CGFloat) -> CGFloat {
+        guard text.minimumScaleFactor < 1, text.lineLimit == 1, width < .greatestFiniteMagnitude else { return 1 }
+        var unlimited = text
+        unlimited.lineLimit = nil
+        let natural = attributedString(unlimited, placeholders: true).size().width
+        guard natural > width, natural > 0 else { return 1 }
+        // Glyph widths don't scale exactly linearly; step down until it fits.
+        var scale = max(text.minimumScaleFactor, width / natural)
+        while scale > text.minimumScaleFactor, attributedString(unlimited.scaled(by: scale), placeholders: true).size().width > width {
+            scale = max(text.minimumScaleFactor, scale - 0.01)
+        }
+        return scale
+    }
 
     /// An inline image (symbols take the text color and sit on the baseline like glyphs).
     static func attachment(_ resolved: ResolvedImage, font: NSFont, color: Color.Resolved) -> NSTextAttachment? {

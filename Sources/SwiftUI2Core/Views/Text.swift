@@ -174,6 +174,26 @@ public struct ResolvedText: Hashable, Sendable {
     public var runs: [Run] = []
     /// Markdown link of uniformly styled text.
     public var link: URL? = nil
+    /// Extra space between lines.
+    public var lineSpacing: CGFloat = 0
+    public var truncationMode: TruncationMode = .tail
+    /// The font may shrink down to this factor to fit (`minimumScaleFactor`).
+    public var minimumScaleFactor: CGFloat = 1
+    public var allowsTightening = false
+
+    /// The text with all fonts scaled (used for `minimumScaleFactor`).
+    public func scaled(by factor: CGFloat) -> ResolvedText {
+        guard factor != 1 else { return self }
+        var copy = self
+        copy.font.size *= factor
+        copy.runs = runs.map { run in
+            var run = run
+            run.font.size *= factor
+            run.image?.pointSize *= factor
+            return run
+        }
+        return copy
+    }
 
     public struct Run: Hashable, Sendable {
         public var string: String
@@ -196,7 +216,8 @@ public struct ResolvedText: Hashable, Sendable {
 
     /// The part of the text that affects measurement.
     var layoutKey: TextLayoutKey {
-        TextLayoutKey(string: string, font: font, lineLimit: lineLimit, tracking: tracking, runFonts: runs.map(\.font), runTracking: runs.map(\.tracking))
+        TextLayoutKey(string: string, font: font, lineLimit: lineLimit, tracking: tracking, runFonts: runs.map(\.font), runTracking: runs.map(\.tracking),
+                      lineSpacing: lineSpacing, minimumScaleFactor: minimumScaleFactor)
     }
 }
 
@@ -207,6 +228,8 @@ struct TextLayoutKey: Hashable {
     var tracking: CGFloat = 0
     var runFonts: [Font.Resolved] = []
     var runTracking: [CGFloat] = []
+    var lineSpacing: CGFloat = 0
+    var minimumScaleFactor: CGFloat = 1
 }
 
 public struct Text: Equatable {
@@ -385,8 +408,8 @@ public struct Text: Equatable {
         var color: Color.Resolved? = nil
         var strikethrough = environment.textStrikethrough
         var underline = environment.textUnderline
-        var tracking: CGFloat = 0
-        var baselineOffset: CGFloat = 0
+        var tracking: CGFloat = environment._textTracking ?? 0
+        var baselineOffset: CGFloat = environment._textBaselineOffset ?? 0
         var background: Color.Resolved?
         var link: URL?
         for modifier in modifiers {
@@ -410,8 +433,14 @@ public struct Text: Equatable {
         }
         var resolvedColor = color ?? ForegroundStyle()._resolveColor(in: environment)
         if !environment.isEnabled { resolvedColor.opacity *= 0.5 }
-        return ResolvedText(
-            string: plainString,
+        var string = plainString
+        switch environment.textCase {
+        case .uppercase?: string = string.uppercased(with: environment.locale)
+        case .lowercase?: string = string.lowercased(with: environment.locale)
+        case nil: break
+        }
+        var resolved = ResolvedText(
+            string: string,
             font: font.resolve(),
             color: resolvedColor,
             lineLimit: environment.lineLimit,
@@ -423,6 +452,11 @@ public struct Text: Equatable {
             background: background,
             link: link
         )
+        resolved.lineSpacing = environment.lineSpacing
+        resolved.truncationMode = environment.truncationMode
+        resolved.minimumScaleFactor = environment.minimumScaleFactor
+        resolved.allowsTightening = environment.allowsTightening
+        return resolved
     }
 }
 

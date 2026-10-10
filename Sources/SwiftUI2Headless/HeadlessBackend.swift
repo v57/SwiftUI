@@ -125,11 +125,26 @@ public final class HeadlessBackend: RenderBackend {
 
     /// Each character is `0.5 × pointSize` wide; lines are `1.2 × pointSize` tall. Words wrap.
     public func measureText(_ text: ResolvedText, proposal: ProposedViewSize) -> CGSize {
+        // `minimumScaleFactor`: the font shrinks (down to the factor) until the text fits the
+        // proposed width without exceeding its line limit.
+        if text.minimumScaleFactor < 1, let width = proposal.width, width.isFinite {
+            let natural = layoutLines(text.string, charWidth: text.font.size * 0.5, maxWidth: nil, lineLimit: nil)
+            let longest = CGFloat(natural.map(\.count).max() ?? 0) * text.font.size * 0.5
+            if text.lineLimit == 1, longest > width {
+                let scale = max(text.minimumScaleFactor, width / longest)
+                return measureUnscaled(text.scaled(by: scale), proposal: proposal)
+            }
+        }
+        return measureUnscaled(text, proposal: proposal)
+    }
+
+    private func measureUnscaled(_ text: ResolvedText, proposal: ProposedViewSize) -> CGSize {
         let charWidth = text.font.size * 0.5
         let lineHeight = (text.font.size * 1.2).rounded(.up)
         let lines = layoutLines(text.string, charWidth: charWidth, maxWidth: proposal.width, lineLimit: text.lineLimit)
         let width = lines.map { CGFloat($0.count) * charWidth }.max() ?? 0
-        return CGSize(width: min(width, proposal.width ?? .infinity).rounded(.up), height: CGFloat(max(lines.count, 1)) * lineHeight)
+        let count = CGFloat(max(lines.count, 1))
+        return CGSize(width: min(width, proposal.width ?? .infinity).rounded(.up), height: count * lineHeight + (count - 1) * text.lineSpacing)
     }
 
     func layoutLines(_ string: String, charWidth: CGFloat, maxWidth: CGFloat?, lineLimit: Int?) -> [String] {

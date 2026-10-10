@@ -62,4 +62,30 @@ struct TextLocalizationTests {
         let host = TestHost(Text("Tap **here**"))
         #expect(host.texts.contains("Tap here"))
     }
+
+    @Test func viewLevelTextModifiersReachTheText() {
+        var env = EnvironmentValues()
+        env.textCase = .uppercase
+        env.lineSpacing = 4
+        env.truncationMode = .middle
+        env.minimumScaleFactor = 0.5
+        env._textTracking = 2
+        let text = Text("Header").resolve(in: env)
+        #expect(text.string == "HEADER")
+        #expect(text.lineSpacing == 4 && text.truncationMode == .middle && text.minimumScaleFactor == 0.5 && text.tracking == 2)
+    }
+
+    @Test func lineSpacingAndScaleFactorAffectLayout() {
+        // Headless metrics: 13pt text is 6.5pt per character, 16pt per line.
+        let host = TestHost(VStack(alignment: .leading, spacing: 0) {
+            Text("aaaa bbbb").lineSpacing(5).frame(width: 40, alignment: .leading)
+            Text("aaaaaaaaaaaaaaaaaaaa").lineLimit(1).minimumScaleFactor(0.5).frame(width: 100, alignment: .leading)
+        })
+        let first = host.view(withText: "aaaa bbbb")!
+        #expect(abs(first.frame.height - (16 * 2 + 5)) < 0.01, "\(first.frame)")
+        let scaled = host.view(withText: "aaaaaaaaaaaaaaaaaaaa")!
+        // 20 chars × 6.5 = 130 > 100: the font shrinks to fit 100 (factor 100/130).
+        #expect(scaled.frame.width == 100)
+        #expect(scaled.frame.height < 16)
+    }
 }
