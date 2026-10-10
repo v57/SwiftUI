@@ -6,3 +6,4 @@ DerivedData/
 Ports/
 *.md
 .build-android/
+.build-linux/

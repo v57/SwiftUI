@@ -1,0 +1,93 @@
+#!/bin/bash
+# Drives the Linux test VM (see env.sh). Usage: Linux/scripts/vm <command> ...
+#   start              boot the VM (UTM via utmctl when it answers, else headless with vzrun)
+#   stop               shut the VM down (ACPI power button)
+#   ip                 print the VM's address
+#   ssh [command...]   run a command in the VM (in its desktop session: DISPLAY=:0)
+#   sync               mirror this checkout into ~/SwiftUI2 in the VM
+#   build <product>    sync and `swift build --product <product>` in the VM
+#   run <product> [env...]   build, then (re)start the product on the VM's desktop, window at 60,60
+#   shot <app> <out.png>     screenshot of an app's window (by process name) into a local file
+#   click <x> <y>      left click at screen coordinates;  type <text>;  key <keysym>
+set -e
+. "$(dirname "$0")/env.sh"
+cmd="$1"; shift || true
+
+vm_ip() {
+  local mac
+  mac=$(plutil -extract Network.0.MacAddress raw "$SWIFTUI2_VM_BUNDLE/config.plist")
+  # dhcpd_leases drops leading zeros of each octet.
+  mac=$(echo "$mac" | sed -E 's/(^|:)0([0-9a-f])/\1\2/g')
+  awk -v mac="1,$mac" 'BEGIN { RS = "}" } $0 ~ "hw_address=" mac "\n" { match($0, /ip_address=[0-9.]+/); ip = substr($0, RSTART + 11, RLENGTH - 11) } END { print ip }' /var/db/dhcpd_leases
+}
+
+remote() {
+  local ip
+  ip=$(vm_ip)
+  [ -n "$ip" ] || { echo "VM address unknown (is it running? Linux/scripts/vm start)" >&2; exit 1; }
+  ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$SWIFTUI2_VM_USER@$ip" \
+    "export DISPLAY=:0 XAUTHORITY=/run/user/\$(id -u)/gdm/Xauthority DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus PATH=$SWIFTUI2_VM_SWIFT:\$PATH; $*"
+}
+
+sync_source() {
+  local ip
+  ip=$(vm_ip)
+  rsync -az --delete --exclude .build --exclude .build-android --exclude .build-linux --exclude .git --exclude Ports \
+    --exclude 'Android/build' --exclude 'Android/*/build' --exclude .gradle --exclude '*.ttf' \
+    "$SWIFTUI2_ROOT/" "$SWIFTUI2_VM_USER@$ip:SwiftUI2/"
+}
+
+build_vzrun() {
+  local src="$SWIFTUI2_ROOT/Linux/tools/vzrun.swift"
+  if [ ! -x "$SWIFTUI2_VZRUN" ] || [ "$src" -nt "$SWIFTUI2_VZRUN" ]; then
+    mkdir -p "$(dirname "$SWIFTUI2_VZRUN")"
+    swiftc -O "$src" -o "$SWIFTUI2_VZRUN"
+    codesign -s - -f --entitlements "$SWIFTUI2_ROOT/Linux/tools/vzrun.entitlements" "$SWIFTUI2_VZRUN" >/dev/null
+  fi
+}
+
+case "$cmd" in
+  start)
+    if utmctl status "$SWIFTUI2_VM_NAME" >/dev/null 2>&1; then
+      utmctl start "$SWIFTUI2_VM_NAME"
+    else
+      build_vzrun
+      nohup "$SWIFTUI2_VZRUN" run "$SWIFTUI2_VM_BUNDLE" > "$SWIFTUI2_VM_DIR/$SWIFTUI2_VM_NAME-vzrun.log" 2>&1 &
+      echo $! > "$SWIFTUI2_VM_DIR/$SWIFTUI2_VM_NAME-vzrun.pid"
+    fi
+    for _ in $(seq 1 60); do
+      ip=$(vm_ip); [ -n "$ip" ] && nc -z -G 2 "$ip" 22 2>/dev/null && { echo "$ip"; exit 0; }
+      sleep 2
+    done
+    echo "VM did not come up" >&2; exit 1 ;;
+  stop)
+    pidfile="$SWIFTUI2_VM_DIR/$SWIFTUI2_VM_NAME-vzrun.pid"
+    if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+      kill -TERM "$(cat "$pidfile")"
+      while kill -0 "$(cat "$pidfile")" 2>/dev/null; do sleep 1; done
+      rm -f "$pidfile"
+    else
+      utmctl stop "$SWIFTUI2_VM_NAME" --request
+    fi ;;
+  ip) vm_ip ;;
+  ssh) remote "$@" ;;
+  sync) sync_source ;;
+  build)
+    sync_source
+    remote "cd SwiftUI2 && swift build --product $1 2>&1 | grep -E 'error:|warning: unre|Compiling|Build' | grep -v '^\\[' | tail -40" ;;
+  run)
+    product="$1"; shift
+    sync_source
+    remote "cd SwiftUI2 && swift build --product $product 2>&1 | grep -E 'error:' | sort -u | head -40; \
+      pkill -x $product; (env $* nohup .build/debug/$product > /tmp/$product.log 2>&1 &); \
+      for i in \$(seq 1 50); do w=\$(xdotool search --onlyvisible --pid \$(pgrep -x $product | head -1) 2>/dev/null | tail -1); [ -n \"\$w\" ] && break; sleep 0.2; done; \
+      xdotool windowmove \$w 60 60; echo window \$w; tail -5 /tmp/$product.log" ;;
+  shot)
+    app="$1"; out="$2"
+    remote "w=\$(xdotool search --onlyvisible --pid \$(pgrep -x $app | head -1) | tail -1); import -window \$w /tmp/shot.png"
+    scp -q "$SWIFTUI2_VM_USER@$(vm_ip):/tmp/shot.png" "$out"; echo "$out" ;;
+  click) remote "xdotool mousemove $1 $2; sleep 0.1; xdotool click 1" ;;
+  type) remote "xdotool type --delay 30 $(printf '%q' "$*")" ;;
+  key) remote "xdotool key $1" ;;
+  *) sed -n '2,13p' "$0"; exit 1 ;;
+esac

@@ -1,0 +1,10 @@
+#!/bin/bash
+# Installs the Material Symbols font (Image(systemName:) glyphs, as on Android) for the VM user.
+# Uses the Android assets copy (Android/scripts/fetch-assets downloads it).
+set -e
+. "$(dirname "$0")/env.sh"
+FONT="$SWIFTUI2_ROOT/Android/swiftui2/src/main/assets/MaterialSymbolsOutlined.ttf"
+[ -s "$FONT" ] || "$SWIFTUI2_ROOT/Android/scripts/fetch-assets"
+"$(dirname "$0")/vm" ssh 'mkdir -p ~/.local/share/fonts'
+scp -q "$FONT" "$SWIFTUI2_VM_USER@$("$(dirname "$0")/vm" ip):.local/share/fonts/"
+"$(dirname "$0")/vm" ssh 'fc-cache -f >/dev/null && fc-list | grep -c "Material Symbols"'
