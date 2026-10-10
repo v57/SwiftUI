@@ -36,7 +36,7 @@ case "$1" in
   ssh) shift; remote "$@" ;;
   sync)
     TAR="$(mktemp -t swiftui2-src).tar"
-    COPYFILE_DISABLE=1 tar -C "$ROOT" --exclude .build --exclude .git --exclude '.build-*' --exclude 'Android/build' \
+    COPYFILE_DISABLE=1 tar -h -C "$ROOT" --exclude .build --exclude .git --exclude '.build-*' --exclude 'Android/build' \
       --exclude 'Android/*/build' --exclude '*/bin' --exclude '*/obj' --exclude .swiftpm -cf "$TAR" .
     copy "$TAR" "$USER_NAME@$(vm_ip):C:/dev/swiftui2-src.tar"
     rm -f "$TAR"
