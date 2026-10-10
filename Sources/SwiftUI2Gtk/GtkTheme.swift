@@ -152,9 +152,14 @@ enum GtkTheme {
                 return metrics
             }
         case .checkbox:
-            return ControlMetrics(minSize: m.check)
+            var metrics = ControlMetrics(minSize: m.check)
+            metrics.radioSize = m.radio
+            return metrics
         case .switch:
-            return ControlMetrics(minSize: m.switchSize)
+            // Grouped forms keep the theme's switch instead of SwiftUI's mini one.
+            var metrics = ControlMetrics(minSize: m.switchSize)
+            metrics.compactSize = m.switchSize
+            return metrics
         case .textField(let style):
             switch style {
             case .plain:
