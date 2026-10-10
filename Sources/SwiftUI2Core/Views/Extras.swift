@@ -304,7 +304,6 @@ extension View {
     // Blur needs a platform blur filter (excluded from this implementation, like shaders).
     public func blur(radius: CGFloat, opaque: Bool = false) -> some View { self }
     public func contentTransition(_ transition: ContentTransition) -> some View { environment(\.contentTransition, transition) }
-    public func dynamicTypeSize<T>(_ size: T) -> some View { self }
     public func monospaced(_ isActive: Bool = true) -> some View {
         transformEnvironment(\.font) { font in if isActive { font = (font ?? .body).monospaced() } }
     }

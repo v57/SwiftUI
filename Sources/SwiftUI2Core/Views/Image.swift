@@ -114,7 +114,7 @@ public struct Image: Equatable {
     }
 
     func resolve(in environment: EnvironmentValues) -> ResolvedImage {
-        let font = (environment.font ?? .defaultFont).resolve()
+        let font = (environment.font ?? .defaultFont).resolve(environment.dynamicTypeSize)
         let tint: Color.Resolved? = isTemplate ? ForegroundStyle()._resolveColor(in: environment) : nil
         var source = self.source
         if case .system(let name) = source, !environment.symbolVariants.names.isEmpty {

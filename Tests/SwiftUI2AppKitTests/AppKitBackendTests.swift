@@ -173,6 +173,21 @@ struct AppKitBackendTests {
         #expect(abs(gap("t4", "b1") - 8.15) < 0.01)
         #expect(frames["b1"]!.height == (AppKitBackend.controlDesign == .modern ? 24 : 20))
     }
+
+    @Test func contentShapeLimitsTapArea() throws {
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 200, height: 200), styleMask: [.titled], backing: .buffered, defer: true)
+        let host = NSHostingView(rootView: Color.red.frame(width: 100, height: 100).contentShape(Circle()).onTapGesture {})
+        window.contentView = host
+        host.frame = CGRect(x: 0, y: 0, width: 200, height: 200)
+        host.layoutSubtreeIfNeeded()
+        let target = try #require(descendants(of: host).compactMap { $0 as? EffectNodeView }.first { $0.frame.width == 100 })
+        let frame = target.convert(target.bounds, to: host)
+        // The center is inside the circle, a corner is not.
+        #expect(host.hitTest(host.convert(NSPoint(x: frame.midX, y: frame.midY), to: host.superview)) is EffectNodeView)
+        let corner = NSPoint(x: frame.minX + 3, y: frame.minY + 3)
+        let hit = host.hitTest(host.convert(corner, to: host.superview))
+        #expect(hit == nil || hit === host)
+    }
 }
 
 private final class FramesBox { var frames: [String: CGRect] = [:] }

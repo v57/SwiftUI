@@ -152,6 +152,8 @@ public enum DisplayEffect: Equatable, Sendable {
     case colorFilter(ColorFilter)
     /// How the view composites with what is behind it.
     case blendMode(BlendMode)
+    /// The hit-testing area of the content (`contentShape`), in the view's coordinates.
+    case contentShape(Path)
 }
 
 public struct ResolvedShadow: Equatable, Sendable {

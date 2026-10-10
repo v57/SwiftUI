@@ -1167,6 +1167,7 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
         if layer?.filters != nil { layer?.filters = nil }
         if layer?.compositingFilter != nil { layer?.compositingFilter = nil }
         isTapTarget = false
+        hitShape = nil
         isMaskContainer = false
         isFocusable = false
         pointerStyle = nil
@@ -1195,6 +1196,8 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
             isMaskContainer = true
         case .maskSource, .group:
             break
+        case .contentShape(let path):
+            hitShape = path.cgPath
         case let .focusable(wantsFocus, showsFocusRing):
             isFocusable = true
             focusRingType = showsFocusRing ? .exterior : .none
@@ -1222,11 +1225,30 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
         }
     }
 
+    /// `contentShape`: the area (in this view's coordinates) that receives hits.
+    private var hitShape: CGPath?
+
+    /// Whether a point (in the superview's coordinates) lies in the content shape of this view
+    /// or of the content-shape node wrapping its content (nil: no content shape).
+    private func contentShapeContains(_ point: NSPoint) -> Bool? {
+        let local = convert(point, from: superview)
+        if let hitShape { return hitShape.contains(local) }
+        // A content shape directly inside (`.contentShape(...).onTapGesture`) defines the area.
+        var current: NSView = self
+        while current.subviews.count == 1, let child = current.subviews.first as? EffectNodeView {
+            if let shape = child.hitShape { return shape.contains(child.convert(point, from: superview)) }
+            current = child
+        }
+        return nil
+    }
+
     override func hitTest(_ point: NSPoint) -> NSView? {
+        if let inside = contentShapeContains(point), !inside { return nil }
         let hit = super.hitTest(point)
         if handlesPointer, hit === self || hit == nil || !(hit is NSControl) && !(hit is ButtonNodeView) && !((hit as? EffectNodeView)?.handlesPointer ?? false) {
             return bounds.contains(convert(point, from: superview)) ? self : nil
         }
+        if hitShape != nil, hit === self { return nil }
         // Drop destinations own their whole area (drag destinations are found by hit testing).
         return hit === self ? (registeredDropTypes.isEmpty && !isFocusable ? nil : self) : hit
     }

@@ -720,7 +720,7 @@ struct _TextInput: View {
             let field = view.attribute.value
             return .textField(ResolvedTextField(
                 text: field.text.wrappedValue, placeholder: field.prompt, isEnabled: env.isEnabled,
-                font: (env.font ?? .body).resolve(), isSecure: field.kind == .secure, isMultiline: field.kind == .editor,
+                font: (env.font ?? .body).resolve(env.dynamicTypeSize), isSecure: field.kind == .secure, isMultiline: field.kind == .editor,
                 style: field.kind == .editor ? (env.textEditorStyle == .plain ? .plain : .automatic) : env.textFieldStyle, wantsFocus: env.focusRequest?.isFocused() ?? false,
                 color: ForegroundStyle()._resolveColor(in: env), wraps: field.kind == .verticalField,
                 isFindEnabled: !env.findDisabled, showsFindNavigator: env.findNavigatorPresented?.wrappedValue ?? false,
@@ -751,7 +751,7 @@ struct _TextInput: View {
         return _ViewOutputs(layout: inputs.makeLayoutAttribute {
             let env = environment.value
             var metrics = services.controlMetrics(.textField(env.textFieldStyle))
-            let font = (env.font ?? .body).resolve()
+            let font = (env.font ?? .body).resolve(env.dynamicTypeSize)
             let black = Color.Resolved(red: 0, green: 0, blue: 0, opacity: 1)
             let line = ResolvedText(string: "X", font: font, color: black, lineLimit: 1, alignment: .leading, strikethrough: false, underline: false)
             let lineHeight = services.measureText(line, proposal: .unspecified).height

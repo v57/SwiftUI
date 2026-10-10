@@ -41,6 +41,12 @@ public struct _ClipEffect<S: Shape>: PlatformEffectModifier {
     func effect(size: CGSize) -> DisplayEffect { .clip(shape.path(in: CGRect(origin: .zero, size: size))) }
 }
 
+public struct _ContentShapeEffect<S: Shape>: PlatformEffectModifier {
+    let shape: S
+    static var pathComponent: String { "contentShape" }
+    func effect(size: CGSize) -> DisplayEffect { .contentShape(shape.path(in: CGRect(origin: .zero, size: size))) }
+}
+
 public struct _TransformEffect: PlatformEffectModifier, Equatable {
     let offset: CGSize
     let scale: CGSize
@@ -86,8 +92,17 @@ extension View {
     }
 
     /// Hit testing uses view bounds; shapes are accepted for source compatibility.
-    public func contentShape<S: Shape>(_ shape: S, eoFill: Bool = false) -> some View { self }
-    public func contentShape<S: Shape>(_ kind: ContentShapeKinds, _ shape: S, eoFill: Bool = false) -> some View { self }
+    /// Hit testing (taps, hover, ...) uses `shape` instead of the view's bounds.
+    public func contentShape<S: Shape>(_ shape: S, eoFill: Bool = false) -> some View {
+        modifier(_ContentShapeEffect(shape: shape))
+    }
+
+    /// Only the interaction kind changes hit testing; preview shapes (context menu, drag, hover
+    /// and focus effects) are platform decorations.
+    @ViewBuilder
+    public func contentShape<S: Shape>(_ kind: ContentShapeKinds, _ shape: S, eoFill: Bool = false) -> some View {
+        if kind.contains(.interaction) { modifier(_ContentShapeEffect(shape: shape)) } else { self }
+    }
 
     public func compositingGroup() -> some View { self }
     public func drawingGroup(opaque: Bool = false, colorMode: ColorRenderingMode = .nonLinear) -> some View { self }

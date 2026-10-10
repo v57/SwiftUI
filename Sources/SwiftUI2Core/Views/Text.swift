@@ -194,18 +194,21 @@ public struct Font: Hashable, Sendable {
         }
     }
 
-    public func resolve() -> Resolved {
-        let size: CGFloat
+    /// Resolves the font; text styles (and custom fonts relative to one) scale with `dynamicType`.
+    public func resolve(_ dynamicType: DynamicTypeSize = .large) -> Resolved {
+        var size: CGFloat
         var resolvedWeight: Weight
         var style: TextStyle?
+        var scales = true
         switch base {
         case .style(let textStyle):
             (size, resolvedWeight) = Font.metrics(textStyle)
             style = textStyle
-        case .system(let pointSize): (size, resolvedWeight) = (pointSize, .regular)
+        case .system(let pointSize): (size, resolvedWeight) = (pointSize, .regular); scales = false
         case .defaultBody: (size, resolvedWeight) = Font.metrics(.body)
-        case .custom(_, let pointSize, _): (size, resolvedWeight) = (pointSize, .regular)
+        case .custom(_, let pointSize, let relativeTo): (size, resolvedWeight) = (pointSize, .regular); scales = relativeTo != nil
         }
+        if scales, dynamicType != .large { size = (size * dynamicType._scale).rounded() }
         if let weight { resolvedWeight = weight }
         var resolved = Resolved(size: size, weight: resolvedWeight, design: design, italic: isItalic, monospacedDigit: monospacedDigits, textStyle: style)
         if case .custom(let name, _, _) = base { resolved.name = name }
@@ -581,7 +584,7 @@ public struct Text: Equatable {
         }
         var resolved = ResolvedText(
             string: string,
-            font: font.resolve(),
+            font: font.resolve(environment.dynamicTypeSize),
             color: resolvedColor,
             lineLimit: environment.lineLimit,
             alignment: environment.multilineTextAlignment,
