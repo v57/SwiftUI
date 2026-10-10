@@ -240,7 +240,7 @@ extension View {
     public func textSelection<S: TextSelectability>(_ selectability: S) -> some View {
         environment(\.isTextSelectable, S.allowsSelection)
     }
-    public func symbolRenderingMode(_ mode: SymbolRenderingMode?) -> some View { self }
+    public func symbolRenderingMode(_ mode: SymbolRenderingMode?) -> some View { environment(\.symbolRenderingMode, mode) }
     public func symbolVariant(_ variant: SymbolVariants) -> some View { environment(\.symbolVariants, variant) }
     public func ignoresSafeArea(_ regions: SafeAreaRegions = .all, edges: Edge.Set = .all) -> some View { self }
     public func edgesIgnoringSafeArea(_ edges: Edge.Set) -> some View { self }
@@ -248,7 +248,16 @@ extension View {
     public func persistentSystemOverlays(_ visibility: Visibility) -> some View { self }
 }
 
-public enum SymbolRenderingMode: Sendable { case monochrome, multicolor, hierarchical, palette }
+public enum SymbolRenderingMode: Hashable, Sendable { case monochrome, multicolor, hierarchical, palette }
+
+struct SymbolRenderingModeKey: EnvironmentKey { static let defaultValue: SymbolRenderingMode? = nil }
+
+extension EnvironmentValues {
+    public var symbolRenderingMode: SymbolRenderingMode? {
+        get { self[SymbolRenderingModeKey.self] }
+        set { self[SymbolRenderingModeKey.self] = newValue }
+    }
+}
 struct SymbolVariantsKey: EnvironmentKey { static let defaultValue = SymbolVariants.none }
 
 extension EnvironmentValues {

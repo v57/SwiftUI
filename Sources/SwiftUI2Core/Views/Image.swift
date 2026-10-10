@@ -23,6 +23,13 @@ public struct ResolvedImage: Hashable, Sendable {
     public var variableValue: Double?
     /// Drawn as a placeholder shape (`redacted(reason:)`), in this color.
     public var redactedColor: Color.Resolved? = nil
+    /// Symbol rendering (`symbolRenderingMode`); nil is monochrome in the tint.
+    public var renderingMode: SymbolRenderingMode? = nil
+    /// Hierarchical/palette colors (from `foregroundStyle(_:_:)` levels).
+    public var paletteColors: [Color.Resolved] = []
+    /// Symbol effects to run (`symbolEffect`).
+    public var symbolEffects: [_SymbolEffectRequest] = []
+    public var contentTransition = ContentTransition.interpolate
 }
 
 /// An opaque platform image with its intrinsic size (compared by identity).
@@ -103,6 +110,15 @@ public struct Image: Equatable {
         }
         var resolved = ResolvedImage(source: source, isResizable: isResizable, pointSize: font.size, weight: font.weight, tint: tint, scale: environment.imageScale, variableValue: variableValue)
         if environment._isRedacted { resolved.redactedColor = ForegroundStyle()._resolveColor(in: environment) }
+        if case .system = source {
+            let levels = environment.foregroundStyleLevels
+            resolved.renderingMode = environment.symbolRenderingMode ?? (levels.count > 1 ? .palette : nil)
+            if resolved.renderingMode == .palette || resolved.renderingMode == .hierarchical {
+                resolved.paletteColors = levels.isEmpty ? (tint.map { [$0] } ?? []) : levels.compactMap { $0._resolveColor(in: environment) }
+            }
+            if !environment._symbolEffectsRemoved { resolved.symbolEffects = environment._symbolEffects }
+            resolved.contentTransition = environment.contentTransition
+        }
         return resolved
     }
 }

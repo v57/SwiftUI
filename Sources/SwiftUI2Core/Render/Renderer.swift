@@ -72,6 +72,9 @@ public final class RenderNode {
     var isPending = false
     var animation: NodeAnimation?
     var transitionAnimation: TransitionAnimation?
+    /// While the backend applies content that can't be interpolated, the animation of the change
+    /// (backends run content transitions, e.g. a cross-fade, with it).
+    public internal(set) var contentAnimation: Animation?
 
     init(kind: Kind, path: ViewPath?) {
         self.kind = kind
@@ -376,7 +379,9 @@ public final class Renderer {
                 animating[ObjectIdentifier(node)] = node
                 if contentChanged, !RenderContent.canInterpolate(node.content, node.targetContent) {
                     node.content = node.targetContent
+                    node.contentAnimation = animation
                     backend.updateContent(of: handle, node: node)
+                    node.contentAnimation = nil
                 }
             } else if node.animation != nil {
                 // A non-animated change during a running animation (e.g. an Animatable view's

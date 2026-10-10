@@ -304,7 +304,7 @@ extension View {
 
     // Blur needs a platform blur filter (excluded from this implementation, like shaders).
     public func blur(radius: CGFloat, opaque: Bool = false) -> some View { self }
-    public func contentTransition(_ transition: ContentTransition) -> some View { self }
+    public func contentTransition(_ transition: ContentTransition) -> some View { environment(\.contentTransition, transition) }
     public func dynamicTypeSize<T>(_ size: T) -> some View { self }
     public func monospaced(_ isActive: Bool = true) -> some View {
         transformEnvironment(\.font) { font in if isActive { font = (font ?? .body).monospaced() } }
@@ -316,14 +316,40 @@ extension View {
 
 public enum HorizontalEdge: Int8, Hashable, Sendable { case leading, trailing }
 public enum BlendMode: Hashable, Sendable { case normal, multiply, screen, overlay, darken, lighten, colorDodge, colorBurn, softLight, hardLight, difference, exclusion, hue, saturation, color, luminosity, sourceAtop, destinationOver, destinationOut, plusDarker, plusLighter }
-public struct ContentTransition: Sendable {
-    public static let identity = ContentTransition()
-    public static let opacity = ContentTransition()
-    public static let interpolate = ContentTransition()
-    public static func numericText(countsDown: Bool = false) -> ContentTransition { ContentTransition() }
-    public static let symbolEffect = ContentTransition()
-    public static func symbolEffect<E: SymbolEffect>(_ effect: E, options: SymbolEffectOptions = .default) -> ContentTransition { ContentTransition() }
+/// How a view's content animates when it changes in an animated transaction (text and images).
+public struct ContentTransition: Hashable, Sendable {
+    public enum _Kind: Hashable, Sendable {
+        case identity, opacity, interpolate
+        case numericText(countsDown: Bool)
+        case symbolEffect(_SymbolEffectValue?)
+    }
+    public let _kind: _Kind
+
+    public static let identity = ContentTransition(_kind: .identity)
+    public static let opacity = ContentTransition(_kind: .opacity)
+    public static let interpolate = ContentTransition(_kind: .interpolate)
+    public static func numericText(countsDown: Bool = false) -> ContentTransition { ContentTransition(_kind: .numericText(countsDown: countsDown)) }
+    public static func numericText(value: Double) -> ContentTransition { ContentTransition(_kind: .numericText(countsDown: false)) }
+    public static let symbolEffect = ContentTransition(_kind: .symbolEffect(nil))
+    public static func symbolEffect<E: SymbolEffect>(_ effect: E, options: SymbolEffectOptions = .default) -> ContentTransition {
+        ContentTransition(_kind: .symbolEffect(effect as? _SymbolEffectValue))
+    }
 }
+
+struct ContentTransitionKey: EnvironmentKey { static let defaultValue = ContentTransition.interpolate }
+
+extension EnvironmentValues {
+    /// Default `.interpolate` (text crossfades; symbols replace).
+    public var contentTransition: ContentTransition {
+        get { self[ContentTransitionKey.self] }
+        set { self[ContentTransitionKey.self] = newValue }
+    }
+    public var contentTransitionAddsDrawingGroup: Bool {
+        get { false }
+        set {}
+    }
+}
+
 public struct RedactionReasons: OptionSet, Sendable {
     public let rawValue: Int
     public init(rawValue: Int) { self.rawValue = rawValue }

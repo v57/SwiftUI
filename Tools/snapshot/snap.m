@@ -1,6 +1,23 @@
 // Injected with DYLD_INSERT_LIBRARIES: renders the app's visible windows to PNGs after a delay.
 // SNAP_PATH=/tmp/x.png  SNAP_DELAY=4  SNAP_EXIT=1
 #import <AppKit/AppKit.h>
+static int countAnimations(CALayer *l) {
+    int n = (int)l.animationKeys.count;
+    for (CALayer *sub in l.sublayers) n += countAnimations(sub);
+    return n;
+}
+static int countLayers(CALayer *l) {
+    int n = 1;
+    for (CALayer *sub in l.sublayers) n += countLayers(sub);
+    return n;
+}
+static void dumpAnimations(NSView *view) {
+    if ([view isKindOfClass:NSImageView.class] && view.layer) {
+        int n = countAnimations(view.layer);
+        fprintf(stderr, "ANIM %s frame=%s animations=%d layers=%d\n", view.className.UTF8String, NSStringFromRect([view convertRect:view.bounds toView:nil]).UTF8String, n, countLayers(view.layer));
+    }
+    for (NSView *sub in view.subviews) dumpAnimations(sub);
+}
 static void dumpLayers(NSView *view, int depth) {
     CALayer *l = view.layer;
     if (l && (getenv("SNAP_DUMP_ALL") || !CATransform3DIsIdentity(l.transform) || l.anchorPoint.x != 0 || l.anchorPoint.y != 0))
@@ -17,6 +34,7 @@ __attribute__((constructor)) static void snapInit(void) {
     BOOL quit = [env[@"SNAP_EXIT"] isEqualToString:@"1"];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         int index = 0;
+        if (env[@"SNAP_ANIM"]) for (NSWindow *w in NSApp.windows) if (w.contentView) dumpAnimations(w.contentView);
         if (env[@"SNAP_DUMP"]) for (NSWindow *w in NSApp.windows) if (w.contentView) dumpLayers(w.contentView, 0);
         for (NSWindow *window in NSApp.windows) {
             if (!window.isVisible || !window.contentView) continue;

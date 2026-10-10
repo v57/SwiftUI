@@ -516,7 +516,18 @@ enum AppKitImages {
                 candidate = String(candidate[..<dot])
                 symbol = makeSymbol(candidate)
             }
-            return symbol?.withSymbolConfiguration(configuration)
+            var resolvedConfiguration = configuration
+            switch image.renderingMode {
+            case .hierarchical?:
+                if let color = image.paletteColors.first ?? image.tint { resolvedConfiguration = resolvedConfiguration.applying(.init(hierarchicalColor: NSColor(color))) }
+            case .palette?:
+                if !image.paletteColors.isEmpty { resolvedConfiguration = resolvedConfiguration.applying(.init(paletteColors: image.paletteColors.map { NSColor($0) })) }
+            case .multicolor?:
+                resolvedConfiguration = resolvedConfiguration.applying(.preferringMulticolor())
+            case .monochrome?, nil:
+                break
+            }
+            return symbol?.withSymbolConfiguration(resolvedConfiguration)
         case .named(let name):
             return NSImage(named: name)
         case .platform(let platform):

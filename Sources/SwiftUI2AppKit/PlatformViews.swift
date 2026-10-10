@@ -209,6 +209,16 @@ final class TextNodeView: FlippedView, PlatformNodeView {
 
     func apply(_ content: RenderContent, backend: AppKitBackend) {
         guard case .text(let text) = content else { return }
+        if let previous = resolved, previous.string != text.string, let animation = node?.contentAnimation {
+            switch text.contentTransition._kind {
+            case .identity: break
+            case .numericText(let countsDown):
+                // Digits roll: the new text pushes in from below (above when counting down).
+                ContentTransitions.push(layer, duration: animation._effectiveDuration, fromTop: countsDown)
+            default:
+                ContentTransitions.fade(layer, duration: animation._effectiveDuration)
+            }
+        }
         resolved = text
         fittedWidth = nil
         string = AppKitText.attributedString(text, placeholders: true)
@@ -451,11 +461,33 @@ final class ImageNodeView: FlippedView, PlatformNodeView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    private var resolvedImage: ResolvedImage?
+
     func apply(_ content: RenderContent, backend: AppKitBackend) {
         guard case .image(let image) = content else { return }
-        imageView.image = AppKitImages.image(image)
+        let previous = resolvedImage
+        resolvedImage = image
+        let nsImage = AppKitImages.image(image)
+        var sameImage = previous.map { $0.source == image.source && $0.pointSize == image.pointSize && $0.weight == image.weight && $0.scale == image.scale && $0.renderingMode == image.renderingMode && $0.paletteColors == image.paletteColors && $0.variableValue == image.variableValue } ?? false
+        if previous != nil, !sameImage, let animation = node?.contentAnimation, let nsImage {
+            // Animated image change: symbols replace, others cross-fade.
+            switch image.contentTransition._kind {
+            case .identity: imageView.image = nsImage
+            case .symbolEffect, .interpolate where image.source.isSymbol && previous?.source.isSymbol == true:
+                SymbolEffects.replace(imageView, with: nsImage, effect: image.contentTransition._kind)
+            default:
+                ContentTransitions.fade(layer, duration: animation._effectiveDuration)
+                imageView.image = nsImage
+            }
+            sameImage = true
+        }
+        if !sameImage { imageView.image = nsImage }
         imageView.imageScaling = image.isResizable ? .scaleAxesIndependently : .scaleProportionallyUpOrDown
-        imageView.contentTintColor = image.tint.map { NSColor($0) }
+        // Hierarchical, palette and multicolor symbols carry their own colors.
+        let tinted = image.renderingMode == nil || image.renderingMode == .monochrome
+        imageView.contentTintColor = tinted ? image.tint.map { NSColor($0) } : nil
+        // Symbol animations only run on views in a window (added again on attach).
+        if window != nil { SymbolEffects.update(imageView, from: previous?.symbolEffects ?? [], to: image.symbolEffects) }
         imageView.frame = bounds
         redactedColor = image.redactedColor
         imageView.isHidden = redactedColor != nil
@@ -463,6 +495,12 @@ final class ImageNodeView: FlippedView, PlatformNodeView {
     }
 
     private var redactedColor: Color.Resolved?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil, let effects = resolvedImage?.symbolEffects.filter({ $0.trigger == nil }), !effects.isEmpty else { return }
+        SymbolEffects.update(imageView, from: [], to: effects)
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let redactedColor else { return }

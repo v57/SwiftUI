@@ -140,4 +140,34 @@ struct OverloadBatchTests {
         let image: ResolvedImage? = host.allViews.lazy.compactMap { if case .image(let i) = $0.content { return i } else { return nil } }.first
         #expect(image?.redactedColor != nil)
     }
+
+    @Test func symbolModesEffectsAndContentTransitions() {
+        let model = SlideModel()
+        struct Screen: View {
+            let model: SlideModel
+            var body: some View {
+                VStack {
+                    Image(systemName: "cloud.sun").symbolRenderingMode(.hierarchical).foregroundStyle(.blue)
+                    Image(systemName: "person.badge.plus").foregroundStyle(.green, .gray)
+                    Image(systemName: "bell").symbolEffect(.bounce.up, value: model.amount)
+                    Image(systemName: "wifi").symbolEffect(.variableColor.iterative, options: .repeat(3), isActive: model.amount > 0)
+                    Text("\(Int(model.amount))").contentTransition(.numericText(countsDown: true))
+                }
+            }
+        }
+        let host = TestHost(Screen(model: model))
+        func images() -> [ResolvedImage] { host.allViews.compactMap { if case .image(let i) = $0.content { return i } else { return nil } } }
+        var all = images()
+        #expect(all[0].renderingMode == .hierarchical && all[0].paletteColors.count == 1)
+        #expect(all[1].renderingMode == .palette && all[1].paletteColors.count == 2)
+        #expect(all[2].symbolEffects.first?.trigger == 0 && all[2].symbolEffects.first?.effect.options == ["up"])
+        #expect(all[3].symbolEffects.first?.isActive == false && all[3].symbolEffects.first?.options.repeatCount == 3)
+        model.amount = 1
+        host.flush()
+        all = images()
+        #expect(all[2].symbolEffects.first?.trigger == 1)
+        #expect(all[3].symbolEffects.first?.isActive == true)
+        let text: ResolvedText? = host.allViews.lazy.compactMap { if case .text(let t) = $0.content { return t } else { return nil } }.first
+        #expect(text?.contentTransition == .numericText(countsDown: true))
+    }
 }

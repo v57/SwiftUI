@@ -98,6 +98,9 @@ public struct Animation: Hashable, Sendable, CustomStringConvertible {
 
     public var description: String { "Animation(\(curve), \(duration)s)" }
 
+    /// Seconds one run of the animation takes (delay excluded, speed applied).
+    public var _effectiveDuration: Double { duration / speed }
+
     static func springSettlingTime(response: Double, damping: Double) -> Double {
         let omega = 2 * .pi / max(response, 0.01)
         let zeta = max(damping, 0.01)

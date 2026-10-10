@@ -244,6 +244,7 @@ public struct ResolvedText: Hashable, Sendable {
     public var allowsTightening = false
     /// Drawn as placeholder shapes (`redacted(reason:)`).
     public var isRedacted = false
+    public var contentTransition = ContentTransition.interpolate
 
     /// The text with all fonts scaled (used for `minimumScaleFactor`).
     public func scaled(by factor: CGFloat) -> ResolvedText {
@@ -523,6 +524,7 @@ public struct Text: Equatable {
         resolved.minimumScaleFactor = environment.minimumScaleFactor
         resolved.allowsTightening = environment.allowsTightening
         resolved.isRedacted = environment._isRedacted
+        resolved.contentTransition = environment.contentTransition
         return resolved
     }
 }
