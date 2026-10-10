@@ -47,7 +47,10 @@ let package = Package(
             ]
         ),
         // Foundation/CoreGraphics types missing from swift-corelibs-foundation (empty on Apple).
-        .target(name: "SwiftUI2Portability"),
+        .target(name: "SwiftUI2Portability", dependencies: [
+            .product(name: "CoreTransferable", package: "Compat", condition: .when(platforms: nonApple)),
+            .product(name: "UniformTypeIdentifiers", package: "Compat", condition: .when(platforms: nonApple)),
+        ]),
         .target(
             name: "SwiftUI2Core",
             dependencies: [
@@ -75,8 +78,6 @@ let package = Package(
                 "SwiftUI2Core",
                 .target(name: "SwiftUI2AppKit", condition: .when(platforms: [.macOS])),
                 .target(name: "SwiftUI2Android", condition: .when(platforms: [.android])),
-                // Apple-only modules apps import, as stand-ins elsewhere (Compat/).
-                .product(name: "Darwin", package: "Compat", condition: .when(platforms: nonApple)),
                 .target(name: "SwiftUI2SwiftData", condition: .when(platforms: [.macOS, .iOS])),
             ]
         ),

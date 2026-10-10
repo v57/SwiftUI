@@ -164,11 +164,12 @@ struct TransferableDropHandler<T: Transferable>: _DropHandler {
     }
 
     private static func load(_ provider: NSItemProvider) async -> T? {
-        await withCheckedContinuation { continuation in
+        let item = await withCheckedContinuation { (continuation: CheckedContinuation<UncheckedSendable<T?>, Never>) in
             _ = provider.loadTransferable(type: T.self) { result in
-                continuation.resume(returning: try? result.get())
+                continuation.resume(returning: UncheckedSendable(try? result.get()))
             }
         }
+        return item.value
     }
 }
 

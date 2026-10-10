@@ -98,6 +98,10 @@ public struct ResolvedTextField: Equatable, Sendable {
     public var showsFormattingControls = false
     /// Text alignment (`multilineTextAlignment`).
     public var alignment: TextAlignment = .leading
+    /// Soft keyboard (`keyboardType`; UIKeyboardType raw value, 0 = default).
+    public var keyboardType = 0
+    /// `textInputAutocapitalization`: nil default, 0 never, 1 words, 2 sentences, 3 characters.
+    public var autocapitalization: Int?
 }
 
 public struct ResolvedSlider: Equatable, Sendable {

@@ -23,6 +23,11 @@ open class SwiftUI2Activity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val library = libraryName()
+        // Foundation's home/temporary directories: the app's private storage.
+        if (android.system.Os.getenv("HOME").isNullOrEmpty() || android.system.Os.getenv("HOME") == "/") {
+            android.system.Os.setenv("HOME", filesDir.absolutePath, true)
+        }
+        android.system.Os.setenv("TMPDIR", cacheDir.absolutePath, true)
         // Debugging: `am start -e env.NAME value` sets environment variables for the Swift app.
         intent.extras?.keySet()?.filter { it.startsWith("env.") }?.forEach { key ->
             android.system.Os.setenv(key.removePrefix("env."), intent.getStringExtra(key) ?: "", true)

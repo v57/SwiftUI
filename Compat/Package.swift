@@ -17,24 +17,25 @@ let package = Package(
     name: "SwiftUI2Compat",
     products: [
         .library(name: "UniformTypeIdentifiers", targets: ["UniformTypeIdentifiers"]),
+        .library(name: "CoreTransferable", targets: [crossCompiling ? "CoreTransferable" : "CombineUnavailableOnApplePlatforms"]),
         .library(name: "Combine", targets: [crossCompiling ? "Combine" : "CombineUnavailableOnApplePlatforms"]),
-        .library(name: "Darwin", targets: [crossCompiling ? "Darwin" : "DarwinUnavailableOnApplePlatforms"]),
     ],
     targets: [
         .target(name: "UniformTypeIdentifiers"),
         .target(name: "CombineUnavailableOnApplePlatforms"),
-        .target(name: "DarwinUnavailableOnApplePlatforms"),
         .testTarget(name: "CompatTests", dependencies: ["UniformTypeIdentifiers"] + (crossCompiling ? ["Combine"] : [])),
     ]
 )
 
 if crossCompiling {
     package.targets += [
+        // CoreTransferable: Transferable and its representations.
+        .target(name: "CoreTransferable", dependencies: ["UniformTypeIdentifiers"]),
         // Combine: OpenCombine 0.14.0 (MIT, Sources/Combine/LICENSE-OpenCombine.txt) vendored as
         // one module named Combine, with its Apple spellings always on (DispatchQueue/RunLoop as
         // schedulers, Timer.publish, NotificationCenter.publisher, URLSession publishers).
-        // Darwin: re-exports the platform C library (POSIX).
-        .target(name: "Darwin"),
+        // No `Darwin` stand-in: a module with that name flips `canImport(Darwin)` for every
+        // package in the build (swift-crypto, NIO, ...) and breaks their platform checks.
         .target(name: "COpenCombineHelpers"),
         .target(name: "Combine", dependencies: ["COpenCombineHelpers"], exclude: ["LICENSE-OpenCombine.txt"],
                 swiftSettings: [.swiftLanguageMode(.v5)]),

@@ -218,6 +218,25 @@ class TextFieldNode(host: HostView, id: Int) : NodeView(host, id, KIND_TEXT_FIEL
         }
     }
 
+    /** Autofill hints from `textContentType`. */
+    private fun autofill(contentType: String?) {
+        val hint = when (contentType) {
+            "username" -> View.AUTOFILL_HINT_USERNAME
+            "password" -> View.AUTOFILL_HINT_PASSWORD
+            "newPassword" -> "newPassword"
+            "emailAddress" -> View.AUTOFILL_HINT_EMAIL_ADDRESS
+            "telephoneNumber" -> View.AUTOFILL_HINT_PHONE
+            "name" -> View.AUTOFILL_HINT_NAME
+            "postalCode" -> View.AUTOFILL_HINT_POSTAL_CODE
+            "fullStreetAddress" -> View.AUTOFILL_HINT_POSTAL_ADDRESS
+            "creditCardNumber" -> View.AUTOFILL_HINT_CREDIT_CARD_NUMBER
+            "oneTimeCode" -> "smsOTPCode"
+            else -> null
+        }
+        if (hint != null) field.setAutofillHints(hint)
+        field.importantForAutofill = if (hint != null) IMPORTANT_FOR_AUTOFILL_YES else IMPORTANT_FOR_AUTOFILL_AUTO
+    }
+
     override fun applyContent(r: Reader) {
         val d = host.density
         val text = r.string() ?: ""
@@ -227,7 +246,9 @@ class TextFieldNode(host: HostView, id: Int) : NodeView(host, id, KIND_TEXT_FIEL
         val size = r.f32(); val weight = r.i32(); val design = r.u8(); val italic = r.bool(); r.bool(); val name = r.string(); r.f32()
         val color = r.color()
         val alignment = r.u8()
-        r.string() // content type
+        val contentType = r.string()
+        val keyboard = r.u8()
+        val capitalization = r.u8()
         val enabled = flags and 1 != 0
         val secure = flags and 2 != 0
         val multiline = flags and 4 != 0 || flags and 32 != 0
@@ -235,13 +256,12 @@ class TextFieldNode(host: HostView, id: Int) : NodeView(host, id, KIND_TEXT_FIEL
         val noAutocorrect = flags and 16 != 0
 
         updating = true
-        val configuration = (if (secure) 1 else 0) or (if (multiline) 2 else 0) or (if (noAutocorrect) 4 else 0) or (style shl 4)
+        val configuration = (if (secure) 1 else 0) or (if (multiline) 2 else 0) or (if (noAutocorrect) 4 else 0) or (style shl 4) or
+            (keyboard shl 8) or (capitalization shl 16) or ((contentType?.hashCode() ?: 0) shl 24)
         if (configuration != configured) {
             configured = configuration
-            var type = InputType.TYPE_CLASS_TEXT
-            type = type or if (secure) InputType.TYPE_TEXT_VARIATION_PASSWORD else if (noAutocorrect) InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS else InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
-            if (multiline) type = type or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            field.inputType = type
+            field.inputType = inputType(secure, multiline, noAutocorrect, keyboard, capitalization, contentType)
+            autofill(contentType)
             field.isSingleLine = !multiline
             field.imeOptions = if (multiline) EditorInfo.IME_ACTION_NONE else EditorInfo.IME_ACTION_DONE
             field.gravity = (if (multiline) Gravity.TOP else Gravity.CENTER_VERTICAL) or Gravity.START
@@ -284,6 +304,39 @@ class TextFieldNode(host: HostView, id: Int) : NodeView(host, id, KIND_TEXT_FIEL
             }
         }
     }
+}
+
+/** EditText input type from SwiftUI's keyboard type, autocapitalization and content type. */
+private fun inputType(secure: Boolean, multiline: Boolean, noAutocorrect: Boolean, keyboard: Int, capitalization: Int, contentType: String?): Int {
+    // UIKeyboardType: 2 numbersAndPunctuation, 3 URL, 4 numberPad, 5 phonePad, 7 emailAddress,
+    // 8 decimalPad, 10 webSearch, 11 asciiCapableNumberPad.
+    var type = when {
+        keyboard == 4 || keyboard == 11 -> InputType.TYPE_CLASS_NUMBER
+        keyboard == 8 -> InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        keyboard == 5 || contentType == "telephoneNumber" -> InputType.TYPE_CLASS_PHONE
+        else -> InputType.TYPE_CLASS_TEXT
+    }
+    if (type == InputType.TYPE_CLASS_TEXT) {
+        type = type or when {
+            secure -> if (keyboard == 4 || keyboard == 11) InputType.TYPE_NUMBER_VARIATION_PASSWORD else InputType.TYPE_TEXT_VARIATION_PASSWORD
+            keyboard == 3 || contentType == "URL" -> InputType.TYPE_TEXT_VARIATION_URI
+            keyboard == 7 || contentType == "emailAddress" || contentType == "username" -> InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+            contentType == "name" || contentType == "givenName" || contentType == "familyName" -> InputType.TYPE_TEXT_VARIATION_PERSON_NAME
+            contentType == "fullStreetAddress" -> InputType.TYPE_TEXT_VARIATION_POSTAL_ADDRESS
+            keyboard == 10 -> InputType.TYPE_TEXT_VARIATION_FILTER
+            else -> 0
+        }
+        type = type or when (capitalization) {
+            1 -> InputType.TYPE_TEXT_FLAG_CAP_WORDS
+            2 -> InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            3 -> InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+            0 -> 0
+            else -> if (keyboard == 0 && !secure) InputType.TYPE_TEXT_FLAG_CAP_SENTENCES else 0
+        }
+        type = type or if (noAutocorrect || secure) InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS else InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
+        if (multiline) type = type or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+    }
+    return type
 }
 
 /** Slider: a native SeekBar over the value range. */

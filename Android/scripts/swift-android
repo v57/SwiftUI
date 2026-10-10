@@ -14,4 +14,7 @@ for arg in "$@"; do
   prev="$arg"
 done
 export SWIFTUI2_CROSS_COMPILE=android
+# SwiftPM can keep a stale build plan for path dependencies (new source files in SwiftUI2 not
+# seen by an app package's build); re-plan every time.
+rm -f "$SCRATCH"/*/debug/description.json "$SCRATCH"/*/release/description.json 2>/dev/null
 exec "$SWIFT_ANDROID_TOOLCHAIN/usr/bin/swift" "$cmd" --swift-sdk "$SWIFT_ANDROID_TRIPLE" --scratch-path "$SCRATCH" "$@"

@@ -9,6 +9,7 @@ import CoreGraphics
 // CGAffineTransform, NSItemProvider, FileWrapper, ... (part of Apple's SDKs) and UTType.
 @_exported import SwiftUI2Portability
 @_exported import UniformTypeIdentifiers
+@_exported import CoreTransferable
 #endif
 
 /// A piece of user interface. Mirrors `SwiftUI.View`.

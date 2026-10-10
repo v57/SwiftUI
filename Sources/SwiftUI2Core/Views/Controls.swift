@@ -730,7 +730,7 @@ struct _TextInput: View {
         let content = makeObservedAttribute(inputs.subgraph, of: RenderContent.self, isEqual: { $0 == $1 }) {
             let env = environment.value
             let field = view.attribute.value
-            return .textField(ResolvedTextField(
+            var resolved = ResolvedTextField(
                 text: field.text.wrappedValue, placeholder: field.prompt, isEnabled: env.isEnabled,
                 font: (env.font ?? .body).resolve(env.dynamicTypeSize), isSecure: field.kind == .secure, isMultiline: field.kind == .editor,
                 style: field.kind == .editor ? (env.textEditorStyle == .plain ? .plain : .automatic) : env.textFieldStyle, wantsFocus: env.focusRequest?.isFocused() ?? false,
@@ -739,7 +739,18 @@ struct _TextInput: View {
                 isAutocorrectionDisabled: env.autocorrectionDisabled, contentType: env._textContentType,
                 writingTools: env.writingToolsBehavior, showsFormattingControls: env.textInputFormattingControlVisibility == .visible,
                 alignment: env.multilineTextAlignment
-            ))
+            )
+            #if !canImport(ObjectiveC)
+            resolved.keyboardType = env.keyboardType.rawValue
+            switch env.textInputAutocapitalization?.kind {
+            case .never?: resolved.autocapitalization = 0
+            case .words?: resolved.autocapitalization = 1
+            case .sentences?: resolved.autocapitalization = 2
+            case .characters?: resolved.autocapitalization = 3
+            case nil: break
+            }
+            #endif
+            return .textField(resolved)
         }
         let viewAttribute = view.attribute
         var actions = RenderActions()
