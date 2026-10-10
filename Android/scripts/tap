@@ -1,0 +1,10 @@
+#!/bin/bash
+# Taps the center of the first node whose dump line contains TEXT (needs a dump from exp-case or
+# `am start --ei org.swiftui2.dump`): Android/scripts/tap <tree-file> <text>
+TREE="$1"; TEXT="$2"
+read ox oy density < <(sed -n 's/.*root at (\([0-9]*\), \([0-9]*\)) px, density \([0-9.]*\).*/\1 \2 \3/p' "$TREE")
+line=$(grep -F "$TEXT" "$TREE" | head -1)
+read x y w h < <(echo "$line" | sed -n 's/.*(\([-0-9.]*\), \([-0-9.]*\), \([0-9.]*\), \([0-9.]*\)).*/\1 \2 \3 \4/p')
+px=$(python3 -c "print(int($ox + ($x + $w/2) * $density))"); py=$(python3 -c "print(int($oy + ($y + $h/2) * $density))")
+echo "tap $TEXT at $px,$py"
+"$(dirname "$0")/device" shell input tap $px $py

@@ -23,10 +23,11 @@ final class AndroidHost {
         graph.clock = { AndroidPerf.now() }
         graph.onNeedsUpdate = { [weak self] in self?.scheduleUpdate() }
         graph.onNeedsAnimationFrame = { [weak self] in self?.requestFrame() }
+        graph.onToolbarChange = { [weak self] toolbar in self?.updateToolbar(toolbar) }
         graph.onNavigationTitleChange = { [weak self] title in
             guard let self else { return }
-            // nil: the activity keeps its label.
-            if let title { _ = AndroidPlatform.call(self.view, .setTitle, title) }
+            // nil: the activity's own label.
+            _ = AndroidPlatform.call(self.view, .setTitle, title)
         }
     }
 
@@ -100,6 +101,10 @@ final class AndroidHost {
     }
 
     func handle(node id: Int32, type: Int32, a: Double, b: Double, c: Double, text: String?) {
+        if id == -1, let text {
+            toolbarAction(text)
+            return
+        }
         guard let event = Event(rawValue: type), let node = backend.node(for: id) else { return }
         let actions = node.actions
         switch event {
@@ -132,11 +137,48 @@ final class AndroidHost {
         flush()
     }
 
-    /// The system Back button: dismisses the top presentation (sheet, alert, ...).
+    /// The system Back button: dismisses the top presentation (sheet, alert, ...), else pops the
+    /// navigation stack.
     func back() -> Bool {
-        let handled = graph.dismissTopPresentation()
+        var handled = graph.dismissTopPresentation()
+        if !handled, let pop = toolbarActions["navigation.back"] {
+            pop()
+            handled = true
+        }
         flushNow()
         return handled
+    }
+
+    // MARK: Toolbar (the activity's app bar)
+
+    private var toolbarActions: [String: @MainActor () -> Void] = [:]
+    private var toolbarDescription = ""
+
+    /// Toolbar buttons become app bar actions (the back button its Up arrow). Encoded one entry
+    /// per line: id, placement, title, glyph, enabled (fields separated by U+001F).
+    private func updateToolbar(_ toolbar: WindowToolbar) {
+        var actions: [String: @MainActor () -> Void] = [:]
+        var lines: [String] = []
+        for entry in toolbar.items {
+            guard let button = entry.button else {
+                if entry.search == nil { AndroidLog.warning("Toolbar item \(entry.id): only buttons are shown in the Android app bar yet") }
+                continue
+            }
+            actions[entry.id] = button.action
+            let glyph = button.systemImage.map { SymbolFont.glyph(forSystemName: $0) }
+            let fields = [entry.id, "\(entry.placement)", button.title ?? button.help ?? "", glyph?.text ?? "", button.isEnabled ? "1" : "0", glyph?.filled == true ? "1" : "0"]
+            lines.append(fields.joined(separator: "\u{1F}"))
+        }
+        toolbarActions = actions
+        let description = lines.joined(separator: "\n")
+        guard description != toolbarDescription else { return }
+        toolbarDescription = description
+        _ = AndroidPlatform.call(view, .setToolbar, description)
+    }
+
+    func toolbarAction(_ id: String) {
+        toolbarActions[id]?()
+        flushNow()
     }
 }
 

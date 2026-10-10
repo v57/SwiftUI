@@ -250,6 +250,7 @@ class MaskSourceNode(host: HostView, id: Int) : NodeView(host, id, KIND_MASK_SOU
 
 class ColorNode(host: HostView, id: Int) : NodeView(host, id, KIND_COLOR) {
     private var color = 0
+    private val paint = android.graphics.Paint()
     init { setWillNotDraw(false) }
 
     override fun applyContent(r: Reader) {
@@ -260,7 +261,11 @@ class ColorNode(host: HostView, id: Int) : NodeView(host, id, KIND_COLOR) {
         }
     }
 
-    override fun onDraw(canvas: Canvas) = canvas.drawColor(color)
+    // drawColor would fill the whole clip (parents don't clip their children).
+    override fun onDraw(canvas: Canvas) {
+        paint.color = color
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+    }
 }
 
 /** Paths (ByteWriter.path), in dp; scaled to px when built. */

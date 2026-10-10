@@ -279,3 +279,31 @@ fun shadowPaint(shadow: Shadow, density: Float) = Paint(Paint.ANTI_ALIAS_FLAG).a
     color = shadow.color
     if (shadow.radius > 0) maskFilter = BlurMaskFilter(shadow.radius * density, BlurMaskFilter.Blur.NORMAL)
 }
+
+/** A Material Symbols glyph as a drawable (app bar actions), tinted by the theme. */
+class SymbolDrawable(private val glyph: String, filled: Boolean, density: Float) : Drawable() {
+    private val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = Fonts.symbols
+        textSize = 24 * density
+        fontVariationSettings = "'FILL' ${if (filled) 1 else 0}"
+        color = 0xFF000000.toInt()
+    }
+    private val size = (24 * density).toInt()
+
+    override fun draw(canvas: Canvas) {
+        val b = bounds
+        val m = paint.fontMetrics
+        val w = paint.measureText(glyph)
+        canvas.drawText(glyph, b.exactCenterX() - w / 2, b.exactCenterY() - (m.ascent + m.descent) / 2, paint)
+    }
+    override fun getIntrinsicWidth() = size
+    override fun getIntrinsicHeight() = size
+    override fun setAlpha(alpha: Int) { paint.alpha = alpha }
+    override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) { paint.colorFilter = colorFilter }
+    override fun setTintList(tint: android.content.res.ColorStateList?) {
+        paint.colorFilter = tint?.let { PorterDuffColorFilter(it.defaultColor, PorterDuff.Mode.SRC_IN) }
+        invalidateSelf()
+    }
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
+}

@@ -288,7 +288,7 @@ public final class AndroidBackend: RenderBackend {
 /// Synchronous host calls (`HostView.platform(op, argument)`).
 enum AndroidPlatform {
     enum Op: Int32 {
-        case openURL = 1, haptic, share, copy, paste, controlMetrics, imageSize, showKeyboard, hideKeyboard, setTitle
+        case openURL = 1, haptic, share, copy, paste, controlMetrics, imageSize, showKeyboard, hideKeyboard, setTitle, setToolbar
     }
 
     @MainActor

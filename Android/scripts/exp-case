@@ -7,6 +7,7 @@ set -e
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CASE="$1"; OUT=/tmp/sui2; mkdir -p "$OUT"
 D="$ROOT/Android/scripts/device"
+"$D" shell input keyevent KEYCODE_WAKEUP; "$D" shell wm dismiss-keyguard
 "$D" logcat -c
 "$D" shell am start -S -n org.swiftui2.expandroid/org.swiftui2.SwiftUI2Activity -e env.EXP_CASE "$CASE" --ei org.swiftui2.dump 2500 >/dev/null
 sleep 4

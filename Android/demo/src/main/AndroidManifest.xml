@@ -4,6 +4,8 @@
         android:label="${appLabel}"
         android:theme="@android:style/Theme.DeviceDefault.DayNight"
         android:hardwareAccelerated="true">
+        <!-- simpleperf / Perfetto can profile release builds. -->
+        <profileable android:shell="true" />
         <activity
             android:name="org.swiftui2.SwiftUI2Activity"
             android:exported="true"

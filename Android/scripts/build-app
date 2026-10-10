@@ -37,7 +37,7 @@ while [ ${#queue[@]} -gt 0 ]; do
   name="$(basename "$lib")"
   case "$seen" in *" $name "*) continue ;; esac
   seen="$seen$name "
-  if [ "$CONFIG" = release ]; then "$STRIP" --strip-unneeded -o "$JNI/$name" "$lib"; else cp "$lib" "$JNI/$name"; fi
+  if [ "$CONFIG" = release ] && [ -z "$SWIFTUI2_KEEP_SYMBOLS" ]; then "$STRIP" --strip-unneeded -o "$JNI/$name" "$lib"; else cp "$lib" "$JNI/$name"; fi
   for dep in $("$READELF" -d "$lib" | sed -n 's/.*Shared library: \[\(.*\)\]/\1/p'); do
     if [ -f "$SWIFT_ANDROID_RUNTIME_LIBS/$dep" ]; then queue+=("$SWIFT_ANDROID_RUNTIME_LIBS/$dep")
     elif [ "$dep" = libc++_shared.so ]; then queue+=("$CXX_SHARED")
@@ -47,11 +47,12 @@ done
 echo "Staged: $(ls "$JNI" | tr '\n' ' ')"
 
 cd "$ROOT/Android"
-TASK=assembleDebug; [ "$CONFIG" = release ] && TASK=assembleDebug
+TASK=assembleDebug; VARIANT=debug
+[ "$CONFIG" = release ] && TASK=assembleRelease && VARIANT=release
 [ -n "$APP_ID" ] || APP_ID="org.swiftui2.$(echo "$PRODUCT" | tr 'A-Z' 'a-z' | tr -cd 'a-z0-9')"
 [ -n "$LABEL" ] || LABEL="$PRODUCT"
 gradle -q ":$MODULE:$TASK" -PswiftLibrary="$PRODUCT" -PappId="$APP_ID" -PappLabel="$LABEL"
-APK="$ROOT/Android/$MODULE/build/outputs/apk/debug/$MODULE-debug.apk"
+APK="$ROOT/Android/$MODULE/build/outputs/apk/$VARIANT/$MODULE-$VARIANT.apk"
 ls -la "$APK"
 [ "$INSTALL" = 1 ] || exit 0
 SERIAL="${ANDROID_SERIAL:-$($ADB devices | awk 'NR>1 && $2=="device" && $1 !~ /^emulator-/ {print $1; exit}')}"

@@ -24,6 +24,14 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    buildTypes {
+        // Not debuggable (ART compiles the host code fully), signed with the debug key so it
+        // installs like the debug build.
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
     packaging {
         // The Swift runtime libraries are prebuilt; keep them as they are.
         jniLibs { useLegacyPackaging = true; keepDebugSymbols += "**/*.so" }

@@ -33,6 +33,10 @@ open class SwiftUI2Activity : Activity() {
             started = true
         }
         hostView = HostView(this, scene = intent.getIntExtra(EXTRA_SCENE, -1))
+        hostView.onToolbarChange = { items ->
+            actionBar?.setDisplayHomeAsUpEnabled(items.any { it.id == BACK })
+            invalidateOptionsMenu()
+        }
         setContentView(hostView)
         // Debugging: `am start --ei org.swiftui2.dump <ms>` logs the view tree (tag SwiftUI2Dump).
         val dumpDelay = intent.getIntExtra(EXTRA_DUMP, -1)
@@ -40,6 +44,27 @@ open class SwiftUI2Activity : Activity() {
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, backCallback)
         }
+    }
+
+    override fun onCreateOptionsMenu(menu: android.view.Menu): Boolean {
+        for ((index, item) in hostView.toolbar.withIndex()) {
+            if (item.id == BACK) continue
+            val menuItem = menu.add(0, index + 1, index, item.title.ifEmpty { item.glyph })
+            menuItem.isEnabled = item.enabled
+            if (item.glyph.isNotEmpty()) menuItem.icon = SymbolDrawable(item.glyph, item.filled, resources.displayMetrics.density)
+            menuItem.setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_IF_ROOM)
+        }
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
+        if (item.itemId == android.R.id.home) {
+            hostView.toolbarAction(BACK)
+            return true
+        }
+        val entry = hostView.toolbar.getOrNull(item.itemId - 1) ?: return super.onOptionsItemSelected(item)
+        hostView.toolbarAction(entry.id)
+        return true
     }
 
     @Deprecated("Deprecated in Java")
@@ -66,6 +91,7 @@ open class SwiftUI2Activity : Activity() {
 
     companion object {
         const val META_LIBRARY = "org.swiftui2.library"
+        const val BACK = "navigation.back"
         /** Index of the scene to show (default: the one that opens at launch). */
         const val EXTRA_SCENE = "org.swiftui2.scene"
         const val EXTRA_DUMP = "org.swiftui2.dump"

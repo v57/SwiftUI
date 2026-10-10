@@ -190,13 +190,31 @@ class HostView(context: Context, scene: Int = -1) : ViewGroup(context), Choreogr
             null
         }
         PLATFORM_SET_TITLE -> {
-            (context as? Activity)?.title = argument
+            (context as? Activity)?.let { activity ->
+                activity.title = argument ?: activity.packageManager.getActivityInfo(activity.componentName, 0).loadLabel(activity.packageManager)
+            }
+            null
+        }
+        PLATFORM_SET_TOOLBAR -> {
+            toolbar = (argument ?: "").split("\n").filter { it.isNotEmpty() }.map { line ->
+                val f = line.split('\u001F')
+                ToolbarItem(f[0], f[1], f[2], f[3], f[4] == "1", f.getOrNull(5) == "1")
+            }
+            onToolbarChange?.invoke(toolbar)
             null
         }
         else -> null
     }
 
     fun px(dp: Float): Int = (dp * density).roundToInt()
+
+    /** Toolbar items reported by the graph (SwiftUI2Activity shows them in the app bar). */
+    class ToolbarItem(val id: String, val placement: String, val title: String, val glyph: String, val enabled: Boolean, val filled: Boolean)
+    var toolbar: List<ToolbarItem> = emptyList()
+        private set
+    var onToolbarChange: ((List<ToolbarItem>) -> Unit)? = null
+
+    fun toolbarAction(id: String) = event(-1, Events.PRIMARY, text = id)
 
     /** Logs the node tree with frames in dp, relative to the root (tag SwiftUI2Dump). */
     fun dump() {
@@ -219,7 +237,9 @@ class HostView(context: Context, scene: Int = -1) : ViewGroup(context), Choreogr
         }
         visit(root, 0, -root.left.toFloat(), -root.top.toFloat())
         lines.chunked(40).forEach { android.util.Log.i("SwiftUI2Dump", it.joinToString("\n")) }
-        android.util.Log.i("SwiftUI2Dump", "END ${lines.size} nodes")
+        val location = IntArray(2)
+        root.getLocationOnScreen(location)
+        android.util.Log.i("SwiftUI2Dump", "END ${lines.size} nodes; root at (${location[0]}, ${location[1]}) px, density $density")
     }
 
     companion object {
@@ -241,6 +261,7 @@ class HostView(context: Context, scene: Int = -1) : ViewGroup(context), Choreogr
         const val PLATFORM_SHOW_KEYBOARD = 8
         const val PLATFORM_HIDE_KEYBOARD = 9
         const val PLATFORM_SET_TITLE = 10
+        const val PLATFORM_SET_TOOLBAR = 11
     }
 }
 
