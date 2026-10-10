@@ -1,6 +1,7 @@
 #!/bin/bash
 # Drives the Linux test VM (see env.sh). Usage: Linux/scripts/vm <command> ...
-#   start              boot the VM (UTM via utmctl when it answers, else headless with vzrun)
+#   start              boot the VM (UTM via utmctl when it answers, else headless with vzrun;
+#                      SWIFTUI2_VM_HEADLESS=1 forces vzrun) and wait for its desktop
 #   stop               shut the VM down (ACPI power button)
 #   ip                 print the VM's address
 #   ssh [command...]   run a command in the VM (in its desktop session: DISPLAY=:0)
@@ -48,7 +49,8 @@ build_vzrun() {
 
 case "$cmd" in
   start)
-    if utmctl status "$SWIFTUI2_VM_NAME" >/dev/null 2>&1; then
+    # SWIFTUI2_VM_HEADLESS=1 skips UTM (utmctl hangs while macOS's Automation consent is pending).
+    if [ -z "$SWIFTUI2_VM_HEADLESS" ] && utmctl status "$SWIFTUI2_VM_NAME" >/dev/null 2>&1; then
       utmctl start "$SWIFTUI2_VM_NAME"
     else
       build_vzrun
@@ -56,7 +58,14 @@ case "$cmd" in
       echo $! > "$SWIFTUI2_VM_DIR/$SWIFTUI2_VM_NAME-vzrun.pid"
     fi
     for _ in $(seq 1 60); do
-      ip=$(vm_ip); [ -n "$ip" ] && nc -z -G 2 "$ip" 22 2>/dev/null && { echo "$ip"; exit 0; }
+      ip=$(vm_ip)
+      if [ -n "$ip" ] && nc -z -G 2 "$ip" 22 2>/dev/null; then
+        # Wait for the auto-login desktop (X display and its auth file).
+        for _ in $(seq 1 40); do
+          remote 'test -S /tmp/.X11-unix/X0 && test -f /run/user/$(id -u)/gdm/Xauthority' 2>/dev/null && { sleep 3; echo "$ip"; exit 0; }
+          sleep 3
+        done
+      fi
       sleep 2
     done
     echo "VM did not come up" >&2; exit 1 ;;
