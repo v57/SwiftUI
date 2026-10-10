@@ -542,28 +542,32 @@ static class Widgets
     /// <summary>"checkbox w,h, radio w,h, switch w,h, slider h, field padding t,l,b,r, field h" (epx).</summary>
     public static string ControlMetrics()
     {
-        Size Measure(FrameworkElement element)
+        // Measured in the live tree (templates apply on layout); Fluent's sizes if that fails.
+        Size Measure(FrameworkElement element, Size fallback)
         {
             var panel = TextMeasure.Attachment;
             panel?.Children.Add(element);
             (element as Control)?.ApplyTemplate();
+            panel?.UpdateLayout();
             element.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             var size = element.DesiredSize;
             panel?.Children.Remove(element);
-            return size;
+            return size.Width > 0 && size.Height > 0 ? size : fallback;
         }
-        var checkbox = Measure(Toggle(0));
-        var radio = Measure(Toggle(2));
-        var toggle = Measure(Toggle(1));
-        var slider = Measure(new Slider());
+        var checkbox = Measure(Toggle(0), new Size(20, 20));
+        var radio = Measure(Toggle(2), new Size(20, 20));
+        var toggle = Measure(Toggle(1), new Size(40, 20));
+        var slider = Measure(new Slider(), new Size(0, 32));
         var field = new TextBox();
-        var fieldSize = Measure(field);
-        var padding = field.Padding;
+        var fieldSize = Measure(field, new Size(0, 32));
+        var padding = field.Padding.Top + field.Padding.Left > 0 ? field.Padding : new Thickness(10, 5, 6, 6);
         var values = new[]
         {
             checkbox.Width, checkbox.Height, radio.Width, radio.Height, toggle.Width, toggle.Height, slider.Height,
             padding.Top, padding.Left, padding.Bottom, padding.Right, Math.Max(fieldSize.Height, field.MinHeight),
         };
-        return string.Join(",", values.Select(v => v.ToString(CultureInfo.InvariantCulture)));
+        var metrics = string.Join(",", values.Select(v => v.ToString(CultureInfo.InvariantCulture)));
+        Console.Error.WriteLine("[SwiftUI2Host] control metrics: " + metrics);
+        return metrics;
     }
 }
