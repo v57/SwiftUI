@@ -123,7 +123,10 @@ static class HostWindow
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
         var scale = Math.Max(GetDpiForWindow(hwnd), 96) / 96.0;
         if (width <= 0 || height <= 0) { width = 900; height = 680; }
-        window.AppWindow.Resize(new SizeInt32((int)(width * scale), (int)(height * scale)));
+        // Within the display's work area (the title bar adds to the content size).
+        var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(window.AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Primary).WorkArea;
+        var size = new SizeInt32(Math.Min((int)(width * scale), area.Width), Math.Min((int)(height * scale), area.Height));
+        window.AppWindow.MoveAndResize(new RectInt32(area.X + (area.Width - size.Width) / 2, area.Y + (area.Height - size.Height) / 2, size.Width, size.Height));
         window.Activate();
     }
 }

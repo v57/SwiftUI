@@ -138,8 +138,9 @@ sealed class ButtonNode : NodeView
     {
         if (!pressed) return;
         e.Handled = true;
-        Element.ReleasePointerCapture(e.Pointer);
+        // End the press first: releasing the capture raises PointerCaptureLost (a cancel).
         EndPress(pressedInside && repeatTimer == null);
+        Element.ReleasePointerCapture(e.Pointer);
     }
 
     void EndPress(bool fire)
