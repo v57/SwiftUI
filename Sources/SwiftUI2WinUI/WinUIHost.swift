@@ -15,6 +15,8 @@ final class WinUIHost {
     private var frameRequested = false
     private var insets = EdgeInsets()
     private var size = CGSize.zero
+    /// The window's menu bar (the app's `.commands`).
+    private(set) lazy var menuBar = WinUIMenuBar(host: self)
 
     init(view: sui_ref, makeGraph: (any RenderBackend) -> ViewGraph) {
         self.view = view
@@ -29,6 +31,7 @@ final class WinUIHost {
             // nil: the scene's title.
             _ = WinUIPlatform.call(self.view, .setTitle, title)
         }
+        menuBar.refresh()
     }
 
     private var tornDown = false
@@ -55,6 +58,8 @@ final class WinUIHost {
         updateScheduled = false
         WinUIPerf.measure(.update) { graph.update() }
         backend.flush()
+        // Commands read app state: re-evaluate them after each update (sent only when changed).
+        menuBar.refresh()
     }
 
     func setSize(_ size: CGSize, scale: CGFloat) {
@@ -78,7 +83,7 @@ final class WinUIHost {
         flushNow()
     }
 
-    private func flushNow() {
+    func flushNow() {
         updateScheduled = true
         flush()
     }
@@ -105,17 +110,26 @@ final class WinUIHost {
         case scrolled, scrollPhase, openURL, setDate, setColor
         case pointerBegan = 20, pointerMoved, pointerEnded, pointerCancelled
         case hover = 24, hoverLocation
+        /// Host-level events (node -1): a menu bar item (text = its id) and a finished file
+        /// dialog (a = request id, c = 1 if confirmed, text = chosen paths, one per line).
+        case menuItem = 30, fileDialog
     }
 
     func handle(node id: Int32, type: Int32, a: Double, b: Double, c: Double, text: String?) {
-        if id == -1, let text {
-            toolbarAction(text)
+        if id == -1 {
+            switch Event(rawValue: type) {
+            case .menuItem: if let text { menuBar.perform(id: text) }
+            case .fileDialog: backend.fileDialogs.complete(id: Int(a), paths: c != 0 ? (text ?? "").split(separator: "\n").map(String.init) : nil)
+            default: if let text { toolbarAction(text) }
+            }
+            flushNow()
             return
         }
         guard let event = Event(rawValue: type), let node = backend.node(for: id) else { return }
         let actions = node.actions
         switch event {
         case .primary: actions.primary?()
+        case .menuItem, .fileDialog: break // host-level (node -1)
         case .setBool: actions.setBool?(a != 0)
         case .setText: actions.setText?(text ?? "")
         case .setDouble: actions.setDouble?(a)

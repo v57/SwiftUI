@@ -66,6 +66,7 @@ final class WinUIPlatformView {
 @MainActor
 public final class WinUIBackend: RenderBackend {
     let hostView: sui_ref
+    let fileDialogs = WinUIFileDialogs()
     /// Physical pixels per effective pixel (XamlRoot.RasterizationScale), for pixel rounding.
     var scale: CGFloat
     private var commands = ByteWriter(capacity: 16 * 1024)
@@ -297,6 +298,10 @@ public final class WinUIBackend: RenderBackend {
         return PlatformImage(object: WinUIBitmap(id: id), size: CGSize(width: CGFloat(size.0) / scale, height: CGFloat(size.1) / scale))
     }
 
+    public func presentFileDialog(_ request: FileDialogRequest, completion: @escaping @MainActor ([URL]?) -> Void) {
+        fileDialogs.present(request, host: hostView, completion: completion)
+    }
+
     public func readPasteboard() -> [NSItemProvider] {
         guard let text = WinUIPlatform.call(hostView, .paste, nil) else { return [] }
         return [NSItemProvider(object: text)]
@@ -309,6 +314,10 @@ enum WinUIPlatform {
         case openURL = 1, haptic, share, copy, paste, controlMetrics, imageSize, showKeyboard, hideKeyboard, setTitle, setToolbar
         /// Brings the host's window to the front.
         case activate
+        /// The window's menu bar (WinUIMenuBar's encoding; empty hides it).
+        case setMenuBar
+        /// Shows a file picker (WinUIFileDialogs' encoding); returns nil if it can't.
+        case fileDialog
     }
 
     @MainActor

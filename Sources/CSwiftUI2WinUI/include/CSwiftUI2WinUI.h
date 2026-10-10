@@ -71,4 +71,5 @@ __declspec(dllexport) void swiftui2_drain_main_queue(void);
 // void swiftui2_frame(int64_t host, double seconds);
 // bool swiftui2_back(int64_t host);
 // void swiftui2_timer_fired(void);
+// bool swiftui2_key(int64_t host, int32_t code, const char *characters, int32_t modifiers, int32_t phase);
 #endif

@@ -43,6 +43,7 @@ static unsafe class Native
     static delegate* unmanaged<long, double, void> frame;
     static delegate* unmanaged<long, byte> back;
     static delegate* unmanaged<void> timerFired;
+    static delegate* unmanaged<long, int, byte*, int, int, byte> key;
 
     static DispatcherQueue? queue;
     static DispatcherQueueTimer? timer;
@@ -65,6 +66,7 @@ static unsafe class Native
         frame = (delegate* unmanaged<long, double, void>)NativeLibrary.GetExport(library, "swiftui2_frame");
         back = (delegate* unmanaged<long, byte>)NativeLibrary.GetExport(library, "swiftui2_back");
         timerFired = (delegate* unmanaged<void>)NativeLibrary.GetExport(library, "swiftui2_timer_fired");
+        key = (delegate* unmanaged<long, int, byte*, int, int, byte>)NativeLibrary.GetExport(library, "swiftui2_key");
 
         var callbacks = new Callbacks
         {
@@ -114,6 +116,15 @@ static unsafe class Native
     public static void SetEnvironment(long host, int key, int value) => setEnvironment(host, key, value);
     public static void Frame(long host, double seconds) => frame(host, seconds);
     public static bool Back(long host) => back(host) != 0;
+
+    /// A key event (code: Unicode scalar or WinUIKeys code; modifiers: 1 Shift, 2 Ctrl, 4 Alt,
+    /// 8 Windows; phase: 0 down, 1 repeat, 2 up). Returns whether SwiftUI handled it.
+    public static bool Key(long host, int code, string characters, int modifiers, int phase)
+    {
+        if (host == 0) return false;
+        var utf8 = Utf8(characters);
+        fixed (byte* bytes = utf8) return key(host, code, bytes, modifiers, phase) != 0;
+    }
 
     public static void Event(long host, int node, int type, double a = 0, double b = 0, double c = 0, string? text = null)
     {
@@ -266,6 +277,9 @@ static class Events
     public const int PointerCancelled = 23;
     public const int Hover = 24;
     public const int HoverLocation = 25;
+    /// Host-level events (node -1).
+    public const int MenuItem = 30;
+    public const int FileDialog = 31;
 }
 
 /// <summary>Environment keys (WinUIHost.setEnvironment).</summary>

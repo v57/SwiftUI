@@ -165,6 +165,19 @@ public func swiftui2_back(_ handle: Int64) -> Bool {
     }
 }
 
+/// A key event in the window: `code` is a Unicode scalar or a WinUIKeys code, `modifiers` the
+/// host's bits, `phase` 0 down / 1 repeat / 2 up. Returns whether SwiftUI handled it.
+@_cdecl("swiftui2_key")
+public func swiftui2_key(_ handle: Int64, _ code: Int32, _ characters: UnsafePointer<CChar>?, _ modifiers: Int32, _ phase: Int32) -> Bool {
+    let string = characters.map { String(cString: $0) } ?? ""
+    return MainActor.assumeIsolated {
+        let phases: KeyPress.Phases = phase == 2 ? .up : phase == 1 ? .repeat : .down
+        let handled = host(handle)?.key(code: code, characters: string, modifiers: modifiers, phase: phases) ?? false
+        WinUIMainLoop.serviceTimers()
+        return handled
+    }
+}
+
 /// Main-queue work ran or a run loop timer is due.
 @_cdecl("swiftui2_timer_fired")
 public func swiftui2_timer_fired() {

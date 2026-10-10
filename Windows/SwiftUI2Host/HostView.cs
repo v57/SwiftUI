@@ -9,6 +9,10 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics.Imaging;
+using Windows.System;
+using Windows.UI.Core;
+using Microsoft.UI.Input;
+using Microsoft.UI.Xaml.Input;
 
 
 namespace SwiftUI2Host;
@@ -22,13 +26,14 @@ sealed class HostView
 {
     public readonly Window Window;
     public readonly Grid RootElement = new();
-    public readonly DispatcherQueue Queue;
+    public readonly Microsoft.UI.Dispatching.DispatcherQueue Queue;
     public long Handle { get; private set; }
 
     readonly Grid content = new();
     readonly Canvas measuring = new() { Opacity = 0, IsHitTestVisible = false };
     readonly ContentControl focusSink = new() { IsTabStop = true, Width = 0, Height = 0, Opacity = 0 };
     readonly CommandBar commandBar = new() { DefaultLabelPosition = CommandBarDefaultLabelPosition.Right, Visibility = Visibility.Collapsed, IsDynamicOverflowEnabled = true };
+    readonly MenuBar menuBar = new() { Visibility = Visibility.Collapsed };
     readonly ContainerNode root;
     readonly Dictionary<int, NodeView> nodes = new();
     readonly string sceneTitle;
@@ -38,15 +43,18 @@ sealed class HostView
     public HostView(Window window, int scene, long value, string title)
     {
         Window = window;
-        Queue = DispatcherQueue.GetForCurrentThread();
+        Queue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         sceneTitle = title;
         root = new ContainerNode(this, 0);
         nodes[0] = root;
 
         RootElement.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        RootElement.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         RootElement.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        Grid.SetRow(commandBar, 0);
-        Grid.SetRow(content, 1);
+        Grid.SetRow(menuBar, 0);
+        Grid.SetRow(commandBar, 1);
+        Grid.SetRow(content, 2);
+        RootElement.Children.Add(menuBar);
         RootElement.Children.Add(commandBar);
         RootElement.Children.Add(content);
         RootElement.Background = Theme.Brush("SolidBackgroundFillColorBaseBrush", 0xFFF3F3F3);
@@ -57,10 +65,8 @@ sealed class HostView
 
         content.SizeChanged += (_, _) => UpdateSize();
         RootElement.ActualThemeChanged += (_, _) => UpdateTheme();
-        RootElement.KeyDown += (_, e) =>
-        {
-            if (e.Key == Windows.System.VirtualKey.Escape && Handle != 0 && Native.Back(Handle)) e.Handled = true;
-        };
+        RootElement.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler((_, e) => OnKey(e, e.KeyStatus.WasKeyDown ? 1 : 0)), true);
+        RootElement.AddHandler(UIElement.KeyUpEvent, new KeyEventHandler((_, e) => OnKey(e, 2)), true);
 
         var self = GCHandle.Alloc(this);
         Handle = Native.CreateHost(GCHandle.ToIntPtr(self), scene, value);
@@ -198,14 +204,14 @@ sealed class HostView
 
     const int PlatformOpenUrl = 1, PlatformHaptic = 2, PlatformShare = 3, PlatformCopy = 4, PlatformPaste = 5,
         PlatformControlMetrics = 6, PlatformImageSize = 7, PlatformShowKeyboard = 8, PlatformHideKeyboard = 9,
-        PlatformSetTitle = 10, PlatformSetToolbar = 11, PlatformActivate = 12;
+        PlatformSetTitle = 10, PlatformSetToolbar = 11, PlatformActivate = 12, PlatformSetMenuBar = 13, PlatformFileDialog = 14;
 
     public string? Platform(int op, string? argument)
     {
         switch (op)
         {
             case PlatformOpenUrl:
-                if (Uri.TryCreate(argument, UriKind.Absolute, out var uri)) _ = Windows.System.Launcher.LaunchUriAsync(uri);
+                if (Uri.TryCreate(argument, UriKind.Absolute, out var uri)) _ = Launcher.LaunchUriAsync(uri);
                 return null;
             case PlatformShare:
             case PlatformCopy:
@@ -234,9 +240,192 @@ sealed class HostView
             case PlatformActivate:
                 Window.Activate();
                 return null;
+            case PlatformSetMenuBar:
+                SetMenuBar(argument ?? "");
+                return null;
+            case PlatformFileDialog:
+                _ = ShowFileDialog(argument ?? "");
+                return "1";
             default:
                 return null; // haptics, soft keyboard: not on desktop
         }
+    }
+
+    // MARK: Keyboard
+
+    static bool Down(VirtualKey key) =>
+        (InputKeyboardSource.GetKeyStateForCurrentThread(key) & CoreVirtualKeyStates.Down) == CoreVirtualKeyStates.Down;
+
+    /// Key events go to SwiftUI (onKeyPress, keyboard shortcuts, menu shortcuts) unless a text
+    /// field is typing them; Escape that SwiftUI doesn't handle dismisses / goes back.
+    void OnKey(KeyRoutedEventArgs e, int phase)
+    {
+        if (Handle == 0 || e.Handled && phase != 2) return;
+        var shift = Down(VirtualKey.Shift);
+        var modifiers = (shift ? 1 : 0) | (Down(VirtualKey.Control) ? 2 : 0) | (Down(VirtualKey.Menu) ? 4 : 0) | (Down(VirtualKey.LeftWindows) || Down(VirtualKey.RightWindows) ? 8 : 0);
+        var code = KeyCode(e.Key, shift, out var characters);
+        if (code == 0) return;
+        var typing = FocusManager.GetFocusedElement(RootElement.XamlRoot) is TextBox or PasswordBox or RichEditBox;
+        if (typing && (modifiers & (2 | 4 | 8)) == 0 && code != -2) return;
+        if (Native.Key(Handle, code, characters, modifiers, phase)) e.Handled = true;
+        else if (code == -2 && phase == 0 && Native.Back(Handle)) e.Handled = true;
+    }
+
+    /// The key's Unicode scalar (lowercase letter / unshifted symbol) or a special key code, and
+    /// the characters it types.
+    static int KeyCode(VirtualKey key, bool shift, out string characters)
+    {
+        characters = "";
+        int k = (int)key;
+        switch (key)
+        {
+            case VirtualKey.Enter: characters = "\r"; return -1;
+            case VirtualKey.Escape: characters = "\u001B"; return -2;
+            case VirtualKey.Back: characters = "\b"; return -3;
+            case VirtualKey.Delete: characters = "\u007F"; return -4;
+            case VirtualKey.Tab: characters = "\t"; return -5;
+            case VirtualKey.Space: characters = " "; return -6;
+            case VirtualKey.Up: return -7;
+            case VirtualKey.Down: return -8;
+            case VirtualKey.Left: return -9;
+            case VirtualKey.Right: return -10;
+            case VirtualKey.Home: return -11;
+            case VirtualKey.End: return -12;
+            case VirtualKey.PageUp: return -13;
+            case VirtualKey.PageDown: return -14;
+        }
+        if (k >= 'A' && k <= 'Z')
+        {
+            var c = (char)(k + 32);
+            characters = (shift ? char.ToUpperInvariant(c) : c).ToString();
+            return c;
+        }
+        if (k >= '0' && k <= '9')
+        {
+            characters = shift ? ")!@#$%^&*("[k - '0'].ToString() : ((char)k).ToString();
+            return k;
+        }
+        if (k >= 96 && k <= 105) { characters = ((char)('0' + k - 96)).ToString(); return '0' + k - 96; }
+        (char plain, char shifted) = k switch
+        {
+            186 => (';', ':'), 187 => ('=', '+'), 188 => (',', '<'), 189 => ('-', '_'), 190 => ('.', '>'),
+            191 => ('/', '?'), 192 => ('`', '~'), 219 => ('[', '{'), 220 => ('\\', '|'), 221 => (']', '}'), 222 => ('\'', '"'),
+            _ => ('\0', '\0'),
+        };
+        if (plain == '\0') return 0;
+        characters = (shift ? shifted : plain).ToString();
+        return plain;
+    }
+
+    // MARK: Menu bar
+
+    /// One item per line: depth, kind (m menu, b button, t toggle, s submenu, - separator, l label),
+    /// id, title, shortcut text, enabled, checked (U+001F separated). Empty hides the menu bar.
+    void SetMenuBar(string description)
+    {
+        menuBar.Items.Clear();
+        var parents = new Dictionary<int, IList<MenuFlyoutItemBase>>();
+        foreach (var line in description.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var f = line.Split('\u001F');
+            if (f.Length < 7) continue;
+            var depth = int.Parse(f[0], CultureInfo.InvariantCulture);
+            var (kind, id, title, shortcut, enabled, isChecked) = (f[1], f[2], f[3], f[4], f[5] == "1", f[6] == "1");
+            if (kind == "m")
+            {
+                var top = new MenuBarItem { Title = title };
+                menuBar.Items.Add(top);
+                parents[1] = top.Items;
+                continue;
+            }
+            if (!parents.TryGetValue(depth, out var parent)) continue;
+            MenuFlyoutItemBase item;
+            switch (kind)
+            {
+                case "s":
+                    var sub = new MenuFlyoutSubItem { Text = title };
+                    parents[depth + 1] = sub.Items;
+                    item = sub;
+                    break;
+                case "-":
+                    item = new MenuFlyoutSeparator();
+                    break;
+                case "t":
+                    var toggle = new ToggleMenuFlyoutItem { Text = title, IsChecked = isChecked, IsEnabled = enabled, KeyboardAcceleratorTextOverride = shortcut };
+                    toggle.Click += (_, _) => Event(-1, Events.MenuItem, text: id);
+                    item = toggle;
+                    break;
+                default:
+                    var button = new MenuFlyoutItem { Text = title, IsEnabled = enabled && kind == "b", KeyboardAcceleratorTextOverride = shortcut };
+                    if (kind == "b") button.Click += (_, _) => Event(-1, Events.MenuItem, text: id);
+                    item = button;
+                    break;
+            }
+            parent.Add(item);
+        }
+        menuBar.Visibility = menuBar.Items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // MARK: File dialogs
+
+    /// Fields: id, kind (open/save/folder), multiple, default filename, message, confirmation label,
+    /// extensions (";"-separated, empty: any). Reports the chosen paths (Events.FileDialog).
+    async Task ShowFileDialog(string request)
+    {
+        var f = request.Split('\u001F');
+        if (f.Length < 7) return;
+        var id = int.Parse(f[0], CultureInfo.InvariantCulture);
+        var (kind, multiple, filename, confirm) = (f[1], f[2] == "1", f[3], f[5]);
+        var extensions = f[6].Split(';', StringSplitOptions.RemoveEmptyEntries).Select(e => "." + e).ToList();
+        List<string>? paths = null;
+        try
+        {
+            var windowId = Window.AppWindow.Id;
+            switch (kind)
+            {
+                case "save":
+                {
+                    var picker = new Microsoft.Windows.Storage.Pickers.FileSavePicker(windowId);
+                    if (filename.Length > 0) picker.SuggestedFileName = filename;
+                    if (extensions.Count > 0) picker.FileTypeChoices.Add(extensions[0].TrimStart('.').ToUpperInvariant() + " file", extensions);
+                    if (confirm.Length > 0) picker.CommitButtonText = confirm;
+                    var result = await picker.PickSaveFileAsync();
+                    if (result != null) paths = [result.Path];
+                    break;
+                }
+                case "folder":
+                {
+                    var picker = new Microsoft.Windows.Storage.Pickers.FolderPicker(windowId);
+                    if (confirm.Length > 0) picker.CommitButtonText = confirm;
+                    var result = await picker.PickSingleFolderAsync();
+                    if (result != null) paths = [result.Path];
+                    break;
+                }
+                default:
+                {
+                    var picker = new Microsoft.Windows.Storage.Pickers.FileOpenPicker(windowId);
+                    if (extensions.Count > 0) foreach (var e in extensions) picker.FileTypeFilter.Add(e);
+                    else picker.FileTypeFilter.Add("*");
+                    if (confirm.Length > 0) picker.CommitButtonText = confirm;
+                    if (multiple)
+                    {
+                        var results = await picker.PickMultipleFilesAsync();
+                        if (results != null && results.Count > 0) paths = results.Select(r => r.Path).ToList();
+                    }
+                    else
+                    {
+                        var result = await picker.PickSingleFileAsync();
+                        if (result != null) paths = [result.Path];
+                    }
+                    break;
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Native.Report(e);
+        }
+        Event(-1, Events.FileDialog, id, 0, paths != null ? 1 : 0, paths != null ? string.Join("\n", paths) : null);
     }
 
     // MARK: Toolbar

@@ -13,6 +13,7 @@
 #pragma comment(linker, "/EXPORT:swiftui2_frame")
 #pragma comment(linker, "/EXPORT:swiftui2_back")
 #pragma comment(linker, "/EXPORT:swiftui2_timer_fired")
+#pragma comment(linker, "/EXPORT:swiftui2_key")
 
 // The `@main App` of the app library; libraries without one link the stub instead.
 int main(int argc, char **argv);
