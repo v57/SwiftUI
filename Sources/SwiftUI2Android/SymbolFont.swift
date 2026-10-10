@@ -1,10 +1,12 @@
-#if os(Android)
+#if os(Android) || os(Linux)
 import Foundation
+#if os(Android)
 import CSwiftUI2Android
+#endif
 import SwiftUI2Core
 
-/// `Image(systemName:)` on Android: SF Symbols may only be used on Apple platforms, so symbol
-/// names resolve to **Material Symbols** (Apache 2.0, a variable font with a fill axis) glyphs,
+/// `Image(systemName:)` on Android and Linux (SwiftUI2Gtk links this file): SF Symbols may only
+/// be used on Apple platforms, so symbol names resolve to **Material Symbols** (Apache 2.0, a variable font with a fill axis) glyphs,
 /// addressed by their ligature names. `SymbolNames.table` maps SF names to Material names;
 /// variants (`.fill`, `.circle`, ...) fall back to their base symbol, and unknown names show a
 /// placeholder glyph (logged once).
@@ -68,7 +70,12 @@ enum SymbolFont {
         }
         if !warned.contains(name) {
             warned.insert(name)
-            sui_log(5, "SF Symbol '\(name)' has no Material Symbols mapping (SymbolNames.table); showing a placeholder")
+            let message = "SF Symbol '\(name)' has no Material Symbols mapping (SymbolNames.table); showing a placeholder"
+            #if os(Android)
+            sui_log(5, message)
+            #else
+            FileHandle.standardError.write(Data(("SwiftUI2: " + message + "\n").utf8))
+            #endif
         }
         return Glyph(text: "help", filled: false)
     }

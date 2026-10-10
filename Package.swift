@@ -10,7 +10,10 @@ import PackageDescription
 //   SwiftUI2AppKit     macOS backend (NSView based).
 //   SwiftUI2           umbrella module apps import; re-exports Core + the platform backend.
 //
-// Future backends (SwiftUI2Gtk, SwiftUI2WinUI, SwiftUI2Android) plug in exactly like SwiftUI2AppKit.
+//   SwiftUI2Gtk        Linux backend (GTK 3: cairo/Pango drawing, native text entry).
+//   SwiftUI2Android    Android backend (Swift renderer + Kotlin host).
+//
+// Future backends (SwiftUI2WinUI) plug in exactly like SwiftUI2AppKit.
 
 let nonApple: [Platform] = [.android, .linux, .windows]
 
@@ -68,6 +71,9 @@ let package = Package(
             linkerSettings: [.linkedLibrary("android", .when(platforms: [.android])), .linkedLibrary("log", .when(platforms: [.android]))]
         ),
         .target(name: "SwiftUI2Android", dependencies: ["SwiftUI2Core", "CSwiftUI2Android"]),
+        // GTK 3 backend (Linux): `apt install libgtk-3-dev`.
+        .systemLibrary(name: "CGtk3", pkgConfig: "gtk+-3.0", providers: [.apt(["libgtk-3-dev"])]),
+        .target(name: "SwiftUI2Gtk", dependencies: ["SwiftUI2Core", .target(name: "CGtk3", condition: .when(platforms: [.linux]))]),
         // A Swift Charts subset (import SwiftUI2Charts instead of Charts).
         .target(name: "SwiftUI2Charts", dependencies: ["SwiftUI2Core"]),
         // SwiftData's SwiftUI integration (@Query, .modelContainer) on Apple platforms.
@@ -78,6 +84,7 @@ let package = Package(
                 "SwiftUI2Core",
                 .target(name: "SwiftUI2AppKit", condition: .when(platforms: [.macOS])),
                 .target(name: "SwiftUI2Android", condition: .when(platforms: [.android])),
+                .target(name: "SwiftUI2Gtk", condition: .when(platforms: [.linux])),
                 .target(name: "SwiftUI2SwiftData", condition: .when(platforms: [.macOS, .iOS])),
             ]
         ),
@@ -110,7 +117,25 @@ let package = Package(
     ]
 )
 
-if !crossCompiling {
+#if os(Linux)
+let buildingOnLinux = true
+#else
+let buildingOnLinux = false
+#endif
+
+if buildingOnLinux {
+    // Native Linux build (GTK backend): Apple-SwiftUI-only and other platforms' backends are left out.
+    let excluded: Set<String> = ["ReferenceApp", "parity-recorder", "ParityScenariosSwiftUI", "SwiftUI2AppKit", "SwiftUI2SwiftData",
+                                 "CSwiftUI2Android", "SwiftUI2Android"]
+    package.targets.removeAll { excluded.contains($0.name) }
+    package.products.removeAll { excluded.contains($0.name) }
+    for target in package.targets where target.name == "SwiftUI2" {
+        target.dependencies = ["SwiftUI2Core", "SwiftUI2Gtk"]
+    }
+    // GTK smoke-test app (the Android Gallery's sources).
+    package.targets += [.executableTarget(name: "GalleryGtk", dependencies: ["SwiftUI2"])]
+    package.products += [.executable(name: "GalleryGtk", targets: ["GalleryGtk"])]
+} else if !crossCompiling {
     package.targets += [
         .testTarget(name: "SwiftUI2AppKitTests", dependencies: ["SwiftUI2"]),
     ]

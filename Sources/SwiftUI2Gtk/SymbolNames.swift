@@ -1,0 +1,1 @@
+../SwiftUI2Android/SymbolNames.swift

@@ -18,6 +18,9 @@
 #if os(Android)
 @_exported import SwiftUI2Android
 #endif
+#if os(Linux)
+@_exported import SwiftUI2Gtk
+#endif
 #if canImport(SwiftData)
 @_exported import SwiftUI2SwiftData
 #endif
@@ -31,6 +34,8 @@ extension App {
         #else
         #if canImport(AppKit)
         AppKitAppRunner.install()
+        #elseif os(Linux)
+        GtkAppRunner.install()
         #endif
         AppRuntime.run(Self.self)
         #endif
