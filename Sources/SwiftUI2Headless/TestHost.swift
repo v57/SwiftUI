@@ -23,6 +23,17 @@ public final class TestHost {
         flush()
     }
 
+    /// Hosts a graph built by a factory (e.g. a scene's `makeGraphForValue`).
+    public init(size: CGSize = CGSize(width: 400, height: 600), graph makeGraph: (any RenderBackend) -> ViewGraph) {
+        let clock = ManualClock()
+        self.clock = clock
+        graph = makeGraph(backend)
+        graph.setProposedSize(ProposedViewSize(size))
+        graph.clock = { clock.time }
+        graph.onNeedsUpdate = { [weak self] in self?.needsFlush = true }
+        flush()
+    }
+
     private let clock: ManualClock
 
     /// Advances the animation clock and renders one animation frame.

@@ -66,8 +66,23 @@ public struct WindowDescription {
     public var makeGraph: @MainActor (any RenderBackend) -> ViewGraph { { makeGraphForValue($0, nil) } }
 
     /// Opens at launch (the first plain window group / window).
-    public var opensAtLaunch: Bool { role == .main && valueType == nil }
+    public var opensAtLaunch: Bool { role == .main && valueType == nil && launchBehavior != .suppressed && kind == .standard }
+
+    /// Window chrome (`windowStyle`, `UtilityWindow`).
+    public var kind: WindowKind = .standard
+    public var resizability = WindowResizability.automatic
+    /// Initial position in the screen's visible frame (`defaultPosition`).
+    public var defaultPosition: UnitPoint?
+    public var toolbarStyle = WindowToolbarStyleKind.automatic
+    public var launchBehavior = SceneLaunchBehavior.automatic
+    public var level = WindowLevel.automatic
+    /// A status item instead of a window (`MenuBarExtra`).
+    public var menuBarExtra: MenuBarExtraDescription?
+    /// Document windows (`DocumentGroup`).
+    public var document: DocumentSceneDescription?
 }
+
+public enum WindowKind: Hashable, Sendable { case standard, hiddenTitleBar, plain, utility }
 
 public struct WindowGroup<Content: View>: Scene {
     let title: String
@@ -221,8 +236,6 @@ public struct Settings<Content: View>: Scene {
 }
 
 extension Scene {
-    public func windowResizability(_ resizability: WindowResizability) -> some Scene { self }
-    public func windowStyle<S>(_ style: S) -> some Scene { self }
     public func commands<C: Commands>(@CommandsBuilder content: () -> C) -> some Scene {
         _CommandsScene(base: self, commands: content())
     }
@@ -230,14 +243,17 @@ extension Scene {
     public func commandsReplaced<C: Commands>(@CommandsBuilder content: () -> C) -> some Scene {
         _CommandsScene(base: self, commands: content())
     }
-    public func defaultPosition(_ position: UnitPoint) -> some Scene { self }
-    public func windowToolbarStyle<S>(_ style: S) -> some Scene { self }
 }
 
-public struct WindowResizability: Sendable {
-    public static let automatic = WindowResizability()
-    public static let contentSize = WindowResizability()
-    public static let contentMinSize = WindowResizability()
+/// How a window's size follows its content.
+public struct WindowResizability: Hashable, Sendable {
+    enum Kind: Hashable, Sendable { case automatic, contentSize, contentMinSize }
+    let kind: Kind
+    public static let automatic = WindowResizability(kind: .automatic)
+    /// The window can't be resized beyond the content's min/max sizes.
+    public static let contentSize = WindowResizability(kind: .contentSize)
+    /// The content's minimum size is the window's minimum.
+    public static let contentMinSize = WindowResizability(kind: .contentMinSize)
 }
 
 public struct _TupleScene<each S: Scene>: Scene {

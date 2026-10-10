@@ -11,6 +11,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     let hasSettings: Bool
     let hasWindowGroup: Bool
     weak var settingsTarget: AnyObject?
+    /// DocumentGroup apps get New / Open / Save items.
+    var hasDocuments = false
+    /// `UtilityWindow` scenes: (title, id), toggled from the View menu.
+    var utilityWindows: [(String, String)] = []
     /// Top-level menu → builder of its items.
     private var builders: [ObjectIdentifier: () -> [NSMenuItem]] = [:]
     /// Keeps menu actions alive.
@@ -101,10 +105,20 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     private func fileMenuItems() -> [NSMenuItem] {
         var items: [NSMenuItem] = []
-        items += groupItems(.newItem, standard: hasWindowGroup ? [standard("New Window", Selector(("newWindow:")), "n", target: settingsTarget)] : [])
+        if hasDocuments {
+            items += groupItems(.newItem, standard: [
+                standard("New", Selector(("newDocument:")), "n", target: settingsTarget),
+                standard("Open…", Selector(("openDocument:")), "o", target: settingsTarget),
+            ])
+        } else {
+            items += groupItems(.newItem, standard: hasWindowGroup ? [standard("New Window", Selector(("newWindow:")), "n", target: settingsTarget)] : [])
+        }
         items.append(.separator())
         items.append(standard("Close", #selector(NSWindow.performClose(_:)), "w"))
-        items += groupItems(.saveItem, standard: [])
+        items += groupItems(.saveItem, standard: hasDocuments ? [
+            standard("Save…", Selector(("saveDocument:")), "s", target: settingsTarget),
+            standard("Save As…", Selector(("saveDocumentAs:")), "s", [.command, .shift], target: settingsTarget),
+        ] : [])
         items.append(.separator())
         items += groupItems(.importExport, standard: [])
         items.append(.separator())
@@ -136,6 +150,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         var items: [NSMenuItem] = []
         items += groupItems(.toolbar, standard: [])
         items += groupItems(.sidebar, standard: [])
+        if !utilityWindows.isEmpty {
+            items.append(.separator())
+            for (title, id) in utilityWindows {
+                let isOpen = AppRuntime.isWindowOpen?(id) ?? false
+                let item = standard("\(isOpen ? "Hide" : "Show") \(title)", Selector(("toggleUtilityWindow:")), target: settingsTarget)
+                item.representedObject = id
+                items.append(item)
+            }
+        }
         items.append(.separator())
         items.append(standard("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))
         return tidy(items)

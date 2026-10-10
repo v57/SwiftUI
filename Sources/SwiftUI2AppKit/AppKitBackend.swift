@@ -164,6 +164,23 @@ public final class AppKitBackend: RenderBackend {
         NSWorkspace.shared.open(url)
     }
 
+    public func readPasteboard() -> [NSItemProvider] { Self.pasteboardProviders() }
+
+    /// The general pasteboard's items as item providers (data loaded eagerly).
+    static func pasteboardProviders() -> [NSItemProvider] {
+        (NSPasteboard.general.pasteboardItems ?? []).map { item in
+            let provider = NSItemProvider()
+            for type in item.types {
+                guard let data = item.data(forType: type) else { continue }
+                provider.registerDataRepresentation(forTypeIdentifier: type.rawValue, visibility: .all) { completion in
+                    completion(data, nil)
+                    return nil
+                }
+            }
+            return provider
+        }
+    }
+
     public func writeToPasteboard(_ items: [Any]) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()

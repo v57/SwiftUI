@@ -153,20 +153,8 @@ open class GraphHostingView: NSView {
 
     /// Edit > Paste routed to `onPasteCommand` handlers.
     @objc open func paste(_ sender: Any?) {
-        let pasteboard = NSPasteboard.general
-        let types = (pasteboard.types ?? []).map(\.rawValue)
-        let providers: [AnyObject] = (pasteboard.pasteboardItems ?? []).map { item in
-            let provider = NSItemProvider()
-            for type in item.types {
-                guard let data = item.data(forType: type) else { continue }
-                provider.registerDataRepresentation(forTypeIdentifier: type.rawValue, visibility: .all) { completion in
-                    completion(data, nil)
-                    return nil
-                }
-            }
-            return provider
-        }
-        if graph.handlePaste(providers, types: types) { graph.update() }
+        let types = (NSPasteboard.general.types ?? []).map(\.rawValue)
+        if graph.handlePaste(AppKitBackend.pasteboardProviders(), types: types) { graph.update() }
     }
 
     static func keyPress(_ event: NSEvent, phase: KeyPress.Phases) -> KeyPress {
@@ -271,9 +259,9 @@ open class NSHostingView<Content: View>: GraphHostingView {
 /// Runs an `App` with AppKit.
 @MainActor
 public enum AppKitAppRunner {
-    private static var windows: [NSWindow] = []
-    private static var toolbarControllers: [WindowToolbarController] = []
-    private static var delegate: AppDelegate?
+    static var windows: [NSWindow] = []
+    static var toolbarControllers: [WindowToolbarController] = []
+    static var delegate: AppDelegate?
     /// The app's `@NSApplicationDelegateAdaptor` delegate; unhandled delegate messages go to it.
     nonisolated(unsafe) static var userDelegate: (NSObject & NSApplicationDelegate)?
 
@@ -282,14 +270,14 @@ public enum AppKitAppRunner {
     }
 
     /// Open windows with the scene and presented value they came from.
-    private struct OpenWindow {
+    struct OpenWindow {
         weak var window: NSWindow?
         let sceneIndex: Int
         let value: AnyHashable?
     }
     static var scenes: [WindowDescription] = []
-    private static var openWindows: [OpenWindow] = []
-    private static var menuBar: MenuBarController?
+    static var openWindows: [OpenWindow] = []
+    static var menuBar: MenuBarController?
 
     static func run(_ descriptions: [WindowDescription]) -> Never {
         let app = NSApplication.shared
@@ -307,13 +295,22 @@ public enum AppKitAppRunner {
             hasWindowGroup: descriptions.contains { $0.opensAtLaunch && !$0.isSingle },
             settingsTarget: delegate
         )
+        menuBar.hasDocuments = descriptions.contains { $0.document != nil }
+        menuBar.utilityWindows = descriptions.filter { $0.kind == .utility }.compactMap { scene in scene.id.map { (scene.title, $0) } }
+        installSceneSupport()
         self.menuBar = menuBar
         app.mainMenu = menuBar.makeMainMenu()
         AppRuntime.openWindow = { id, value in open(id: id, value: value) }
         AppRuntime.dismissWindow = { id, value in dismiss(id: id, value: value) }
-        // Like SwiftUI, the first window scene opens at launch.
+        // Like SwiftUI, the first window scene opens at launch (plus scenes presented at launch;
+        // document apps start with an untitled document).
         if let first = descriptions.firstIndex(where: { $0.opensAtLaunch }) {
             makeWindow(sceneIndex: first, value: nil)
+        } else if descriptions.contains(where: { $0.document?.makeNew != nil }) {
+            newDocument()
+        }
+        for (index, scene) in descriptions.enumerated() where scene.launchBehavior == .presented && !scene.opensAtLaunch {
+            makeWindow(sceneIndex: index, value: nil)
         }
         app.activate()
         if let path = ProcessInfo.processInfo.environment["SWIFTUI2_SNAPSHOT"] { scheduleSnapshot(to: path) }
@@ -373,12 +370,7 @@ public enum AppKitAppRunner {
     static func makeWindow(sceneIndex: Int, value: AnyHashable?) -> NSWindow {
         let description = scenes[sceneIndex]
         let host = GraphHostingView(makeGraph: { backend in description.makeGraphForValue(backend, value) })
-        let window = NSWindow(
-            contentRect: CGRect(origin: .zero, size: CGSize(width: 900, height: 450)),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
+        let window = makeNativeWindow(for: description)
         window.isReleasedWhenClosed = false
         window.title = description.title.isEmpty ? ProcessInfo.processInfo.processName : description.title
         let baseTitle = window.title
@@ -400,10 +392,20 @@ public enum AppKitAppRunner {
         // `defaultSize` or the content's ideal size (at least 900x450, title bar included).
         let minimum = host.sizeThatFits(ProposedViewSize(width: 0, height: 0))
         window.contentMinSize = minimum
+        if description.resizability == .contentSize {
+            // The window can't grow beyond the content's maximum size.
+            let maximum = host.sizeThatFits(ProposedViewSize(width: .infinity, height: .infinity))
+            window.contentMaxSize = CGSize(width: maximum.width.isFinite ? maximum.width : CGFloat.greatestFiniteMagnitude,
+                                           height: maximum.height.isFinite ? maximum.height : CGFloat.greatestFiniteMagnitude)
+        }
         let titleBar = window.frame.height - window.contentLayoutRect.height
         let frameSize: CGSize
         if let size = description.defaultSize {
             frameSize = size
+        } else if description.kind == .utility || description.resizability == .contentSize {
+            // Panels and content-sized windows fit their content.
+            let ideal = host.sizeThatFits(.unspecified)
+            frameSize = CGSize(width: ideal.width, height: ideal.height + titleBar)
         } else {
             let ideal = host.sizeThatFits(.unspecified)
             frameSize = CGSize(width: max(ideal.width, 900), height: max(ideal.height + titleBar, 450))
@@ -412,12 +414,18 @@ public enum AppKitAppRunner {
         // further windows cascade.
         let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? .zero
         let cascade = CGFloat(openWindows.filter { $0.window?.isVisible == true }.count) * 22
-        let origin = CGPoint(x: (visible.midX - frameSize.width / 2).rounded() + cascade, y: (visible.midY - frameSize.height / 2).rounded() - cascade)
+        var origin = CGPoint(x: (visible.midX - frameSize.width / 2).rounded() + cascade, y: (visible.midY - frameSize.height / 2).rounded() - cascade)
+        if let position = description.defaultPosition {
+            // defaultPosition: a unit point of the visible frame (top-left origin).
+            origin = CGPoint(x: (visible.minX + (visible.width - frameSize.width) * position.x).rounded(),
+                             y: (visible.maxY - frameSize.height - (visible.height - frameSize.height) * position.y).rounded())
+        }
         window.setFrame(CGRect(origin: origin, size: frameSize), display: false)
         // SwiftUI restores window frames between launches.
         let autosaveName = "SwiftUI2.WindowGroup-\(description.id ?? description.title)-\(value.map { "\($0)" } ?? "1")"
         window.setFrameUsingName(autosaveName)
         window.setFrameAutosaveName(autosaveName)
+        configureDocumentWindow(window, value: value, baseTitle: baseTitle)
         window.makeKeyAndOrderFront(nil)
         windows.append(window)
         openWindows.removeAll { $0.window == nil }

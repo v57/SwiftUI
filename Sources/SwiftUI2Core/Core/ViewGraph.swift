@@ -63,6 +63,9 @@ public final class ViewGraph: AttributeGraphDelegate {
         rootEnvironment._share = ShareAction { [weak backend] items in backend?.share(items) }
         rootEnvironment._pasteboard = PasteboardWriter { [weak backend] items in backend?.writeToPasteboard(items) }
         rootEnvironment._haptics = HapticPerformer { [weak backend] feedback in backend?.performHapticFeedback(feedback) }
+        #if canImport(UniformTypeIdentifiers)
+        rootEnvironment._pasteboardReader = PasteboardReader { [weak backend] in backend?.readPasteboard() ?? [] }
+        #endif
         rootEnvironment._imageDecoder = ImageDecoder { [weak backend] data, scale in
             backend?.decodeImage(data, scale: scale).map { Image(_platformImage: $0) }
         }
