@@ -35,6 +35,11 @@ public final class ViewGraph: AttributeGraphDelegate {
     var now: Double { clock() }
     /// Source attribute advanced on every animation frame while `Animatable` values interpolate.
     private(set) var animationTime: Attribute<Double>!
+    /// `focusedValue` registrations and the focused view (see `FocusedValuesCenter`).
+    let focusedValueRegistry = FocusedValueRegistry()
+    /// `onModifierKeysChanged` registrations and the last reported modifier keys.
+    var modifierKeysObservers: [ObjectIdentifier: ModifierKeysObserver] = [:]
+    var currentModifierFlags: EventModifiers = []
     private var activeAnimators = 0
 
     /// Called when animations need display-synchronized frames; the host should call
@@ -56,6 +61,8 @@ public final class ViewGraph: AttributeGraphDelegate {
         var rootEnvironment = environment
         rootEnvironment.openURL = OpenURLAction { [weak backend] url in backend?.openURL(url) }
         rootEnvironment._share = ShareAction { [weak backend] items in backend?.share(items) }
+        rootEnvironment._pasteboard = PasteboardWriter { [weak backend] items in backend?.writeToPasteboard(items) }
+        rootEnvironment._haptics = HapticPerformer { [weak backend] feedback in backend?.performHapticFeedback(feedback) }
         rootEnvironment._fileDialogs = FileDialogPresenter { [weak backend] request, completion in
             if let backend { backend.presentFileDialog(request, completion: completion) } else { completion(nil) }
         }

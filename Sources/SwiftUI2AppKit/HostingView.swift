@@ -31,6 +31,7 @@ open class GraphHostingView: NSView {
         super.viewDidMoveToWindow()
         keyObservers.forEach(NotificationCenter.default.removeObserver)
         keyObservers = []
+        firstResponderObservation = nil
         guard let window else { return }
         // \.appearsActive follows the window's key state.
         for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
@@ -39,10 +40,55 @@ open class GraphHostingView: NSView {
             })
         }
         updateAppearsActive()
+        // Focused values follow the window's first responder.
+        firstResponderObservation = window.observe(\.firstResponder, options: [.initial, .new]) { [weak self] window, _ in
+            MainActor.assumeIsolated { self?.firstResponderChanged(window.firstResponder) }
+        }
+    }
+
+    private var firstResponderObservation: NSKeyValueObservation?
+
+    private func firstResponderChanged(_ responder: NSResponder?) {
+        var view = responder as? NSView
+        // Field editors stand in for the text field being edited.
+        if let textView = view as? NSTextView, textView.isFieldEditor, let field = textView.delegate as? NSView { view = field }
+        while let current = view, current !== self {
+            if let node = (current as? PlatformNodeView)?.node {
+                graph.setFocusedNode(node)
+                return
+            }
+            view = current.superview
+        }
+        graph.setFocusedNode(nil)
+    }
+
+    // MARK: Responder-chain commands
+
+    /// `onCommand`, `onCopyCommand`, `copyable`, ...: actions some view handles are routed to a
+    /// trampoline implementing that selector.
+    open override func supplementalTarget(forAction action: Selector, sender: Any?) -> Any? {
+        let name = NSStringFromSelector(action)
+        if graph.canHandleCommand(name) { return CommandTrampoline.target(for: action, graph: graph) }
+        return super.supplementalTarget(forAction: action, sender: sender)
+    }
+
+    open override func flagsChanged(with event: NSEvent) {
+        graph.handleModifierFlags(Self.modifiers(event.modifierFlags))
+        super.flagsChanged(with: event)
+    }
+
+    static func modifiers(_ flags: NSEvent.ModifierFlags) -> EventModifiers {
+        var modifiers: EventModifiers = []
+        if flags.contains(.command) { modifiers.insert(.command) }
+        if flags.contains(.shift) { modifiers.insert(.shift) }
+        if flags.contains(.option) { modifiers.insert(.option) }
+        if flags.contains(.control) { modifiers.insert(.control) }
+        return modifiers
     }
 
     private func updateAppearsActive() {
         let active = window?.isKeyWindow ?? true
+        if window?.isKeyWindow == true { FocusedValuesCenter.shared.activate(graph) }
         graph.setEnvironment { $0.appearsActive = active }
         graph.update()
     }
@@ -445,3 +491,32 @@ public enum AppKitAppRunner {
     }
 }
 #endif
+
+/// Implements a responder-chain action selector by forwarding it to the view graph. Methods are
+/// added to the class on first use, one per selector.
+final class CommandTrampoline: NSObject {
+    weak var graph: ViewGraph?
+    let selectorName: String
+
+    private init(selectorName: String) { self.selectorName = selectorName }
+
+    @MainActor private static var added: Set<String> = []
+
+    @MainActor
+    static func target(for action: Selector, graph: ViewGraph) -> CommandTrampoline {
+        let name = NSStringFromSelector(action)
+        if !added.contains(name) {
+            added.insert(name)
+            let block: @convention(block) (AnyObject, AnyObject?) -> Void = { object, _ in
+                guard let trampoline = object as? CommandTrampoline else { return }
+                MainActor.assumeIsolated { _ = trampoline.graph?.handleCommand(trampoline.selectorName) }
+            }
+            class_addMethod(CommandTrampoline.self, action, imp_implementationWithBlock(block), "v@:@")
+        }
+        let trampoline = CommandTrampoline(selectorName: name)
+        trampoline.graph = graph
+        return trampoline
+    }
+
+    @objc func validateMenuItem(_ item: NSMenuItem) -> Bool { true }
+}

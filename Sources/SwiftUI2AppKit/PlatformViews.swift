@@ -395,6 +395,7 @@ final class ToggleNodeView: FlippedView, PlatformNodeView {
 }
 
 final class TextFieldNodeView: FlippedView, PlatformNodeView, NSTextFieldDelegate, NSTextViewDelegate {
+    private var showsFindBar = false
     private var field: NSTextField?
     private var scrollView: NSScrollView?
     private var textView: NSTextView?
@@ -415,6 +416,15 @@ final class TextFieldNodeView: FlippedView, PlatformNodeView, NSTextFieldDelegat
                 textView = text
             }
             if textView!.string != model.text { textView!.string = model.text }
+            textView!.usesFindBar = model.isFindEnabled
+            textView!.isIncrementalSearchingEnabled = model.isFindEnabled
+            if model.showsFindNavigator != showsFindBar {
+                showsFindBar = model.showsFindNavigator
+                let action: NSTextFinder.Action = showsFindBar ? .showFindInterface : .hideFindInterface
+                let item = NSMenuItem()
+                item.tag = action.rawValue
+                textView!.performTextFinderAction(item)
+            }
             // .textEditorStyle(.plain): no bezel or background.
             scrollView!.borderType = model.style == .plain ? .noBorder : .bezelBorder
             textView!.drawsBackground = model.style != .plain
@@ -693,6 +703,61 @@ final class MaskSourceNodeView: FlippedView, PlatformNodeView {
 
 final class EffectNodeView: FlippedView, PlatformNodeView {
     private var isTapTarget = false
+
+    // MARK: Focus (`focusable`)
+
+    private var isFocusable = false
+    override var acceptsFirstResponder: Bool { isFocusable }
+    override var canBecomeKeyView: Bool { isFocusable }
+
+    override func becomeFirstResponder() -> Bool {
+        guard isFocusable else { return false }
+        node?.actions.focusChanged?(true)
+        return true
+    }
+
+    override func resignFirstResponder() -> Bool {
+        if isFocusable { node?.actions.focusChanged?(false) }
+        return true
+    }
+
+    override func drawFocusRingMask() {
+        NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
+    }
+
+    override var focusRingMaskBounds: NSRect { bounds }
+
+    // MARK: Pointer (`pointerStyle`, `pointerVisibility`)
+
+    private var pointerStyle: PointerStyle?
+    private var hidesPointer = false
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        if let pointerStyle { addCursorRect(bounds, cursor: Self.cursor(pointerStyle)) }
+    }
+
+    static func cursor(_ style: PointerStyle) -> NSCursor {
+        switch style {
+        case .default: return .arrow
+        case .link: return .pointingHand
+        case .grabIdle: return .openHand
+        case .grabActive: return .closedHand
+        case .horizontalText: return .iBeam
+        case .verticalText: return .iBeamCursorForVerticalLayout
+        case .rectSelection: return .crosshair
+        case .zoomIn: if #available(macOS 15.0, *) { return .zoomIn } else { return .arrow }
+        case .zoomOut: if #available(macOS 15.0, *) { return .zoomOut } else { return .arrow }
+        case .columnResize: return .resizeLeftRight
+        case .rowResize: return .resizeUpDown
+        case .frameResize(let position, _):
+            switch position {
+            case .leading, .trailing: return .resizeLeftRight
+            case .top, .bottom: return .resizeUpDown
+            default: return .crosshair
+            }
+        }
+    }
     private let maskLayer = CAShapeLayer()
     private var isMaskContainer = false
     var maskSource: MaskSourceNodeView?
@@ -727,8 +792,14 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
         effectTransform = .identity
         isTapTarget = false
         isMaskContainer = false
+        isFocusable = false
+        pointerStyle = nil
+        hidesPointer = false
         toolTip = node?.actions.toolTip
-        updateTrackingAreas()
+        defer {
+            updateTrackingAreas()
+            window?.invalidateCursorRects(for: self)
+        }
         updateDropRegistration()
         guard case .effect(let effect) = content else { return }
         switch effect {
@@ -748,6 +819,20 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
             isMaskContainer = true
         case .maskSource, .group:
             break
+        case let .focusable(wantsFocus, showsFocusRing):
+            isFocusable = true
+            focusRingType = showsFocusRing ? .exterior : .none
+            if wantsFocus, window?.firstResponder !== self {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, let window = self.window else { return }
+                    window.makeFirstResponder(self)
+                }
+            } else if !wantsFocus, window?.firstResponder === self {
+                window?.makeFirstResponder(nil)
+            }
+        case let .pointer(style, hidden):
+            pointerStyle = style
+            hidesPointer = hidden
         case let .transform(offset, scale, rotation):
             let center = CGPoint(x: bounds.midX, y: bounds.midY)
             var transform = CGAffineTransform(translationX: offset.width + center.x, y: offset.height + center.y)
@@ -764,7 +849,7 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
             return bounds.contains(convert(point, from: superview)) ? self : nil
         }
         // Drop destinations own their whole area (drag destinations are found by hit testing).
-        return hit === self ? (registeredDropTypes.isEmpty ? nil : self) : hit
+        return hit === self ? (registeredDropTypes.isEmpty && !isFocusable ? nil : self) : hit
     }
 
     private var trackingArea: NSTrackingArea?
@@ -772,14 +857,23 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let trackingArea { removeTrackingArea(trackingArea) }
-        guard node?.actions.hover != nil else { return }
+        guard node?.actions.hover != nil || hidesPointer else { return }
         let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
         addTrackingArea(area)
         trackingArea = area
     }
 
-    override func mouseEntered(with event: NSEvent) { node?.actions.hover?(true) }
-    override func mouseExited(with event: NSEvent) { node?.actions.hover?(false) }
+    private var pointerHidden = false
+
+    override func mouseEntered(with event: NSEvent) {
+        if hidesPointer, !pointerHidden { NSCursor.hide(); pointerHidden = true }
+        node?.actions.hover?(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        if pointerHidden { NSCursor.unhide(); pointerHidden = false }
+        node?.actions.hover?(false)
+    }
 
     private var handlesPointer: Bool { isTapTarget || node?.actions.pointer != nil || node?.actions.dragItem != nil }
 
@@ -886,6 +980,7 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        if isFocusable { window?.makeFirstResponder(self) }
         guard handlesPointer else { return super.mouseDown(with: event) }
         dragStart = convert(event.locationInWindow, from: nil)
         node?.actions.pressed?(true)

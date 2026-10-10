@@ -164,6 +164,47 @@ public final class AppKitBackend: RenderBackend {
         NSWorkspace.shared.open(url)
     }
 
+    public func writeToPasteboard(_ items: [Any]) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        var objects: [NSPasteboardWriting] = []
+        var providers: [NSItemProvider] = []
+        for item in items {
+            switch item {
+            case let string as String: objects.append(string as NSString)
+            case let url as URL: objects.append(url as NSURL)
+            case let attributed as NSAttributedString: objects.append(attributed)
+            case let image as NSImage: objects.append(image)
+            case let provider as NSItemProvider: providers.append(provider)
+            case let writing as NSPasteboardWriting: objects.append(writing)
+            default: objects.append(String(describing: item) as NSString)
+            }
+        }
+        if !objects.isEmpty { pasteboard.writeObjects(objects) }
+        // Item providers load asynchronously; their first representation is added when ready.
+        for provider in providers {
+            guard let type = provider.registeredTypeIdentifiers.first else { continue }
+            _ = provider.loadDataRepresentation(forTypeIdentifier: type) { data, _ in
+                guard let data else { return }
+                DispatchQueue.main.async {
+                    let pasteboardType = NSPasteboard.PasteboardType(type)
+                    NSPasteboard.general.addTypes([pasteboardType], owner: nil)
+                    NSPasteboard.general.setData(data, forType: pasteboardType)
+                }
+            }
+        }
+    }
+
+    public func performHapticFeedback(_ feedback: SensoryFeedback) {
+        let pattern: NSHapticFeedbackManager.FeedbackPattern
+        switch feedback.kind {
+        case .alignment, .pathComplete: pattern = .alignment
+        case .levelChange, .increase, .decrease, .selection: pattern = .levelChange
+        default: pattern = .generic
+        }
+        NSHapticFeedbackManager.defaultPerformer.perform(pattern, performanceTime: .now)
+    }
+
     public func share(_ items: [Any]) {
         guard let root = rootHandle as? NSView, let window = root.window else { return }
         // Anchored at the pointer, which is over the share control that was just clicked.

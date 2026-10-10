@@ -77,6 +77,9 @@ public struct ResolvedTextField: Equatable, Sendable {
     public var color: Color.Resolved = Color.Resolved(red: 0, green: 0, blue: 0)
     /// Vertical-axis text field: a bezeled field whose text wraps.
     public var wraps = false
+    /// Text editors: the find bar is available (`findDisabled`) / shown (`findNavigator`).
+    public var isFindEnabled = true
+    public var showsFindNavigator = false
 }
 
 public struct ResolvedSlider: Equatable, Sendable {
@@ -117,6 +120,10 @@ public enum DisplayEffect: Equatable, Sendable {
     case maskSource
     /// A plain container (e.g. an accessibility element grouping its children).
     case group
+    /// A view that can take keyboard focus (`focusable`).
+    case focusable(wantsFocus: Bool, showsFocusRing: Bool)
+    /// Mouse pointer over the view (`pointerStyle`, `pointerVisibility`).
+    case pointer(PointerStyle?, hidden: Bool)
 }
 
 public struct ResolvedShadow: Equatable, Sendable {
@@ -151,6 +158,8 @@ public struct RenderActions {
     public var secondaryClick: (@MainActor () -> Void)?
     /// Scroll views report their content offset.
     public var scrolled: (@MainActor (CGPoint) -> Void)?
+    /// Responder-chain actions handled by the view (selector name → handler; false = not handled).
+    public var commands: [String: @MainActor () -> Bool] = [:]
     /// Scroll views: the user's scroll phase changed (backends report tracking/interacting/idle).
     public var scrollPhase: (@MainActor (ScrollPhase) -> Void)?
     /// Scroll views: where a user scroll that ended at the given offset should settle (paging,
@@ -258,6 +267,10 @@ public protocol RenderBackend: PlatformServices {
     func presentFileDialog(_ request: FileDialogRequest, completion: @escaping @MainActor ([URL]?) -> Void)
     /// Shows the platform share sheet (`ShareLink`) for URLs, strings or other platform items.
     func share(_ items: [Any])
+    /// Writes items (strings, URLs, attributed strings, item providers, images) to the pasteboard.
+    func writeToPasteboard(_ items: [Any])
+    /// Plays haptic feedback.
+    func performHapticFeedback(_ feedback: SensoryFeedback)
     /// Called after the renderer applied a batch of changes (e.g. to refresh view masks).
     func didCommit()
     /// Applies `node.accessibility` to the node's view.
@@ -268,6 +281,8 @@ extension RenderBackend {
     public func setPresentation(of view: AnyObject, node: RenderNode) {}
     public func openURL(_ url: URL) {}
     public func share(_ items: [Any]) {}
+    public func writeToPasteboard(_ items: [Any]) {}
+    public func performHapticFeedback(_ feedback: SensoryFeedback) {}
     public func didCommit() {}
     public func updateAccessibility(of view: AnyObject, node: RenderNode) {}
     public func presentFileDialog(_ request: FileDialogRequest, completion: @escaping @MainActor ([URL]?) -> Void) {

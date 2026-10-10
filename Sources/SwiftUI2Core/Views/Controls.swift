@@ -637,7 +637,8 @@ struct _TextInput: View {
                 text: field.text.wrappedValue, placeholder: field.prompt, isEnabled: env.isEnabled,
                 font: (env.font ?? .body).resolve(), isSecure: field.kind == .secure, isMultiline: field.kind == .editor,
                 style: field.kind == .editor ? (env.textEditorStyle == .plain ? .plain : .automatic) : env.textFieldStyle, wantsFocus: env.focusRequest?.isFocused() ?? false,
-                color: ForegroundStyle()._resolveColor(in: env), wraps: field.kind == .verticalField
+                color: ForegroundStyle()._resolveColor(in: env), wraps: field.kind == .verticalField,
+                isFindEnabled: !env.findDisabled, showsFindNavigator: env.findNavigatorPresented?.wrappedValue ?? false
             ))
         }
         let viewAttribute = view.attribute

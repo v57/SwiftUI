@@ -259,7 +259,6 @@ extension View {
         ))
     }
 
-    public func focusable(_ isFocusable: Bool = true) -> some View { self }
 }
 
 // MARK: - Label

@@ -71,6 +71,19 @@ struct AppKitBackendTests {
         #expect(pressed == 1)
     }
 
+    @Test func responderChainCommandsUseTrampolines() throws {
+        var archived = 0
+        let host = NSHostingView(rootView: Text("doc").onCommand(Selector(("archiveDocument:"))) { archived += 1 })
+        host.frame = CGRect(x: 0, y: 0, width: 200, height: 100)
+        host.graph.update()
+        let selector = Selector(("archiveDocument:"))
+        let target = try #require(host.supplementalTarget(forAction: selector, sender: nil) as? NSObject)
+        #expect(target.responds(to: selector))
+        _ = target.perform(selector, with: nil)
+        #expect(archived == 1)
+        #expect(host.supplementalTarget(forAction: Selector(("unknownAction:")), sender: nil) == nil)
+    }
+
     @Test func textMeasurementMatchesDrawing() {
         let backend = AppKitBackend(rootView: NSView())
         let text = Text("Hello, world").resolve(in: EnvironmentValues())

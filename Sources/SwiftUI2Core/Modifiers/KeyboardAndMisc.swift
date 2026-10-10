@@ -353,8 +353,6 @@ extension View {
 
     public func scrollTargetLayout(isEnabled: Bool = true) -> some View { self }
 
-    public func focusEffectDisabled(_ disabled: Bool = true) -> some View { self }
-    public func defaultFocus<V: Hashable>(_ binding: FocusState<V>.Binding, _ value: V, priority: Int = 0) -> some View { self }
     public func autocorrectionDisabled(_ disable: Bool = true) -> some View { self }
     public func textContentType<T>(_ type: T?) -> some View { self }
     public func rotation3DEffect(_ angle: Angle, axis: (x: CGFloat, y: CGFloat, z: CGFloat), anchor: UnitPoint = .center, anchorZ: CGFloat = 0, perspective: CGFloat = 1) -> some View { self }

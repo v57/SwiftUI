@@ -22,17 +22,10 @@ public enum ButtonBorderShape: Sendable {
 }
 public enum ButtonRepeatBehavior: Sendable { case automatic, enabled, disabled }
 public enum SpringLoadingBehavior: Sendable { case automatic, enabled, disabled }
-public enum PointerStyle: Sendable { case `default`, link, grabIdle, grabActive, horizontalText, verticalText, columnResize, rowResize }
 public enum TextScale: Sendable { case `default`, secondary }
 public enum Prominence: Sendable { case standard, increased }
 public enum ScrollEdgeEffectStyle: Sendable { case automatic, hard, soft }
 public enum InspectorPlacement: Sendable { case automatic }
-public struct SensoryFeedback: Sendable {
-    public static let success = SensoryFeedback(), warning = SensoryFeedback(), error = SensoryFeedback(), selection = SensoryFeedback()
-    public static let increase = SensoryFeedback(), decrease = SensoryFeedback(), start = SensoryFeedback(), stop = SensoryFeedback()
-    public static let alignment = SensoryFeedback(), levelChange = SensoryFeedback(), pathComplete = SensoryFeedback()
-    public static func impact(weight: Int = 0, intensity: Double = 1) -> SensoryFeedback { SensoryFeedback() }
-}
 
 extension View {
     public func searchPresentationToolbarBehavior(_ behavior: SearchPresentationToolbarBehavior) -> some View { self }
@@ -44,12 +37,9 @@ extension View {
     public func presentationBackground<S: ShapeStyle>(_ style: S) -> some View { self }
     public func presentationCornerRadius(_ radius: CGFloat?) -> some View { self }
     public func presentationSizing(_ sizing: PresentationSizing) -> some View { self }
-    public func sensoryFeedback<T: Equatable>(_ feedback: SensoryFeedback, trigger: T) -> some View { self }
     public func listRowSpacing(_ spacing: CGFloat?) -> some View { self }
     public func listSectionSpacing(_ spacing: CGFloat) -> some View { self }
     public func typesettingLanguage(_ language: Locale.Language, isEnabled: Bool = true) -> some View { self }
-    public func focusSection() -> some View { self }
-    public func prefersDefaultFocus(_ prefersDefaultFocus: Bool = true, in namespace: Namespace.ID) -> some View { self }
     public func dialogIcon(_ icon: Image?) -> some View { self }
     public func dialogSeverity(_ severity: DialogSeverity) -> some View { self }
     public func dialogSuppressionToggle(isSuppressed: Binding<Bool>) -> some View { self }
@@ -72,8 +62,6 @@ extension View {
     public func buttonBorderShape(_ shape: ButtonBorderShape) -> some View { self }
     public func buttonRepeatBehavior(_ behavior: ButtonRepeatBehavior) -> some View { self }
     public func springLoadingBehavior(_ behavior: SpringLoadingBehavior) -> some View { self }
-    public func pointerStyle(_ style: PointerStyle?) -> some View { self }
-    public func pointerVisibility(_ visibility: Visibility) -> some View { self }
     public func textScale(_ scale: TextScale, isEnabled: Bool = true) -> some View { self }
     public func headerProminence(_ prominence: Prominence) -> some View { self }
     public func badgeProminence(_ prominence: BadgeProminence) -> some View { self }
