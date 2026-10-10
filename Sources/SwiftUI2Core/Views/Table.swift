@@ -30,7 +30,7 @@ public struct TableColumn<RowValue> {
         self.content = content
     }
 
-    public init<S: StringProtocol, C: View>(_ title: S, @ViewBuilder content: @escaping (RowValue) -> C) {
+    @_disfavoredOverload public init<S: StringProtocol, C: View>(_ title: S, @ViewBuilder content: @escaping (RowValue) -> C) {
         self.init(title: Text(title), comparator: nil, content: { AnyView(content($0)) })
     }
 
@@ -38,19 +38,19 @@ public struct TableColumn<RowValue> {
         self.init(title: title, comparator: nil, content: { AnyView(content($0)) })
     }
 
-    public init<S: StringProtocol>(_ title: S, value: KeyPath<RowValue, String> & Sendable) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, value: KeyPath<RowValue, String> & Sendable) {
         self.init(title: Text(title), comparator: KeyPathComparator(value), content: { AnyView(Text($0[keyPath: value])) })
     }
 
-    public init<S: StringProtocol, V: Comparable, C: View>(_ title: S, value: KeyPath<RowValue, V> & Sendable, @ViewBuilder content: @escaping (RowValue) -> C) {
+    @_disfavoredOverload public init<S: StringProtocol, V: Comparable, C: View>(_ title: S, value: KeyPath<RowValue, V> & Sendable, @ViewBuilder content: @escaping (RowValue) -> C) {
         self.init(title: Text(title), comparator: KeyPathComparator(value), content: { AnyView(content($0)) })
     }
 
-    public init<S: StringProtocol, V, Comparator: SortComparator, C: View>(_ title: S, value: KeyPath<RowValue, V> & Sendable, comparator: Comparator, @ViewBuilder content: @escaping (RowValue) -> C) where Comparator.Compared == V {
+    @_disfavoredOverload public init<S: StringProtocol, V, Comparator: SortComparator, C: View>(_ title: S, value: KeyPath<RowValue, V> & Sendable, comparator: Comparator, @ViewBuilder content: @escaping (RowValue) -> C) where Comparator.Compared == V {
         self.init(title: Text(title), comparator: KeyPathComparator(value, comparator: comparator), content: { AnyView(content($0)) })
     }
 
-    public init<S: StringProtocol, Comparator: SortComparator, C: View>(_ title: S, sortUsing comparator: Comparator, @ViewBuilder content: @escaping (RowValue) -> C) where Comparator.Compared == RowValue {
+    @_disfavoredOverload public init<S: StringProtocol, Comparator: SortComparator, C: View>(_ title: S, sortUsing comparator: Comparator, @ViewBuilder content: @escaping (RowValue) -> C) where Comparator.Compared == RowValue {
         self.init(title: Text(title), comparator: comparator, content: { AnyView(content($0)) })
     }
 

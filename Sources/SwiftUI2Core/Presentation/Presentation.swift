@@ -327,21 +327,21 @@ extension View {
         }, kind: .alert))
     }
 
-    public func alert<S: StringProtocol, A: View>(_ title: S, isPresented: Binding<Bool>, @ViewBuilder actions: @escaping () -> A) -> some View {
+    @_disfavoredOverload public func alert<S: StringProtocol, A: View>(_ title: S, isPresented: Binding<Bool>, @ViewBuilder actions: @escaping () -> A) -> some View {
         alert(Text(title), isPresented: isPresented, actions: actions)
     }
 
-    public func alert<S: StringProtocol, A: View, M: View>(_ title: S, isPresented: Binding<Bool>, @ViewBuilder actions: @escaping () -> A, @ViewBuilder message: @escaping () -> M) -> some View {
+    @_disfavoredOverload public func alert<S: StringProtocol, A: View, M: View>(_ title: S, isPresented: Binding<Bool>, @ViewBuilder actions: @escaping () -> A, @ViewBuilder message: @escaping () -> M) -> some View {
         alert(Text(title), isPresented: isPresented, actions: actions, message: message)
     }
 
-    public func alert<S: StringProtocol, A: View, M: View, T>(_ title: S, isPresented: Binding<Bool>, presenting data: T?, @ViewBuilder actions: @escaping (T) -> A, @ViewBuilder message: @escaping (T) -> M) -> some View {
+    @_disfavoredOverload public func alert<S: StringProtocol, A: View, M: View, T>(_ title: S, isPresented: Binding<Bool>, presenting data: T?, @ViewBuilder actions: @escaping (T) -> A, @ViewBuilder message: @escaping (T) -> M) -> some View {
         modifier(_SheetModifier(isPresented: isPresented, onDismiss: nil, content: {
             _DialogContent(title: Text(title), message: data.map { AnyView(message($0)) }, actions: AnyView(Group { if let data { actions(data) } }), vertical: false)
         }, kind: .alert))
     }
 
-    public func confirmationDialog<S: StringProtocol, A: View>(_ title: S, isPresented: Binding<Bool>, titleVisibility: Visibility = .automatic, @ViewBuilder actions: @escaping () -> A) -> some View {
+    @_disfavoredOverload public func confirmationDialog<S: StringProtocol, A: View>(_ title: S, isPresented: Binding<Bool>, titleVisibility: Visibility = .automatic, @ViewBuilder actions: @escaping () -> A) -> some View {
         modifier(_SheetModifier(isPresented: isPresented, onDismiss: nil, content: {
             _DialogContent(title: Text(title), message: nil, actions: AnyView(Group {
                 actions()
@@ -350,7 +350,7 @@ extension View {
         }, kind: .confirmationDialog))
     }
 
-    public func confirmationDialog<S: StringProtocol, A: View, M: View>(_ title: S, isPresented: Binding<Bool>, titleVisibility: Visibility = .automatic, @ViewBuilder actions: @escaping () -> A, @ViewBuilder message: @escaping () -> M) -> some View {
+    @_disfavoredOverload public func confirmationDialog<S: StringProtocol, A: View, M: View>(_ title: S, isPresented: Binding<Bool>, titleVisibility: Visibility = .automatic, @ViewBuilder actions: @escaping () -> A, @ViewBuilder message: @escaping () -> M) -> some View {
         modifier(_SheetModifier(isPresented: isPresented, onDismiss: nil, content: {
             _DialogContent(title: Text(title), message: AnyView(message()), actions: AnyView(Group {
                 actions()
@@ -511,7 +511,7 @@ extension EnvironmentValues {
 }
 
 extension Menu where Label == Text {
-    public init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content) {
         self.init(content: content) { Text(title) }
     }
 }

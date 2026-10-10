@@ -161,17 +161,17 @@ final class _HandlerBox: @unchecked Sendable {
 
 extension View {
     public func accessibilityLabel(_ label: Text) -> some View { _accessibility { $0.label = label.plainString } }
-    public func accessibilityLabel<S: StringProtocol>(_ label: S) -> some View { accessibilityLabel(Text(label)) }
+    @_disfavoredOverload public func accessibilityLabel<S: StringProtocol>(_ label: S) -> some View { accessibilityLabel(Text(label)) }
     public func accessibilityLabel(_ key: LocalizedStringKey) -> some View { accessibilityLabel(Text(key)) }
     public func accessibilityLabel(_ label: Text, isEnabled: Bool) -> some View { _accessibility { if isEnabled { $0.label = label.plainString } } }
-    public func accessibilityLabel<S: StringProtocol>(_ label: S, isEnabled: Bool) -> some View { accessibilityLabel(Text(label), isEnabled: isEnabled) }
+    @_disfavoredOverload public func accessibilityLabel<S: StringProtocol>(_ label: S, isEnabled: Bool) -> some View { accessibilityLabel(Text(label), isEnabled: isEnabled) }
 
     public func accessibilityValue(_ value: Text) -> some View { _accessibility { $0.value = value.plainString } }
-    public func accessibilityValue<S: StringProtocol>(_ value: S) -> some View { accessibilityValue(Text(value)) }
+    @_disfavoredOverload public func accessibilityValue<S: StringProtocol>(_ value: S) -> some View { accessibilityValue(Text(value)) }
     public func accessibilityValue(_ key: LocalizedStringKey) -> some View { accessibilityValue(Text(key)) }
 
     public func accessibilityHint(_ hint: Text) -> some View { _accessibility { $0.hint = hint.plainString } }
-    public func accessibilityHint<S: StringProtocol>(_ hint: S) -> some View { accessibilityHint(Text(hint)) }
+    @_disfavoredOverload public func accessibilityHint<S: StringProtocol>(_ hint: S) -> some View { accessibilityHint(Text(hint)) }
     public func accessibilityHint(_ key: LocalizedStringKey) -> some View { accessibilityHint(Text(key)) }
 
     public func accessibilityIdentifier(_ identifier: String) -> some View { _accessibility { $0.identifier = identifier } }
@@ -190,7 +190,7 @@ extension View {
     }
 
     public func accessibilityInputLabels(_ labels: [Text]) -> some View { _accessibility { $0.inputLabels = labels.map(\.plainString) } }
-    public func accessibilityInputLabels<S: StringProtocol>(_ labels: [S]) -> some View { _accessibility { $0.inputLabels = labels.map { String($0) } } }
+    @_disfavoredOverload public func accessibilityInputLabels<S: StringProtocol>(_ labels: [S]) -> some View { _accessibility { $0.inputLabels = labels.map { String($0) } } }
     public func accessibilityInputLabels(_ labels: [LocalizedStringKey]) -> some View { _accessibility { $0.inputLabels = labels.map(\.key) } }
 
     public func accessibilityRespondsToUserInteraction(_ responds: Bool = true) -> some View { _accessibility { $0.respondsToUserInteraction = responds } }
@@ -202,7 +202,7 @@ extension View {
     public func accessibilityCustomContent(_ label: Text, _ value: Text, importance: AccessibilityCustomContentImportance = .default) -> some View {
         _accessibility { $0.customContent.append(AccessibilityCustomContentEntry(label: label.plainString, value: value.plainString, isImportant: importance == .high)) }
     }
-    public func accessibilityCustomContent<S: StringProtocol, V: StringProtocol>(_ label: S, _ value: V, importance: AccessibilityCustomContentImportance = .default) -> some View {
+    @_disfavoredOverload public func accessibilityCustomContent<S: StringProtocol, V: StringProtocol>(_ label: S, _ value: V, importance: AccessibilityCustomContentImportance = .default) -> some View {
         accessibilityCustomContent(Text(label), Text(value), importance: importance)
     }
     public func accessibilityCustomContent(_ label: LocalizedStringKey, _ value: Text, importance: AccessibilityCustomContentImportance = .default) -> some View {
@@ -246,7 +246,7 @@ extension View {
         _accessibilityAction(.standard(actionKind), handler: handler)
     }
 
-    public func accessibilityAction<S: StringProtocol>(named name: S, _ handler: @escaping @MainActor () -> Void) -> some View {
+    @_disfavoredOverload public func accessibilityAction<S: StringProtocol>(named name: S, _ handler: @escaping @MainActor () -> Void) -> some View {
         _accessibilityAction(.named(String(name)), handler: handler)
     }
 
@@ -412,7 +412,7 @@ public struct AccessibilitySystemRotor: Sendable {
 public struct AccessibilityRotorEntry<ID: Hashable> {
     let label: String
     public init(_ label: Text, id: ID, textRange: Range<String.Index>? = nil, prepare: @escaping () -> Void = {}) { self.label = label.plainString }
-    public init<S: StringProtocol>(_ label: S, id: ID, textRange: Range<String.Index>? = nil, prepare: @escaping () -> Void = {}) { self.label = String(label) }
+    @_disfavoredOverload public init<S: StringProtocol>(_ label: S, id: ID, textRange: Range<String.Index>? = nil, prepare: @escaping () -> Void = {}) { self.label = String(label) }
     public init(_ label: Text, id: ID, in namespace: Namespace.ID, textRange: Range<String.Index>? = nil, prepare: @escaping () -> Void = {}) { self.label = label.plainString }
 }
 
@@ -430,7 +430,7 @@ public enum AccessibilityRotorContentBuilder {
 }
 
 extension View {
-    public func accessibilityRotor<S: StringProtocol>(_ label: S, @AccessibilityRotorContentBuilder entries: () -> [String]) -> some View {
+    @_disfavoredOverload public func accessibilityRotor<S: StringProtocol>(_ label: S, @AccessibilityRotorContentBuilder entries: () -> [String]) -> some View {
         let entries = entries()
         let name = String(label)
         return _accessibility { $0.customContent.append(contentsOf: entries.map { AccessibilityCustomContentEntry(label: name, value: $0, isImportant: false) }) }

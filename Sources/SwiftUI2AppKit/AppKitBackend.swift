@@ -90,11 +90,11 @@ public final class AppKitBackend: RenderBackend {
     // MARK: Metrics
 
     public func unroundedTextWidth(_ text: ResolvedText) -> CGFloat {
-        AppKitText.attributedString(text).boundingRect(with: CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin]).width
+        AppKitText.attributedString(text, placeholders: true).boundingRect(with: CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin]).width
     }
 
     public func measureText(_ text: ResolvedText, proposal: ProposedViewSize) -> CGSize {
-        let string = AppKitText.attributedString(text)
+        let string = AppKitText.attributedString(text, placeholders: true)
         // Infinite proposals (stack flexibility probes) mean "unconstrained".
         let width = proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? .greatestFiniteMagnitude
         // Like SwiftUI: line height without the font's leading, sizes rounded up to device pixels.
@@ -158,6 +158,15 @@ public final class AppKitBackend: RenderBackend {
               let value = glyph.value(forKey: "contentBounds") as? NSValue else { return nil }
         let bounds = value.rectValue
         return bounds.width > 0 && bounds.height > 0 ? bounds : nil
+    }
+
+    /// Distance from a symbol image's bottom to its glyph baseline.
+    static func symbolBaselineOffset(_ image: NSImage) -> CGFloat {
+        guard let rep = image.representations.first, rep.responds(to: NSSelectorFromString("vectorGlyph")),
+              let glyph = rep.value(forKey: "vectorGlyph") as? NSObject,
+              glyph.responds(to: NSSelectorFromString("baselineOffset")),
+              let value = glyph.value(forKey: "baselineOffset") as? NSNumber else { return 0 }
+        return CGFloat(value.doubleValue)
     }
 
     public func openURL(_ url: URL) {
@@ -344,7 +353,9 @@ enum AppKitText {
         return result
     }
 
-    static func attributedString(_ text: ResolvedText) -> NSAttributedString {
+    /// With `placeholders`, inline images take their width but no height (SwiftUI doesn't let
+    /// them grow the line); the view draws them over the placeholders (`inlineImageKey`).
+    static func attributedString(_ text: ResolvedText, placeholders: Bool = false) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byWordWrapping
         switch text.alignment {
@@ -364,9 +375,49 @@ enum AppKitText {
             if run.tracking != 0 { attributes[.kern] = run.tracking }
             if run.baselineOffset != 0 { attributes[.baselineOffset] = run.baselineOffset }
             if let background = run.background { attributes[.backgroundColor] = NSColor(background) }
+            if let link = run.link { attributes[.link] = link }
+            if let image = run.image, let attachment = attachment(image, font: font(run.font), color: run.color) {
+                if placeholders {
+                    let placeholder = NSTextAttachment()
+                    // An empty image: attachments without contents ignore their bounds.
+                    placeholder.image = NSImage(size: NSSize(width: attachment.bounds.width, height: 1))
+                    placeholder.bounds = CGRect(x: 0, y: 0, width: attachment.bounds.width, height: 0.001)
+                    attributes[inlineImageKey] = attachment
+                    let string = NSMutableAttributedString(attachment: placeholder)
+                    string.addAttributes(attributes, range: NSRange(location: 0, length: string.length))
+                    result.append(string)
+                    continue
+                }
+                let string = NSMutableAttributedString(attachment: attachment)
+                string.addAttributes(attributes, range: NSRange(location: 0, length: string.length))
+                result.append(string)
+                continue
+            }
             result.append(NSAttributedString(string: run.string, attributes: attributes))
         }
         return result
+    }
+
+    static let inlineImageKey = NSAttributedString.Key("SwiftUI2InlineImage")
+
+    /// An inline image (symbols take the text color and sit on the baseline like glyphs).
+    static func attachment(_ resolved: ResolvedImage, font: NSFont, color: Color.Resolved) -> NSTextAttachment? {
+        guard var image = AppKitImages.image(resolved) else { return nil }
+        var bounds = CGRect(origin: .zero, size: image.size)
+        if case .system = resolved.source {
+            let palette = NSImage.SymbolConfiguration(paletteColors: [NSColor(resolved.tint ?? color)])
+            if let tinted = image.withSymbolConfiguration(image.symbolConfiguration.applying(palette)) { image = tinted }
+            // Symbols sit on the text baseline (their glyph baseline is `baselineOffset` above the
+            // image bottom), sized like `Image` views.
+            if let content = AppKitBackend.symbolContentBounds(image) { bounds.size = content.size }
+            bounds.origin.y = -AppKitBackend.symbolBaselineOffset(image)
+        } else {
+            bounds.origin.y = (font.capHeight - bounds.height) / 2
+        }
+        let attachment = NSTextAttachment()
+        attachment.image = image
+        attachment.bounds = bounds
+        return attachment
     }
 
     static func lineHeight(_ text: ResolvedText) -> CGFloat {

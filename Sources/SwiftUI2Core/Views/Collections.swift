@@ -807,7 +807,7 @@ extension Section where Footer == EmptyView {
 }
 
 extension Section where Parent == Text, Footer == EmptyView {
-    public init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content) {
         self.header = Text(title)
         self.content = content()
         self.footer = nil
@@ -819,7 +819,7 @@ extension Section where Parent == Text, Footer == EmptyView {
         self.footer = nil
     }
 
-    public init<S: StringProtocol>(_ title: S, isExpanded: Binding<Bool>, @ViewBuilder content: () -> Content) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, isExpanded: Binding<Bool>, @ViewBuilder content: () -> Content) {
         self.header = Text(title)
         self.content = content()
         self.footer = nil
@@ -946,7 +946,7 @@ public struct Picker<Label: View, SelectionValue: Hashable, Content: View>: View
 }
 
 extension Picker where Label == Text {
-    public init<S: StringProtocol>(_ title: S, selection: Binding<SelectionValue>, @ViewBuilder content: () -> Content) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, selection: Binding<SelectionValue>, @ViewBuilder content: () -> Content) {
         self.init(selection: selection, content: content) { Text(title) }
     }
 
@@ -1477,7 +1477,7 @@ extension View {
         _Searchable(content: self, text: text, isPresented: nil, prompt: prompt?.plainString ?? "Search")
     }
 
-    public func searchable<S: StringProtocol>(text: Binding<String>, placement: SearchFieldPlacement = .automatic, prompt: S) -> some View {
+    @_disfavoredOverload public func searchable<S: StringProtocol>(text: Binding<String>, placement: SearchFieldPlacement = .automatic, prompt: S) -> some View {
         searchable(text: text, placement: placement, prompt: Text(prompt))
     }
 
@@ -1490,7 +1490,7 @@ extension View {
         _Searchable(content: self, text: text, isPresented: isPresented, prompt: prompt?.plainString ?? "Search")
     }
 
-    public func searchable<S: StringProtocol>(text: Binding<String>, isPresented: Binding<Bool>, placement: SearchFieldPlacement = .automatic, prompt: S) -> some View {
+    @_disfavoredOverload public func searchable<S: StringProtocol>(text: Binding<String>, isPresented: Binding<Bool>, placement: SearchFieldPlacement = .automatic, prompt: S) -> some View {
         searchable(text: text, isPresented: isPresented, placement: placement, prompt: Text(prompt))
     }
 

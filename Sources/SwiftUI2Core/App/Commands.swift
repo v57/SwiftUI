@@ -71,7 +71,7 @@ public struct CommandMenu<Content: View>: Commands {
     let name: String
     let content: () -> Content
 
-    public init<S: StringProtocol>(_ name: S, @ViewBuilder content: @escaping () -> Content) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ name: S, @ViewBuilder content: @escaping () -> Content) {
         self.name = String(name)
         self.content = content
     }

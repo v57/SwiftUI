@@ -192,11 +192,11 @@ public struct ControlGroup<Content: View>: View {
         self.content = content()
         self.label = AnyView(label())
     }
-    public init<S: StringProtocol>(_ title: S, systemImage: String, @ViewBuilder content: () -> Content) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, systemImage: String, @ViewBuilder content: () -> Content) {
         self.content = content()
         self.label = AnyView(Label(title, systemImage: systemImage))
     }
-    public init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content) {
         self.content = content()
         self.label = AnyView(Text(title))
     }

@@ -151,6 +151,8 @@ public struct ResolvedShadow: Equatable, Sendable {
 /// Event handlers attached to a platform node. Handlers read the latest view value when they fire.
 public struct RenderActions {
     public var primary: (@MainActor () -> Void)?
+    /// Opens a link clicked in text (Markdown links), through the environment's `openURL`.
+    public var openURL: (@MainActor (URL) -> Void)?
     public var setBool: (@MainActor (Bool) -> Void)?
     public var setText: (@MainActor (String) -> Void)?
     public var setDouble: (@MainActor (Double) -> Void)?

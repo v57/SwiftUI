@@ -134,7 +134,7 @@ extension NewDocumentButton where Label == DefaultNewDocumentButtonLabel {
 }
 
 extension NewDocumentButton where Label == Text {
-    public init<S: StringProtocol>(_ title: S) { label = Text(title) }
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S) { label = Text(title) }
     public init<S: StringProtocol, D>(_ title: S, for documentType: D.Type) { label = Text(title) }
 }
 

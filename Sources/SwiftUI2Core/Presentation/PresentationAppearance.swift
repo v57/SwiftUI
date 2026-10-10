@@ -76,11 +76,11 @@ extension View {
     }
 
     /// Dismissing the sheet interactively (or closing the window) asks for confirmation first.
-    public func dismissalConfirmationDialog<S: StringProtocol, A: View>(_ title: S, shouldPresent: Bool, @ViewBuilder actions: @escaping () -> A) -> some View {
+    @_disfavoredOverload public func dismissalConfirmationDialog<S: StringProtocol, A: View>(_ title: S, shouldPresent: Bool, @ViewBuilder actions: @escaping () -> A) -> some View {
         modifier(_DismissalConfirmationModifier(title: Text(title), message: nil, shouldPresent: shouldPresent, actions: { AnyView(actions()) }))
     }
 
-    public func dismissalConfirmationDialog<S: StringProtocol, A: View, M: View>(_ title: S, shouldPresent: Bool, @ViewBuilder actions: @escaping () -> A, @ViewBuilder message: @escaping () -> M) -> some View {
+    @_disfavoredOverload public func dismissalConfirmationDialog<S: StringProtocol, A: View, M: View>(_ title: S, shouldPresent: Bool, @ViewBuilder actions: @escaping () -> A, @ViewBuilder message: @escaping () -> M) -> some View {
         let text = message()
         return modifier(_DismissalConfirmationModifier(title: Text(title), message: AnyView(text), shouldPresent: shouldPresent, actions: { AnyView(actions()) }))
     }
@@ -156,7 +156,7 @@ extension View {
     public func dialogSuppressionToggle(isSuppressed: Binding<Bool>) -> some View {
         environment(\.dialogSuppression, (Text("Do not show this message again"), isSuppressed))
     }
-    public func dialogSuppressionToggle<S: StringProtocol>(_ title: S, isSuppressed: Binding<Bool>) -> some View {
+    @_disfavoredOverload public func dialogSuppressionToggle<S: StringProtocol>(_ title: S, isSuppressed: Binding<Bool>) -> some View {
         environment(\.dialogSuppression, (Text(title), isSuppressed))
     }
     public func dialogSuppressionToggle(_ label: Text, isSuppressed: Binding<Bool>) -> some View {

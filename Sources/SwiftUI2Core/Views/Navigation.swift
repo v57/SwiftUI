@@ -31,9 +31,9 @@ public enum NavigationBarItem { public enum TitleDisplayMode: Sendable { case au
 
 extension View {
     public func navigationTitle(_ title: Text) -> some View { preference(key: NavigationTitleKey.self, value: title) }
-    public func navigationTitle<S: StringProtocol>(_ title: S) -> some View { preference(key: NavigationTitleKey.self, value: Text(title)) }
+    @_disfavoredOverload public func navigationTitle<S: StringProtocol>(_ title: S) -> some View { preference(key: NavigationTitleKey.self, value: Text(title)) }
     public func navigationTitle(_ titleKey: LocalizedStringKey) -> some View { preference(key: NavigationTitleKey.self, value: Text(titleKey)) }
-    public func navigationSubtitle<S: StringProtocol>(_ subtitle: S) -> some View { preference(key: NavigationSubtitleKey.self, value: String(subtitle)) }
+    @_disfavoredOverload public func navigationSubtitle<S: StringProtocol>(_ subtitle: S) -> some View { preference(key: NavigationSubtitleKey.self, value: String(subtitle)) }
     public func navigationSubtitle(_ subtitle: Text) -> some View { preference(key: NavigationSubtitleKey.self, value: subtitle.plainString) }
     public func navigationSubtitle(_ subtitleKey: LocalizedStringKey) -> some View { preference(key: NavigationSubtitleKey.self, value: subtitleKey.key) }
     public func navigationBarTitleDisplayMode(_ mode: NavigationBarItem.TitleDisplayMode) -> some View { self }
@@ -218,13 +218,13 @@ extension NavigationLink where Destination == Never {
 }
 
 extension NavigationLink where Label == Text, Destination == Never {
-    public init<S: StringProtocol, P: Hashable>(_ title: S, value: P?) {
+    @_disfavoredOverload public init<S: StringProtocol, P: Hashable>(_ title: S, value: P?) {
         self.init(value: value) { Text(title) }
     }
 }
 
 extension NavigationLink where Label == Text {
-    public init<S: StringProtocol>(_ title: S, @ViewBuilder destination: () -> Destination) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, @ViewBuilder destination: () -> Destination) {
         self.init(destination: destination) { Text(title) }
     }
 }

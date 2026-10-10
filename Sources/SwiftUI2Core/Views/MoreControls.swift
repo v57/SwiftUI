@@ -353,7 +353,7 @@ public struct Label<Title: View, Icon: View>: View {
 }
 
 extension Label where Title == Text, Icon == Image {
-    public init<S: StringProtocol>(_ title: S, systemImage name: String) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, systemImage name: String) {
         self.init(title: { Text(title) }, icon: { Image(systemName: name) })
     }
 
@@ -361,7 +361,7 @@ extension Label where Title == Text, Icon == Image {
         self.init(title: { Text(titleKey) }, icon: { Image(systemName: name) })
     }
 
-    public init<S: StringProtocol>(_ title: S, image name: String) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, image name: String) {
         self.init(title: { Text(title) }, icon: { Image(name) })
     }
 }
@@ -385,7 +385,7 @@ public struct Link<Label: View>: View {
 }
 
 extension Link where Label == Text {
-    public init<S: StringProtocol>(_ title: S, destination: URL) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, destination: URL) {
         self.init(destination: destination) { Text(title) }
     }
 
@@ -439,11 +439,11 @@ public struct Stepper<Label: View>: View {
 }
 
 extension Stepper where Label == Text {
-    public init<S: StringProtocol, V: Strideable>(_ title: S, value: Binding<V>, in bounds: ClosedRange<V>, step: V.Stride = 1) {
+    @_disfavoredOverload public init<S: StringProtocol, V: Strideable>(_ title: S, value: Binding<V>, in bounds: ClosedRange<V>, step: V.Stride = 1) {
         self.init(value: value, in: bounds, step: step) { Text(title) }
     }
 
-    public init<S: StringProtocol, V: Strideable>(_ title: S, value: Binding<V>, step: V.Stride = 1) {
+    @_disfavoredOverload public init<S: StringProtocol, V: Strideable>(_ title: S, value: Binding<V>, step: V.Stride = 1) {
         self.init(value: value, step: step) { Text(title) }
     }
 
@@ -455,7 +455,7 @@ extension Stepper where Label == Text {
         self.init(value: value, step: step) { Text(titleKey) }
     }
 
-    public init<S: StringProtocol>(_ title: S, onIncrement: (@MainActor () -> Void)?, onDecrement: (@MainActor () -> Void)?) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, onIncrement: (@MainActor () -> Void)?, onDecrement: (@MainActor () -> Void)?) {
         self.init(label: { Text(title) }, onIncrement: onIncrement, onDecrement: onDecrement)
     }
 }
@@ -511,13 +511,13 @@ extension ProgressView where CurrentValueLabel == EmptyView {
 }
 
 extension ProgressView where Label == Text, CurrentValueLabel == EmptyView {
-    public init<S: StringProtocol>(_ title: S) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S) {
         fraction = nil
         label = Text(title)
         currentValueLabel = nil
     }
 
-    public init<S: StringProtocol, V: BinaryFloatingPoint>(_ title: S, value: V?, total: V = 1.0) {
+    @_disfavoredOverload public init<S: StringProtocol, V: BinaryFloatingPoint>(_ title: S, value: V?, total: V = 1.0) {
         fraction = value.map { total > 0 ? Double($0 / total) : 0 }
         label = Text(title)
         currentValueLabel = nil
@@ -629,7 +629,7 @@ public struct Gauge<Label: View, CurrentValueLabel: View>: View {
 }
 
 extension Gauge where Label == Text, CurrentValueLabel == EmptyView {
-    public init<S: StringProtocol, V: BinaryFloatingPoint>(_ title: S, value: V, in bounds: ClosedRange<V> = 0...1) {
+    @_disfavoredOverload public init<S: StringProtocol, V: BinaryFloatingPoint>(_ title: S, value: V, in bounds: ClosedRange<V> = 0...1) {
         self.init(value: value, in: bounds) { Text(title) }
     }
 }
@@ -655,17 +655,17 @@ public struct LabeledContent<Label: View, Content: View>: View {
 }
 
 extension LabeledContent where Label == Text {
-    public init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content) {
         self.init(content: content) { Text(title) }
     }
 }
 
 extension LabeledContent where Label == Text, Content == Text {
-    public init<S: StringProtocol, V: StringProtocol>(_ title: S, value: V) {
+    @_disfavoredOverload public init<S: StringProtocol, V: StringProtocol>(_ title: S, value: V) {
         self.init(content: { Text(value) }, label: { Text(title) })
     }
 
-    public init<S: StringProtocol, F: FormatStyle>(_ title: S, value: F.FormatInput, format: F) where F.FormatOutput == String {
+    @_disfavoredOverload public init<S: StringProtocol, F: FormatStyle>(_ title: S, value: F.FormatInput, format: F) where F.FormatOutput == String {
         self.init(content: { Text(format.format(value)) }, label: { Text(title) })
     }
 }
@@ -716,19 +716,19 @@ public struct DatePicker<Label: View>: View {
 }
 
 extension DatePicker where Label == Text {
-    public init<S: StringProtocol>(_ title: S, selection: Binding<Date>, displayedComponents: DatePickerComponents = [.date, .hourAndMinute]) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, selection: Binding<Date>, displayedComponents: DatePickerComponents = [.date, .hourAndMinute]) {
         self.init(selection: selection, displayedComponents: displayedComponents) { Text(title) }
     }
 
-    public init<S: StringProtocol>(_ title: S, selection: Binding<Date>, in range: ClosedRange<Date>, displayedComponents: DatePickerComponents = [.date, .hourAndMinute]) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, selection: Binding<Date>, in range: ClosedRange<Date>, displayedComponents: DatePickerComponents = [.date, .hourAndMinute]) {
         self.init(selection: selection, in: range, displayedComponents: displayedComponents) { Text(title) }
     }
 
-    public init<S: StringProtocol>(_ title: S, selection: Binding<Date>, in range: PartialRangeFrom<Date>, displayedComponents: DatePickerComponents = [.date, .hourAndMinute]) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, selection: Binding<Date>, in range: PartialRangeFrom<Date>, displayedComponents: DatePickerComponents = [.date, .hourAndMinute]) {
         self.init(selection: selection, in: range, displayedComponents: displayedComponents) { Text(title) }
     }
 
-    public init<S: StringProtocol>(_ title: S, selection: Binding<Date>, in range: PartialRangeThrough<Date>, displayedComponents: DatePickerComponents = [.date, .hourAndMinute]) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, selection: Binding<Date>, in range: PartialRangeThrough<Date>, displayedComponents: DatePickerComponents = [.date, .hourAndMinute]) {
         self.init(selection: selection, in: range, displayedComponents: displayedComponents) { Text(title) }
     }
 }
@@ -786,7 +786,7 @@ public struct ColorPicker<Label: View>: View {
 }
 
 extension ColorPicker where Label == Text {
-    public init<S: StringProtocol>(_ title: S, selection: Binding<Color>, supportsOpacity: Bool = true) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, selection: Binding<Color>, supportsOpacity: Bool = true) {
         self.init(selection: selection) { Text(title) }
     }
 }
@@ -870,7 +870,7 @@ struct _VerticalLabelStyle: LabelStyle {
 }
 
 extension ContentUnavailableView where Label == SwiftUI2Core.Label<Text, Image>, Description == Text?, Actions == EmptyView {
-    public init<S: StringProtocol>(_ title: S, systemImage name: String, description: Text? = nil) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, systemImage name: String, description: Text? = nil) {
         self.init(label: { SwiftUI2Core.Label(title, systemImage: name) }, description: { description })
     }
 }
@@ -899,7 +899,7 @@ extension GroupBox where Label == EmptyView {
 }
 
 extension GroupBox where Label == Text {
-    public init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content) {
         self.label = Text(title)
         self.content = content()
     }
@@ -935,11 +935,11 @@ public struct DisclosureGroup<Label: View, Content: View>: View {
 }
 
 extension DisclosureGroup where Label == Text {
-    public init<S: StringProtocol>(_ title: S, isExpanded: Binding<Bool>, @ViewBuilder content: () -> Content) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, isExpanded: Binding<Bool>, @ViewBuilder content: () -> Content) {
         self.init(isExpanded: isExpanded, content: content) { Text(title) }
     }
 
-    public init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content) {
         self.init(content: content) { Text(title) }
     }
 }

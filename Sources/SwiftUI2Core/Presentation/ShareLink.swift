@@ -22,19 +22,19 @@ extension EnvironmentValues {
 /// Title and images for the share sheet's preview (the AppKit picker shows the items themselves).
 public struct SharePreview<Image, Icon> {
     public let title: String
-    public init<S: StringProtocol>(_ title: S, image: Image, icon: Icon) { self.title = String(title) }
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, image: Image, icon: Icon) { self.title = String(title) }
 }
 
 extension SharePreview where Image == Never, Icon == Never {
-    public init<S: StringProtocol>(_ title: S) { self.title = String(title) }
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S) { self.title = String(title) }
 }
 
 extension SharePreview where Icon == Never {
-    public init<S: StringProtocol>(_ title: S, image: Image) { self.title = String(title) }
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, image: Image) { self.title = String(title) }
 }
 
 extension SharePreview where Image == Never {
-    public init<S: StringProtocol>(_ title: S, icon: Icon) { self.title = String(title) }
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, icon: Icon) { self.title = String(title) }
 }
 
 /// URLs and strings are shared as-is; other `Transferable` values through an item provider.
@@ -99,7 +99,7 @@ extension ShareLink where Label == SwiftUI2Core.Label<Text, Image> {
         self.init(item: item, subject: subject, message: message) { SwiftUI2Core.Label("Share", systemImage: "square.and.arrow.up") }
     }
 
-    public init<S: StringProtocol, Item>(_ title: S, item: Item, subject: Text? = nil, message: Text? = nil) {
+    @_disfavoredOverload public init<S: StringProtocol, Item>(_ title: S, item: Item, subject: Text? = nil, message: Text? = nil) {
         self.init(item: item, subject: subject, message: message) { SwiftUI2Core.Label(title, systemImage: "square.and.arrow.up") }
     }
 

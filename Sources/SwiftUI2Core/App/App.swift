@@ -98,7 +98,7 @@ public struct WindowGroup<Content: View>: Scene {
         self.valueType = nil
     }
 
-    public init<S: StringProtocol>(_ title: S, @ViewBuilder content: @escaping () -> Content) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, @ViewBuilder content: @escaping () -> Content) {
         self.title = String(title)
         self.id = nil
         self.content = { _ in content() }
@@ -112,7 +112,7 @@ public struct WindowGroup<Content: View>: Scene {
         self.valueType = nil
     }
 
-    public init<S: StringProtocol>(_ title: S, id: String, @ViewBuilder content: @escaping () -> Content) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, id: String, @ViewBuilder content: @escaping () -> Content) {
         self.title = String(title)
         self.id = id
         self.content = { _ in content() }
@@ -127,7 +127,7 @@ public struct WindowGroup<Content: View>: Scene {
     }
 
     /// Windows presenting a value (opened with `openWindow(value:)` / `openWindow(id:value:)`).
-    public init<S: StringProtocol, D: Codable & Hashable>(_ title: S, id: String? = nil, for type: D.Type, @ViewBuilder content: @escaping (Binding<D?>) -> Content) {
+    @_disfavoredOverload public init<S: StringProtocol, D: Codable & Hashable>(_ title: S, id: String? = nil, for type: D.Type, @ViewBuilder content: @escaping (Binding<D?>) -> Content) {
         self.title = String(title)
         self.id = id
         self.valueType = D.self
@@ -177,7 +177,7 @@ public struct Window<Content: View>: Scene {
     let content: () -> Content
     var defaultSize: CGSize?
 
-    public init<S: StringProtocol>(_ title: S, id: String, @ViewBuilder content: @escaping () -> Content) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, id: String, @ViewBuilder content: @escaping () -> Content) {
         self.title = String(title)
         self.id = id
         self.content = content

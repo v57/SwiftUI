@@ -109,7 +109,7 @@ extension View {
         modifier(_TraitWritingModifier<ListBadgeTraitKey>(value: label))
     }
 
-    public func badge<S: StringProtocol>(_ label: S?) -> some View {
+    @_disfavoredOverload public func badge<S: StringProtocol>(_ label: S?) -> some View {
         modifier(_TraitWritingModifier<ListBadgeTraitKey>(value: label.map { Text($0) }))
     }
 
@@ -149,7 +149,7 @@ extension View {
         modifier(_TraitWritingModifier<TypeSelectEquivalentTraitKey>(value: text?.plainString))
     }
 
-    public func typeSelectEquivalent<S: StringProtocol>(_ string: S) -> some View {
+    @_disfavoredOverload public func typeSelectEquivalent<S: StringProtocol>(_ string: S) -> some View {
         modifier(_TraitWritingModifier<TypeSelectEquivalentTraitKey>(value: String(string)))
     }
 

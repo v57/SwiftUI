@@ -156,26 +156,6 @@ public struct Font: Hashable, Sendable {
 
 // MARK: - LocalizedStringKey
 
-public struct LocalizedStringKey: Hashable, Sendable, ExpressibleByStringInterpolation {
-    let key: String
-
-    public init(_ value: String) { key = value }
-    public init(stringLiteral value: String) { key = value }
-
-    public struct StringInterpolation: StringInterpolationProtocol {
-        var output = ""
-        public init(literalCapacity: Int, interpolationCount: Int) { output.reserveCapacity(literalCapacity) }
-        public mutating func appendLiteral(_ literal: String) { output += literal }
-        public mutating func appendInterpolation<T>(_ value: T) { output += String(describing: value) }
-        public mutating func appendInterpolation(_ value: String) { output += value }
-        public mutating func appendInterpolation<F: FormatStyle>(_ value: F.FormatInput, format: F) where F.FormatOutput == String {
-            output += format.format(value)
-        }
-    }
-
-    public init(stringInterpolation: StringInterpolation) { key = stringInterpolation.output }
-}
-
 // MARK: - Text
 
 public struct ResolvedText: Hashable, Sendable {
@@ -192,6 +172,8 @@ public struct ResolvedText: Hashable, Sendable {
     public var background: Color.Resolved? = nil
     /// Styled runs for concatenated text (`Text + Text`); empty for uniformly styled text.
     public var runs: [Run] = []
+    /// Markdown link of uniformly styled text.
+    public var link: URL? = nil
 
     public struct Run: Hashable, Sendable {
         public var string: String
@@ -202,11 +184,14 @@ public struct ResolvedText: Hashable, Sendable {
         public var tracking: CGFloat = 0
         public var baselineOffset: CGFloat = 0
         public var background: Color.Resolved? = nil
+        /// An inline image drawn in place of the run's text (U+FFFC).
+        public var image: ResolvedImage? = nil
+        public var link: URL? = nil
     }
 
     /// The runs to draw (a single run for uniform text).
     public var effectiveRuns: [Run] {
-        runs.isEmpty ? [Run(string: string, font: font, color: color, strikethrough: strikethrough, underline: underline, tracking: tracking, baselineOffset: baselineOffset, background: background)] : runs
+        runs.isEmpty ? [Run(string: string, font: font, color: color, strikethrough: strikethrough, underline: underline, tracking: tracking, baselineOffset: baselineOffset, background: background, link: link)] : runs
     }
 
     /// The part of the text that affects measurement.
@@ -228,6 +213,10 @@ public struct Text: Equatable {
     enum Storage: Equatable {
         case verbatim(String)
         case concatenated([Text])
+        /// Translated, formatted and Markdown-parsed when resolved (`expanded`).
+        case localized(LocalizedStringKey, tableName: String?, bundle: Bundle?)
+        /// An inline image (`Text(Image)`, `"\(Image(...))"` interpolation).
+        case image(Image)
     }
 
     enum Modifier: Equatable {
@@ -243,14 +232,19 @@ public struct Text: Equatable {
         case baselineOffset(CGFloat)
         case background(Color?)
         case design(Font.Design)
+        case link(URL)
     }
 
     var storage: Storage
     var modifiers: [Modifier] = []
 
     public init(verbatim content: String) { storage = .verbatim(content) }
-    public init<S: StringProtocol>(_ content: S) { storage = .verbatim(String(content)) }
-    public init(_ key: LocalizedStringKey) { storage = .verbatim(key.key) }
+    @_disfavoredOverload public init<S: StringProtocol>(_ content: S) { storage = .verbatim(String(content)) }
+    public init(_ key: LocalizedStringKey, tableName: String? = nil, bundle: Bundle? = nil, comment: StaticString? = nil) {
+        storage = .localized(key, tableName: tableName, bundle: bundle)
+    }
+
+    public init(_ image: Image) { storage = .image(image) }
     public init<F: FormatStyle>(_ input: F.FormatInput, format: F) where F.FormatOutput == String {
         storage = .verbatim(format.format(input))
     }
@@ -299,7 +293,7 @@ public struct Text: Equatable {
     public func baselineOffset(_ offset: CGFloat) -> Text { adding(.baselineOffset(offset)) }
 
     /// Styled text from an attributed string (font, colors, underline, strikethrough, tracking).
-    public init(_ attributedContent: AttributedString) {
+    @_disfavoredOverload public init(_ attributedContent: AttributedString) {
         var parts: [Text] = []
         for run in attributedContent.runs {
             var part = Text(verbatim: String(attributedContent[run.range].characters))
@@ -350,10 +344,25 @@ public struct Text: Equatable {
         switch storage {
         case .verbatim(let string): return string
         case .concatenated(let parts): return parts.map(\.plainString).joined()
+        case .localized: return expanded.plainString
+        case .image: return ""
         }
     }
 
     public func resolve(in environment: EnvironmentValues) -> ResolvedText {
+        if case .localized = storage { return expanded.resolve(in: environment) }
+        if case .image(let image) = storage {
+            var result = resolveStyle(in: environment, modifiers: modifiers)
+            result.string = "\u{FFFC}"
+            var run = result.effectiveRuns[0]
+            var resolved = image.resolve(in: environment)
+            resolved.pointSize = result.font.size
+            resolved.weight = result.font.weight
+            if resolved.tint != nil { resolved.tint = result.color }
+            run.image = resolved
+            result.runs = [run]
+            return result
+        }
         if case .concatenated(let parts) = storage {
             // Each part keeps its own style; this text's modifiers apply on top.
             let base = resolveStyle(in: environment, modifiers: modifiers)
@@ -379,6 +388,7 @@ public struct Text: Equatable {
         var tracking: CGFloat = 0
         var baselineOffset: CGFloat = 0
         var background: Color.Resolved?
+        var link: URL?
         for modifier in modifiers {
             switch modifier {
             case .font(let value): font = value ?? .defaultFont
@@ -393,6 +403,9 @@ public struct Text: Equatable {
             case .baselineOffset(let value): baselineOffset = value
             case .background(let value): background = value?.resolve(in: environment)
             case .design(let design): font.design = design
+            case .link(let url):
+                link = url
+                color = Color.accentColor.resolve(in: environment)
             }
         }
         var resolvedColor = color ?? ForegroundStyle()._resolveColor(in: environment)
@@ -407,7 +420,8 @@ public struct Text: Equatable {
             underline: underline,
             tracking: tracking,
             baselineOffset: baselineOffset,
-            background: background
+            background: background,
+            link: link
         )
     }
 }

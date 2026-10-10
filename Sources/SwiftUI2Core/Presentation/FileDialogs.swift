@@ -100,9 +100,9 @@ extension View {
     }
 
     public func fileDialogMessage(_ message: Text?) -> some View { _fileDialogOptions { $0.message = message?.plainString } }
-    public func fileDialogMessage<S: StringProtocol>(_ message: S) -> some View { _fileDialogOptions { $0.message = String(message) } }
+    @_disfavoredOverload public func fileDialogMessage<S: StringProtocol>(_ message: S) -> some View { _fileDialogOptions { $0.message = String(message) } }
     public func fileDialogConfirmationLabel(_ label: Text?) -> some View { _fileDialogOptions { $0.confirmationLabel = label?.plainString } }
-    public func fileDialogConfirmationLabel<S: StringProtocol>(_ label: S) -> some View { _fileDialogOptions { $0.confirmationLabel = String(label) } }
+    @_disfavoredOverload public func fileDialogConfirmationLabel<S: StringProtocol>(_ label: S) -> some View { _fileDialogOptions { $0.confirmationLabel = String(label) } }
     public func fileDialogDefaultDirectory(_ url: URL?) -> some View { _fileDialogOptions { $0.defaultDirectory = url } }
     public func fileDialogBrowserOptions(_ options: FileDialogBrowserOptions) -> some View {
         _fileDialogOptions {
@@ -119,7 +119,7 @@ extension View {
         return _fileDialogOptions { $0.isURLEnabled = { (try? box.value.evaluate($0)) ?? true } }
     }
     public func fileExporterFilenameLabel(_ label: Text?) -> some View { _fileDialogOptions { $0.filenameLabel = label?.plainString } }
-    public func fileExporterFilenameLabel<S: StringProtocol>(_ label: S) -> some View { _fileDialogOptions { $0.filenameLabel = String(label) } }
+    @_disfavoredOverload public func fileExporterFilenameLabel<S: StringProtocol>(_ label: S) -> some View { _fileDialogOptions { $0.filenameLabel = String(label) } }
 }
 
 #if canImport(UniformTypeIdentifiers)

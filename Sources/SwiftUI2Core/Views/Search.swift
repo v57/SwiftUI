@@ -62,7 +62,7 @@ extension View {
         transformEnvironment(\.searchSuggestions) { if visibility == .hidden { $0 = nil } }
     }
 
-    public func searchCompletion<S: StringProtocol>(_ completion: S) -> some View {
+    @_disfavoredOverload public func searchCompletion<S: StringProtocol>(_ completion: S) -> some View {
         containerValue(\.searchCompletion, String(completion))
     }
 
@@ -92,7 +92,7 @@ extension View {
         environment(\.textInputSuggestions, AnyView(ForEach(data, content: content)))
     }
 
-    public func textInputCompletion<S: StringProtocol>(_ completion: S) -> some View {
+    @_disfavoredOverload public func textInputCompletion<S: StringProtocol>(_ completion: S) -> some View {
         containerValue(\.searchCompletion, String(completion))
     }
 }

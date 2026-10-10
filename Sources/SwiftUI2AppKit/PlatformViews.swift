@@ -207,7 +207,7 @@ final class TextNodeView: FlippedView, PlatformNodeView {
 
     func apply(_ content: RenderContent, backend: AppKitBackend) {
         guard case .text(let text) = content else { return }
-        string = AppKitText.attributedString(text)
+        string = AppKitText.attributedString(text, placeholders: true)
         // Like SwiftUI, text is a static-text accessibility element (modifiers may override).
         setAccessibilityElement(accessibilityProperties?.isHidden != true)
         setAccessibilityRole(.staticText)
@@ -217,9 +217,81 @@ final class TextNodeView: FlippedView, PlatformNodeView {
 
     override func draw(_ dirtyRect: NSRect) {
         string.draw(with: bounds, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+        drawInlineImages()
     }
 
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    /// Draws inline images over their zero-height placeholders, on the line's baseline.
+    private func drawInlineImages() {
+        var images: [(NSRange, NSTextAttachment)] = []
+        string.enumerateAttribute(AppKitText.inlineImageKey, in: NSRange(location: 0, length: string.length)) { value, range, _ in
+            if let attachment = value as? NSTextAttachment { images.append((range, attachment)) }
+        }
+        guard !images.isEmpty else { return }
+        let storage = NSTextStorage(attributedString: string)
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(size: CGSize(width: bounds.width, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        layout.addTextContainer(container)
+        storage.addLayoutManager(layout)
+        for (range, attachment) in images {
+            let glyphRange = layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            guard glyphRange.length > 0, let image = attachment.image else { continue }
+            let line = layout.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
+            guard line.minY < bounds.height else { continue }
+            let location = layout.location(forGlyphAt: glyphRange.location)
+            // Lines holding only placeholders report no glyph baseline; use the font's.
+            let font = string.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont ?? .systemFont(ofSize: NSFont.systemFontSize)
+            let baseline = line.minY + max(location.y, layout.defaultBaselineOffset(for: font))
+            let frame = CGRect(x: line.minX + location.x, y: baseline - attachment.bounds.maxY,
+                               width: attachment.bounds.width, height: attachment.bounds.height)
+            image.draw(in: frame, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        }
+    }
+
+    private var hasLinks: Bool {
+        var found = false
+        string.enumerateAttribute(.link, in: NSRange(location: 0, length: string.length)) { value, _, stop in
+            if value != nil { found = true; stop.pointee = true }
+        }
+        return found
+    }
+
+    /// Text is click-through unless it contains links.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard hasLinks, let superview else { return nil }
+        return link(at: convert(point, from: superview)) != nil ? self : nil
+    }
+
+    private func link(at point: NSPoint) -> URL? {
+        let storage = NSTextStorage(attributedString: string)
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(size: bounds.size)
+        container.lineFragmentPadding = 0
+        layout.addTextContainer(container)
+        storage.addLayoutManager(layout)
+        let index = layout.characterIndex(for: point, in: container, fractionOfDistanceBetweenInsertionPoints: nil)
+        guard index < string.length,
+              layout.boundingRect(forGlyphRange: layout.glyphRange(forCharacterRange: NSRange(location: index, length: 1), actualCharacterRange: nil), in: container).contains(point)
+        else { return nil }
+        return string.attribute(.link, at: index, effectiveRange: nil) as? URL
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let url = link(at: convert(event.locationInWindow, from: nil)) else { return super.mouseUp(with: event) }
+        if let open = node?.actions.openURL { open(url) } else { NSWorkspace.shared.open(url) }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if link(at: convert(event.locationInWindow, from: nil)) == nil { super.mouseDown(with: event) }
+    }
+
+    override func resetCursorRects() {
+        guard hasLinks else { return }
+        string.enumerateAttribute(.link, in: NSRange(location: 0, length: string.length)) { value, range, _ in
+            guard value != nil else { return }
+            addCursorRect(bounds, cursor: .pointingHand)
+        }
+    }
 }
 
 final class ColorNodeView: FlippedView, PlatformNodeView {

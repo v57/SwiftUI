@@ -125,7 +125,7 @@ public struct UtilityWindow<Content: View>: Scene {
     let id: String
     let content: () -> Content
 
-    public init<S: StringProtocol>(_ title: S, id: String, @ViewBuilder content: @escaping () -> Content) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, id: String, @ViewBuilder content: @escaping () -> Content) {
         self.title = String(title)
         self.id = id
         self.content = content
@@ -171,14 +171,14 @@ public struct MenuBarExtra<Label: View, Content: View>: Scene {
     let isInserted: Binding<Bool>?
     let content: () -> Content
 
-    public init<S: StringProtocol>(_ title: S, systemImage: String, isInserted: Binding<Bool>? = nil, @ViewBuilder content: @escaping () -> Content) where Label == SwiftUI2Core.Label<Text, Image> {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, systemImage: String, isInserted: Binding<Bool>? = nil, @ViewBuilder content: @escaping () -> Content) where Label == SwiftUI2Core.Label<Text, Image> {
         self.title = String(title)
         self.systemImage = systemImage
         self.isInserted = isInserted
         self.content = content
     }
 
-    public init<S: StringProtocol>(_ title: S, isInserted: Binding<Bool>? = nil, @ViewBuilder content: @escaping () -> Content) where Label == Text {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, isInserted: Binding<Bool>? = nil, @ViewBuilder content: @escaping () -> Content) where Label == Text {
         self.title = String(title)
         self.systemImage = nil
         self.isInserted = isInserted

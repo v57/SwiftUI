@@ -209,7 +209,7 @@ extension Button where Label == Text {
         self.init(action: action) { Text(titleKey) }
     }
 
-    public init<S: StringProtocol>(_ title: S, action: @escaping @MainActor () -> Void) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, action: @escaping @MainActor () -> Void) {
         self.init(action: action) { Text(title) }
     }
 
@@ -217,17 +217,17 @@ extension Button where Label == Text {
         self.init(role: role, action: action) { Text(titleKey) }
     }
 
-    public init<S: StringProtocol>(_ title: S, role: ButtonRole?, action: @escaping @MainActor () -> Void) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, role: ButtonRole?, action: @escaping @MainActor () -> Void) {
         self.init(role: role, action: action) { Text(title) }
     }
 }
 
 extension Button where Label == SwiftUI2Core.Label<Text, Image> {
-    public init<S: StringProtocol>(_ title: S, systemImage: String, action: @escaping @MainActor () -> Void) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, systemImage: String, action: @escaping @MainActor () -> Void) {
         self.init(action: action) { SwiftUI2Core.Label(title, systemImage: systemImage) }
     }
 
-    public init<S: StringProtocol>(_ title: S, systemImage: String, role: ButtonRole?, action: @escaping @MainActor () -> Void) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, systemImage: String, role: ButtonRole?, action: @escaping @MainActor () -> Void) {
         self.init(role: role, action: action) { SwiftUI2Core.Label(title, systemImage: systemImage) }
     }
 }
@@ -510,13 +510,13 @@ extension Toggle where Label == Text {
         self.init(isOn: isOn) { Text(titleKey) }
     }
 
-    public init<S: StringProtocol>(_ title: S, isOn: Binding<Bool>) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, isOn: Binding<Bool>) {
         self.init(isOn: isOn) { Text(title) }
     }
 }
 
 extension Toggle where Label == SwiftUI2Core.Label<Text, Image> {
-    public init<S: StringProtocol>(_ title: S, systemImage: String, isOn: Binding<Bool>) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, systemImage: String, isOn: Binding<Bool>) {
         self.init(isOn: isOn) { SwiftUI2Core.Label(title, systemImage: systemImage) }
     }
 }
@@ -761,7 +761,7 @@ public struct TextField<Label: View>: View {
 }
 
 extension TextField where Label == Text {
-    public init<S: StringProtocol>(_ title: S, text: Binding<String>) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, text: Binding<String>) {
         self.text = text
         self.prompt = String(title)
     }
@@ -771,12 +771,12 @@ extension TextField where Label == Text {
         self.prompt = titleKey.key
     }
 
-    public init<S: StringProtocol>(_ title: S, text: Binding<String>, prompt: Text?) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, text: Binding<String>, prompt: Text?) {
         self.text = text
         self.prompt = prompt?.plainString ?? String(title)
     }
 
-    public init<S: StringProtocol>(_ title: S, text: Binding<String>, axis: Axis) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, text: Binding<String>, axis: Axis) {
         self.text = text
         self.prompt = String(title)
         self.axis = axis
@@ -788,13 +788,13 @@ extension TextField where Label == Text {
         self.axis = axis
     }
 
-    public init<S: StringProtocol>(_ title: S, text: Binding<String>, prompt: Text?, axis: Axis) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, text: Binding<String>, prompt: Text?, axis: Axis) {
         self.text = text
         self.prompt = prompt?.plainString ?? String(title)
         self.axis = axis
     }
 
-    public init<S: StringProtocol, F: ParseableFormatStyle>(_ title: S, value: Binding<F.FormatInput>, format: F) where F.FormatOutput == String {
+    @_disfavoredOverload public init<S: StringProtocol, F: ParseableFormatStyle>(_ title: S, value: Binding<F.FormatInput>, format: F) where F.FormatOutput == String {
         self.prompt = String(title)
         self.text = Binding(get: { format.format(value.wrappedValue) }, set: { if let parsed = try? format.parseStrategy.parse($0) { value.wrappedValue = parsed } })
     }
@@ -821,7 +821,7 @@ public struct SecureField<Label: View>: View {
 }
 
 extension SecureField where Label == Text {
-    public init<S: StringProtocol>(_ title: S, text: Binding<String>) {
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, text: Binding<String>) {
         self.text = text
         self.prompt = String(title)
     }
