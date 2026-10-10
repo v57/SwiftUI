@@ -1,0 +1,66 @@
+# Smoke test for GalleryWinUI (SwiftUI2Host.exe --script <this file>): visits every page, saves a
+# screenshot and the node tree of each to C:\dev\shots. Taps fire the tap target's action.
+wait 2500
+screenshot C:\dev\shots\01-root.png
+dump C:\dev\shots\01-root.txt
+
+tap Animation
+wait 1200
+screenshot C:\dev\shots\02-animation.png
+tap Spring
+wait 1500
+screenshot C:\dev\shots\03-animation-spring.png
+dump C:\dev\shots\03-animation-spring.txt
+back
+wait 800
+
+tap Gestures
+wait 1000
+tap Taps: 0
+tap Taps: 1
+wait 300
+screenshot C:\dev\shots\04-gestures.png
+dump C:\dev\shots\04-gestures.txt
+back
+wait 800
+
+tap Presentations
+wait 1000
+screenshot C:\dev\shots\05-presentations.png
+tap Show alert
+wait 800
+screenshot C:\dev\shots\06-alert.png
+dump C:\dev\shots\06-alert.txt
+tap Cancel
+wait 800
+tap Show sheet
+wait 1000
+screenshot C:\dev\shots\07-sheet.png
+tap Close
+wait 800
+back
+wait 800
+
+tap Timers & tasks
+wait 3500
+screenshot C:\dev\shots\08-timers.png
+dump C:\dev\shots\08-timers.txt
+back
+wait 800
+
+tap Text input
+wait 1000
+type Ada
+wait 300
+screenshot C:\dev\shots\09-text.png
+dump C:\dev\shots\09-text.txt
+back
+wait 800
+
+tap Remote image
+wait 5000
+screenshot C:\dev\shots\10-image.png
+dump C:\dev\shots\10-image.txt
+back
+wait 500
+exit

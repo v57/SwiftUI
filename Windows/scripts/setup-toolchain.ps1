@@ -33,7 +33,10 @@ function Add-UserPath($dir) {
     if (($env:Path -split ";") -notcontains $dir) { $env:Path += ";$dir" }
 }
 
-# 1. Visual Studio Build Tools (MSVC for the host architecture + Windows 11 SDK).
+Set-ExecutionPolicy RemoteSigned -Scope LocalMachine -Force
+
+# 1. Visual Studio Build Tools (MSVC for the host architecture + Windows 11 SDK). Don't create
+#    "Windows Kits" beforehand: the SDK installer fails (1307) on a folder it doesn't own.
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 $vc = if ($arch -eq "arm64") { "Microsoft.VisualStudio.Component.VC.Tools.ARM64" } else { "Microsoft.VisualStudio.Component.VC.Tools.x86.x64" }
 $hasVC = (Test-Path $vswhere) -and (& $vswhere -products * -requires $vc -property installationPath)
@@ -46,6 +49,10 @@ if (-not $hasVC) {
     if ($p.ExitCode -notin 0, 3010) { throw "Build Tools installer failed: $($p.ExitCode)" }
     Remove-Item $installer
 }
+# The MSVC runtime the Swift tools link against.
+$redist = Fetch "https://aka.ms/vs/17/release/vc_redist.$(if ($arch -eq 'arm64') { 'arm64' } else { 'x64' }).exe" "vc_redist.exe"
+Start-Process $redist -Wait -ArgumentList "/install", "/quiet", "/norestart"
+Remove-Item $redist
 
 # 2. Swift.
 $swiftRoot = Join-Path $env:LOCALAPPDATA "Programs\Swift"
@@ -54,13 +61,14 @@ if (-not (Test-Path (Join-Path $swiftRoot "Toolchains"))) {
     $url = "https://download.swift.org/swift-$SwiftVersion-release/windows10" + $(if ($arch -eq "arm64") { "-arm64" } else { "" }) + "/swift-$SwiftVersion-RELEASE/$file"
     $installer = Fetch $url $file
     Write-Host "Installing Swift $SwiftVersion"
+    # All components but the Android SDKs (leaving out the IDE/debugger packages breaks the tools).
     $p = Start-Process $installer -Wait -PassThru -ArgumentList @(
-        "/quiet", "/norestart", "OptionsInstallIDE=0", "OptionsInstallDBG=0", "OptionsInstallPy=0",
-        "OptionsInstallAndroidPlatform=0", "OptionsInstallAndroidSDKARM64=0", "OptionsInstallAndroidSDKAMD64=0",
-        "OptionsInstallAndroidSDKARMv7=0", "OptionsInstallAndroidSDKX86=0", "OptionsIncludeNoAsserts=0")
+        "/quiet", "/norestart", "OptionsInstallAndroidPlatform=0", "OptionsInstallAndroidSDKARM64=0",
+        "OptionsInstallAndroidSDKAMD64=0", "OptionsInstallAndroidSDKARMv7=0", "OptionsInstallAndroidSDKX86=0", "OptionsIncludeNoAsserts=0")
     if ($p.ExitCode -notin 0, 3010) { throw "Swift installer failed: $($p.ExitCode)" }
     Remove-Item $installer
 }
+& "$PSScriptRoot\fix-swift-toolchain.ps1" -SwiftVersion $SwiftVersion
 
 # 3. Git (MinGit).
 $git = "C:\dev\tools\git"

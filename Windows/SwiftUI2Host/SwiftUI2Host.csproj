@@ -15,6 +15,8 @@
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- Carries the .NET runtime too: staged apps run on machines without .NET installed. -->
+    <SelfContained>true</SelfContained>
     <!-- No XAML markup: the application and its elements are created in code. -->
     <DisableXamlGeneratedMain>true</DisableXamlGeneratedMain>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

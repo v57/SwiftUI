@@ -21,7 +21,8 @@ sealed class ScrollNode : NodeView
         HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden,
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
     };
-    readonly Canvas content = new();
+    // Top-left aligned: a ScrollViewer centers content smaller than its viewport otherwise.
+    readonly Canvas content = new() { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
     bool horizontal;
     bool vertical = true;
     double contentWidth, contentHeight, originX, originY;
