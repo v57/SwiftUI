@@ -636,7 +636,7 @@ struct _TextInput: View {
             return .textField(ResolvedTextField(
                 text: field.text.wrappedValue, placeholder: field.prompt, isEnabled: env.isEnabled,
                 font: (env.font ?? .body).resolve(), isSecure: field.kind == .secure, isMultiline: field.kind == .editor,
-                style: env.textFieldStyle, wantsFocus: env.focusRequest?.isFocused() ?? false,
+                style: field.kind == .editor ? (env.textEditorStyle == .plain ? .plain : .automatic) : env.textFieldStyle, wantsFocus: env.focusRequest?.isFocused() ?? false,
                 color: ForegroundStyle()._resolveColor(in: env), wraps: field.kind == .verticalField
             ))
         }

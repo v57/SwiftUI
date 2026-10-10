@@ -217,15 +217,17 @@ public final class AppKitBackend: RenderBackend {
             case .automatic, .squareBorder: return ControlMetrics(contentInsets: EdgeInsets(top: 2.5, leading: 4.25, bottom: 2.5, trailing: 4.25), idealWidth: 96)
             }
         case .slider: return ControlMetrics(minSize: CGSize(width: 0, height: 20), idealWidth: 0)
-        case let .datePicker(date, time):
-            // SwiftUI uses the field's intrinsic width (locale dependent) and is 24pt tall.
+        case let .datePicker(date, time, style):
+            // SwiftUI uses the field's intrinsic width (locale dependent) and is 24pt tall;
+            // graphical pickers are the calendar/clock's intrinsic size.
             let picker = NSDatePicker()
-            picker.datePickerStyle = .textFieldAndStepper
+            picker.datePickerStyle = DatePickerNodeView.nativeStyle(style)
             var elements: NSDatePicker.ElementFlags = []
             if date { elements.insert(.yearMonthDay) }
             if time { elements.insert(.hourMinute) }
             picker.datePickerElements = elements
-            return ControlMetrics(minSize: CGSize(width: picker.intrinsicContentSize.width, height: 24))
+            let size = picker.intrinsicContentSize
+            return ControlMetrics(minSize: CGSize(width: size.width, height: style == .graphical ? size.height : 24))
         }
     }
 }

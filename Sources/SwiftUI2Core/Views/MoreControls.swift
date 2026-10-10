@@ -86,7 +86,6 @@ struct SubmitActionKey: EnvironmentKey { static let defaultValue: (@MainActor ()
 struct OpenURLKey: EnvironmentKey { static let defaultValue = OpenURLAction { _ in } }
 struct DismissKey: EnvironmentKey { static let defaultValue = DismissAction {} }
 struct IsPresentedKey: EnvironmentKey { static let defaultValue = false }
-struct ProgressStyleKey: EnvironmentKey { static let defaultValue: ProgressViewStyleKind = .automatic }
 struct LabelStyleBoxKey: EnvironmentKey { static let defaultValue: AnyLabelStyleBox? = nil }
 struct ImageScaleKey: EnvironmentKey { static let defaultValue = Image.Scale.medium }
 
@@ -130,10 +129,6 @@ extension EnvironmentValues {
     public var isPresented: Bool {
         get { self[IsPresentedKey.self] }
         set { self[IsPresentedKey.self] = newValue }
-    }
-    var progressViewStyle: ProgressViewStyleKind {
-        get { self[ProgressStyleKey.self] }
-        set { self[ProgressStyleKey.self] = newValue }
     }
     var labelStyleBox: AnyLabelStyleBox? {
         get { self[LabelStyleBoxKey.self] }
@@ -468,41 +463,23 @@ extension Stepper where Label == Text {
 
 // MARK: - ProgressView
 
-public enum ProgressViewStyleKind: Hashable, Sendable { case automatic, linear, circular }
-
-public protocol ProgressViewStyle {}
-public struct LinearProgressViewStyle: ProgressViewStyle { public init() {} }
-public struct CircularProgressViewStyle: ProgressViewStyle { public init() {} }
-public struct DefaultProgressViewStyle: ProgressViewStyle { public init() {} }
-extension ProgressViewStyle where Self == LinearProgressViewStyle { public static var linear: LinearProgressViewStyle { .init() } }
-extension ProgressViewStyle where Self == CircularProgressViewStyle { public static var circular: CircularProgressViewStyle { .init() } }
-extension ProgressViewStyle where Self == DefaultProgressViewStyle { public static var automatic: DefaultProgressViewStyle { .init() } }
-
-extension View {
-    public func progressViewStyle<S: ProgressViewStyle>(_ style: S) -> some View {
-        environment(\.progressViewStyle, style is LinearProgressViewStyle ? .linear : style is CircularProgressViewStyle ? .circular : .automatic)
-    }
-}
-
 public struct ProgressView<Label: View, CurrentValueLabel: View>: View {
     let fraction: Double?
     let label: Label?
     let currentValueLabel: CurrentValueLabel?
-    @Environment(\.progressViewStyle) private var style
-    @Environment(\.controlSize) private var controlSize
+
+    init(fraction: Double?, label: Label?, currentValueLabel: CurrentValueLabel?) {
+        self.fraction = fraction
+        self.label = label
+        self.currentValueLabel = currentValueLabel
+    }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if let label { label }
-            if let fraction, style != .circular {
-                _LinearProgressBar(fraction: fraction, height: controlSize == .small || controlSize == .mini ? 12 : 18)
-            } else if let fraction {
-                _CircularProgress(fraction: fraction, size: controlSize == .small || controlSize == .mini ? 16 : 32)
-            } else {
-                _Spinner(size: controlSize == .small || controlSize == .mini ? 16 : 32)
-            }
-            if let currentValueLabel { currentValueLabel.font(.caption).foregroundStyle(.secondary) }
-        }
+        _StyledView(configuration: ProgressViewStyleConfiguration(
+            fractionCompleted: fraction,
+            label: label.map { _StyleContent($0) },
+            currentValueLabel: currentValueLabel.map { _StyleContent($0) }
+        )) { AnyView(DefaultProgressViewStyle().makeBody(configuration: $0)) }
     }
 }
 
@@ -607,28 +584,54 @@ public struct Gauge<Label: View, CurrentValueLabel: View>: View {
     let fraction: Double
     let label: Label
     let currentValueLabel: CurrentValueLabel?
+    let minimumValueLabel: AnyView?
+    let maximumValueLabel: AnyView?
+
+    static func fraction<V: BinaryFloatingPoint>(_ value: V, _ bounds: ClosedRange<V>) -> Double {
+        bounds.upperBound > bounds.lowerBound ? Double((value - bounds.lowerBound) / (bounds.upperBound - bounds.lowerBound)) : 0
+    }
 
     public init<V: BinaryFloatingPoint>(value: V, in bounds: ClosedRange<V> = 0...1, @ViewBuilder label: () -> Label) where CurrentValueLabel == EmptyView {
-        fraction = bounds.upperBound > bounds.lowerBound ? Double((value - bounds.lowerBound) / (bounds.upperBound - bounds.lowerBound)) : 0
+        fraction = Self.fraction(value, bounds)
         self.label = label()
         currentValueLabel = nil
+        minimumValueLabel = nil
+        maximumValueLabel = nil
     }
 
     public init<V: BinaryFloatingPoint>(value: V, in bounds: ClosedRange<V> = 0...1, @ViewBuilder label: () -> Label, @ViewBuilder currentValueLabel: () -> CurrentValueLabel) {
-        fraction = bounds.upperBound > bounds.lowerBound ? Double((value - bounds.lowerBound) / (bounds.upperBound - bounds.lowerBound)) : 0
+        fraction = Self.fraction(value, bounds)
         self.label = label()
         self.currentValueLabel = currentValueLabel()
+        minimumValueLabel = nil
+        maximumValueLabel = nil
+    }
+
+    public init<V: BinaryFloatingPoint, Minimum: View, Maximum: View>(
+        value: V, in bounds: ClosedRange<V> = 0...1, @ViewBuilder label: () -> Label, @ViewBuilder currentValueLabel: () -> CurrentValueLabel,
+        @ViewBuilder minimumValueLabel: () -> Minimum, @ViewBuilder maximumValueLabel: () -> Maximum
+    ) {
+        fraction = Self.fraction(value, bounds)
+        self.label = label()
+        self.currentValueLabel = currentValueLabel()
+        self.minimumValueLabel = AnyView(minimumValueLabel())
+        self.maximumValueLabel = AnyView(maximumValueLabel())
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                label
-                Spacer()
-                if let currentValueLabel { currentValueLabel.foregroundStyle(.secondary) }
-            }
-            _LinearProgressBar(fraction: fraction)
-        }
+        _StyledView(configuration: GaugeStyleConfiguration(
+            value: max(0, min(1, fraction)),
+            label: _StyleContent(label),
+            currentValueLabel: currentValueLabel.map { _StyleContent($0) },
+            minimumValueLabel: minimumValueLabel.map { _StyleContent($0) },
+            maximumValueLabel: maximumValueLabel.map { _StyleContent($0) }
+        )) { AnyView(DefaultGaugeStyle().makeBody(configuration: $0)) }
+    }
+}
+
+extension Gauge where Label == Text, CurrentValueLabel == EmptyView {
+    public init<S: StringProtocol, V: BinaryFloatingPoint>(_ title: S, value: V, in bounds: ClosedRange<V> = 0...1) {
+        self.init(value: value, in: bounds) { Text(title) }
     }
 }
 
@@ -646,12 +649,8 @@ public struct LabeledContent<Label: View, Content: View>: View {
     }
 
     public var body: some View {
-        // Form rows push the value to the trailing edge; elsewhere label and value just sit
-        // side by side.
-        HStack(alignment: .firstTextBaseline) {
-            if !labelsHidden { label }
-            if isInForm { Spacer(minLength: 8) }
-            content.foregroundStyle(.secondary)
+        _StyledView(configuration: LabeledContentStyleConfiguration(label: _StyleContent(label), content: _StyleContent(content))) {
+            AnyView(AutomaticLabeledContentStyle().makeBody(configuration: $0))
         }
     }
 }
@@ -685,6 +684,7 @@ public struct DatePicker<Label: View>: View {
     let selection: Binding<Date>
     let components: DatePickerComponents
     let label: Label
+    var range: ClosedRange<Date>?
     @Environment(\.labelsHidden) private var labelsHidden
     @Environment(\.isInForm) private var isInForm
 
@@ -696,13 +696,22 @@ public struct DatePicker<Label: View>: View {
 
     public init(selection: Binding<Date>, in range: ClosedRange<Date>, displayedComponents: DatePickerComponents = [.date, .hourAndMinute], @ViewBuilder label: () -> Label) {
         self.init(selection: selection, displayedComponents: displayedComponents, label: label)
+        self.range = range
+    }
+
+    public init(selection: Binding<Date>, in range: PartialRangeFrom<Date>, displayedComponents: DatePickerComponents = [.date, .hourAndMinute], @ViewBuilder label: () -> Label) {
+        self.init(selection: selection, in: range.lowerBound...Date.distantFuture, displayedComponents: displayedComponents, label: label)
+    }
+
+    public init(selection: Binding<Date>, in range: PartialRangeThrough<Date>, displayedComponents: DatePickerComponents = [.date, .hourAndMinute], @ViewBuilder label: () -> Label) {
+        self.init(selection: selection, in: Date.distantPast...range.upperBound, displayedComponents: displayedComponents, label: label)
     }
 
     public var body: some View {
         HStack {
             if !labelsHidden { label }
             if isInForm { Spacer(minLength: 8) }
-            _DatePickerControl(selection: selection, components: components)
+            _DatePickerControl(selection: selection, components: components, range: range)
         }
     }
 }
@@ -713,13 +722,22 @@ extension DatePicker where Label == Text {
     }
 
     public init<S: StringProtocol>(_ title: S, selection: Binding<Date>, in range: ClosedRange<Date>, displayedComponents: DatePickerComponents = [.date, .hourAndMinute]) {
-        self.init(selection: selection, displayedComponents: displayedComponents) { Text(title) }
+        self.init(selection: selection, in: range, displayedComponents: displayedComponents) { Text(title) }
+    }
+
+    public init<S: StringProtocol>(_ title: S, selection: Binding<Date>, in range: PartialRangeFrom<Date>, displayedComponents: DatePickerComponents = [.date, .hourAndMinute]) {
+        self.init(selection: selection, in: range, displayedComponents: displayedComponents) { Text(title) }
+    }
+
+    public init<S: StringProtocol>(_ title: S, selection: Binding<Date>, in range: PartialRangeThrough<Date>, displayedComponents: DatePickerComponents = [.date, .hourAndMinute]) {
+        self.init(selection: selection, in: range, displayedComponents: displayedComponents) { Text(title) }
     }
 }
 
 struct _DatePickerControl: View {
     let selection: Binding<Date>
     let components: DatePickerComponents
+    var range: ClosedRange<Date>? = nil
     var body: Never { primitiveBody(Self.self) }
 
     static func _makeView(view: _GraphValue<Self>, inputs: _ViewInputs) -> _ViewOutputs {
@@ -727,7 +745,8 @@ struct _DatePickerControl: View {
         let environment = inputs.environment
         let content = makeObservedAttribute(inputs.subgraph, of: RenderContent.self, isEqual: { $0 == $1 }) {
             let picker = view.attribute.value
-            return .datePicker(ResolvedDatePicker(date: picker.selection.wrappedValue, components: picker.components, isEnabled: environment.value.isEnabled))
+            let env = environment.value
+            return .datePicker(ResolvedDatePicker(date: picker.selection.wrappedValue, components: picker.components, isEnabled: env.isEnabled, style: env.datePickerStyle, range: picker.range))
         }
         let viewAttribute = view.attribute
         var actions = RenderActions()
@@ -741,7 +760,7 @@ struct _DatePickerControl: View {
         let services = inputs.services
         return _ViewOutputs(layout: inputs.makeLayoutAttribute {
             let components = view.attribute.value.components
-            let kind = ControlKind.datePicker(date: components.contains(.date), time: components.contains(.hourAndMinute))
+            let kind = ControlKind.datePicker(date: components.contains(.date), time: components.contains(.hourAndMinute), style: environment.value.datePickerStyle)
             return FixedLayoutComputer(size: services.controlMetrics(kind).minSize, path: path, tracer: tracer)
         })
     }
@@ -867,12 +886,8 @@ public struct GroupBox<Label: View, Content: View>: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let label { label.font(.headline) }
-            VStack(alignment: .leading) { content }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.12)))
+        _StyledView(configuration: GroupBoxStyleConfiguration(label: _StyleContent(label), content: _StyleContent(content))) {
+            AnyView(DefaultGroupBoxStyle().makeBody(configuration: $0))
         }
     }
 }
@@ -914,22 +929,8 @@ public struct DisclosureGroup<Label: View, Content: View>: View {
     private var isExpanded: Binding<Bool> { isExpandedBinding ?? $localExpanded }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) { isExpanded.wrappedValue.toggle() }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
-                        .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
-                    label
-                }
-            }
-            .buttonStyle(.plain)
-            if isExpanded.wrappedValue {
-                VStack(alignment: .leading) { content }
-                    .padding(.leading, 16)
-            }
+        _StyledView(configuration: DisclosureGroupStyleConfiguration(label: _StyleContent(label), content: _StyleContent(content), isExpanded: isExpanded)) {
+            AnyView(AutomaticDisclosureGroupStyle().makeBody(configuration: $0))
         }
     }
 }

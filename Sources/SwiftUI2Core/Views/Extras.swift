@@ -183,10 +183,31 @@ public enum ColorRenderingMode: Sendable { case nonLinear, linear, extendedLinea
 
 public struct ControlGroup<Content: View>: View {
     let content: Content
-    public init(@ViewBuilder content: () -> Content) { self.content = content() }
+    let label: AnyView
+    public init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+        self.label = AnyView(EmptyView())
+    }
+    public init<L: View>(@ViewBuilder content: () -> Content, @ViewBuilder label: () -> L) {
+        self.content = content()
+        self.label = AnyView(label())
+    }
+    public init<S: StringProtocol>(_ title: S, systemImage: String, @ViewBuilder content: () -> Content) {
+        self.content = content()
+        self.label = AnyView(Label(title, systemImage: systemImage))
+    }
+    public init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content) {
+        self.content = content()
+        self.label = AnyView(Text(title))
+    }
+    init(_content: Content, label: some View) {
+        self.content = _content
+        self.label = AnyView(label)
+    }
     public var body: some View {
-        HStack(spacing: 1) { content }
-            .buttonStyle(.bordered)
+        _StyledView(configuration: ControlGroupStyleConfiguration(content: _StyleContent(content), label: _StyleContent(label))) {
+            AnyView(AutomaticControlGroupStyle().makeBody(configuration: $0))
+        }
     }
 }
 

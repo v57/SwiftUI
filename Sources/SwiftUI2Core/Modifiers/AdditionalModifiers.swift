@@ -68,13 +68,6 @@ extension View {
     public func onContinueUserActivity(_ activityType: String, perform action: @escaping (NSUserActivity) -> Void) -> some View { self }
     public func hoverEffect(_ effect: HoverEffect = .automatic, isEnabled: Bool = true) -> some View { self }
     public func hoverEffectDisabled(_ disabled: Bool = true) -> some View { self }
-    public func controlGroupStyle<S>(_ style: S) -> some View { self }
-    public func gaugeStyle<S>(_ style: S) -> some View { self }
-    public func labeledContentStyle<S>(_ style: S) -> some View { self }
-    public func groupBoxStyle<S>(_ style: S) -> some View { self }
-    public func disclosureGroupStyle<S>(_ style: S) -> some View { self }
-    public func navigationSplitViewStyle<S>(_ style: S) -> some View { self }
-    public func tabViewStyle<S>(_ style: S) -> some View { self }
     public func indexViewStyle<S>(_ style: S) -> some View { self }
     public func buttonBorderShape(_ shape: ButtonBorderShape) -> some View { self }
     public func buttonRepeatBehavior(_ behavior: ButtonRepeatBehavior) -> some View { self }

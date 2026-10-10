@@ -175,7 +175,9 @@ public final class HeadlessBackend: RenderBackend {
         case .switch: return ControlMetrics(minSize: CGSize(width: 38, height: 22))
         case .textField: return ControlMetrics(contentInsets: EdgeInsets(top: 5, leading: 4, bottom: 5, trailing: 4), minSize: CGSize(width: 0, height: 22), idealWidth: 100)
         case .slider: return ControlMetrics(minSize: CGSize(width: 0, height: 20), idealWidth: 100)
-        case let .datePicker(date, time): return ControlMetrics(minSize: CGSize(width: date && time ? 170 : 100, height: 22))
+        case let .datePicker(date, time, style):
+            if style == .graphical { return ControlMetrics(minSize: CGSize(width: 140, height: 150)) }
+            return ControlMetrics(minSize: CGSize(width: date && time ? 170 : 100, height: 22))
         }
     }
 }

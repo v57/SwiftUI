@@ -31,7 +31,12 @@ public struct ResolvedDatePicker: Equatable, Sendable {
     public var date: Date
     public var components: DatePickerComponents
     public var isEnabled: Bool
+    public var style: DatePickerStyleKind = .automatic
+    public var range: ClosedRange<Date>?
 }
+
+/// Date picker presentations (`datePickerStyle`).
+public enum DatePickerStyleKind: Hashable, Sendable { case automatic, compact, field, stepperField, graphical }
 
 public struct ResolvedShape: Equatable, Sendable {
     public var path: Path
@@ -213,7 +218,7 @@ public enum ControlKind: Hashable, Sendable {
     case textField(TextFieldStyleKind)
     case slider
     /// A field-style date picker showing the date and/or the time.
-    case datePicker(date: Bool, time: Bool)
+    case datePicker(date: Bool, time: Bool, style: DatePickerStyleKind)
 }
 
 public struct ControlMetrics: Hashable, Sendable {

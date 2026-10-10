@@ -193,7 +193,6 @@ extension View {
     public func listRowSeparator(_ visibility: Visibility, edges: VerticalEdge.Set = .all) -> some View { self }
     public func listSectionSeparator(_ visibility: Visibility, edges: VerticalEdge.Set = .all) -> some View { self }
     public func scrollContentBackground(_ visibility: Visibility) -> some View { self }
-    public func formStyle<S: FormStyle>(_ style: S) -> some View { self }
 }
 
 public enum VerticalEdge: Int8, Hashable, Sendable {
@@ -207,10 +206,63 @@ public enum VerticalEdge: Int8, Hashable, Sendable {
     }
 }
 
-public protocol FormStyle {}
-public struct GroupedFormStyle: FormStyle { public init() {} }
-public struct ColumnsFormStyle: FormStyle { public init() {} }
-public struct AutomaticFormStyle: FormStyle { public init() {} }
+public struct FormStyleConfiguration {
+    public typealias Content = _StyleContent
+    public let content: Content
+}
+
+@MainActor @preconcurrency
+public protocol FormStyle {
+    associatedtype Body: View
+    typealias Configuration = FormStyleConfiguration
+    @ViewBuilder func makeBody(configuration: Configuration) -> Body
+}
+
+/// Sections drawn as rounded groups.
+public struct GroupedFormStyle: FormStyle {
+    public init() {}
+    public func makeBody(configuration: Configuration) -> some View { _FormScroll(content: configuration.content, columns: false) }
+}
+
+/// Sections without group boxes; rows aligned in a column.
+public struct ColumnsFormStyle: FormStyle {
+    public init() {}
+    public func makeBody(configuration: Configuration) -> some View { _FormScroll(content: configuration.content, columns: true) }
+}
+
+public struct AutomaticFormStyle: FormStyle {
+    public init() {}
+    public func makeBody(configuration: Configuration) -> some View { _FormScroll(content: configuration.content, columns: false) }
+}
+
+struct _FormScroll<Content: View>: View {
+    let content: Content
+    let columns: Bool
+    var body: some View {
+        ScrollView {
+            _FormStack(content: content)
+                .frame(maxWidth: 640, alignment: .leading)
+                .padding(20)
+                .frame(maxWidth: .infinity)
+        }
+        .environment(\.listContext, ListContext(selection: nil, isForm: true))
+        .environment(\.formUsesColumns, columns)
+    }
+}
+
+struct FormColumnsKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    var formUsesColumns: Bool {
+        get { self[FormColumnsKey.self] }
+        set { self[FormColumnsKey.self] = newValue }
+    }
+}
+
+extension View {
+    public func formStyle<S: FormStyle>(_ style: S) -> some View {
+        _setStyle(FormStyleConfiguration.self, _AnyStyle(style) { AnyView(style.makeBody(configuration: $0)) })
+    }
+}
 extension FormStyle where Self == GroupedFormStyle { public static var grouped: GroupedFormStyle { .init() } }
 extension FormStyle where Self == ColumnsFormStyle { public static var columns: ColumnsFormStyle { .init() } }
 extension FormStyle where Self == AutomaticFormStyle { public static var automatic: AutomaticFormStyle { .init() } }
@@ -511,13 +563,9 @@ public struct Form<Content: View>: View {
     public init(@ViewBuilder content: () -> Content) { self.content = content() }
 
     public var body: some View {
-        ScrollView {
-            _FormStack(content: content)
-                .frame(maxWidth: 640, alignment: .leading)
-                .padding(20)
-                .frame(maxWidth: .infinity)
+        _StyledView(configuration: FormStyleConfiguration(content: _StyleContent(content))) {
+            AnyView(AutomaticFormStyle().makeBody(configuration: $0))
         }
-        .environment(\.listContext, ListContext(selection: nil, isForm: true))
     }
 }
 
@@ -539,6 +587,7 @@ public struct Section<Parent: View, Content: View, Footer: View>: View {
     let content: Content
     let footer: Footer?
     @Environment(\.listContext) private var listContext
+    @Environment(\.formUsesColumns) private var formUsesColumns
 
     public init(@ViewBuilder content: () -> Content, @ViewBuilder header: () -> Parent, @ViewBuilder footer: () -> Footer) {
         self.header = header()
@@ -586,7 +635,10 @@ public struct Section<Parent: View, Content: View, Footer: View>: View {
                 header.font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
                     .padding(.horizontal, listContext?.isForm == true ? 4 : 8)
             }
-            if listContext?.isForm == true {
+            if listContext?.isForm == true, formUsesColumns {
+                _FormRows(content: content)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if listContext?.isForm == true {
                 _FormRows(content: content)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
@@ -860,6 +912,7 @@ public struct TabView<SelectionValue: Hashable, Content: View>: View {
     let selection: Binding<SelectionValue>?
     let content: Content
     @State private var internalSelection: AnyHashable?
+    @Environment(\.tabViewStyle) private var style
 
     public init(selection: Binding<SelectionValue>, @ViewBuilder content: () -> Content) {
         self.selection = selection
@@ -882,23 +935,43 @@ public struct TabView<SelectionValue: Hashable, Content: View>: View {
             return internalSelection
         }
         let binding = $internalSelection
-        return VStack(spacing: 0) {
-            _ListTransformView(content: content, transform: { list, inputs in
-                list.wrapped(in: inputs.subgraph) { traits, subgraph in
-                    makeObservedAttribute(subgraph, of: _TabItemModifier.self) {
-                        let tag = traits.value(TagTraitKey.self)
-                        return _TabItemModifier(label: traits.value(TabItemTraitKey.self), isSelected: context.isSelected(tag), select: { context.select(tag) }, adoptIfUnset: {
-                            if selection == nil, binding.wrappedValue == nil, let tag { binding.wrappedValue = tag }
-                        })
-                    }
+        let sidebar = style == .sidebarAdaptable
+        let items = _ListTransformView(content: content, transform: { list, inputs in
+            list.wrapped(in: inputs.subgraph) { traits, subgraph in
+                makeObservedAttribute(subgraph, of: _TabItemModifier.self) {
+                    let tag = traits.value(TagTraitKey.self)
+                    return _TabItemModifier(label: traits.value(TabItemTraitKey.self), isSelected: context.isSelected(tag), select: { context.select(tag) }, adoptIfUnset: {
+                        if selection == nil, binding.wrappedValue == nil, let tag { binding.wrappedValue = tag }
+                    }, isSidebarRow: sidebar)
                 }
-            }, layout: AnyLayout(_HStackLayout(spacing: 4)))
-            .padding(.vertical, 6)
-            Divider()
-            _ListTransformView(content: content, transform: { list, inputs in
-                list.filtered(in: inputs.subgraph, selection: current)
-            }, layout: AnyLayout(_ZStackLayout(alignment: .topLeading)))
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+        }, layout: sidebar ? AnyLayout(_VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(_HStackLayout(spacing: 4)))
+        let pages = _ListTransformView(content: content, transform: { list, inputs in
+            list.filtered(in: inputs.subgraph, selection: current)
+        }, layout: AnyLayout(_ZStackLayout(alignment: .topLeading)))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        return Group {
+            if sidebar {
+                // macOS 15 sidebar-adaptable tab views list their tabs in a sidebar.
+                HStack(spacing: 0) {
+                    items
+                        .padding(10)
+                        .frame(width: 180, alignment: .topLeading)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                    Divider()
+                    pages
+                }
+            } else {
+                VStack(spacing: 0) {
+                    items
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, style == .grouped ? 4 : 0)
+                        .background(style == .grouped ? RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.12)) : nil)
+                        .padding(.top, style == .grouped ? 6 : 0)
+                    if style != .grouped { Divider() }
+                    pages
+                }
+            }
         }
     }
 }
@@ -917,14 +990,16 @@ struct _TabItemModifier: ViewModifier {
     let isSelected: Bool
     let select: @MainActor () -> Void
     let adoptIfUnset: @MainActor () -> Void
+    var isSidebarRow = false
 
     func body(content: Content) -> some View {
         (label ?? AnyView(Text("Tab")))
             .labelStyle(TitleAndIconLabelStyle())
-            .padding(.horizontal, 10)
+            .padding(.horizontal, isSidebarRow ? 8 : 10)
             .padding(.vertical, 4)
-            .background(RoundedRectangle(cornerRadius: 6).fill(isSelected ? Color.accentColor.opacity(0.2) : Color.clear))
-            .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+            .frame(maxWidth: isSidebarRow ? .infinity : nil, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 6).fill(isSelected ? (isSidebarRow ? Color.listSelection : Color.accentColor.opacity(0.2)) : Color.clear))
+            .foregroundStyle(isSelected && !isSidebarRow ? Color.accentColor : Color.primary)
             .onTapGesture(perform: select)
             .onAppear(perform: adoptIfUnset)
     }

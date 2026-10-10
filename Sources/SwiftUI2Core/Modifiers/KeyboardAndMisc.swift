@@ -197,11 +197,46 @@ extension View {
 
 // MARK: - Styles and small modifiers
 
-public protocol MenuStyle {}
-public struct DefaultMenuStyle: MenuStyle { public init() {} }
-public struct BorderlessButtonMenuStyle: MenuStyle { public init() {} }
-public struct ButtonMenuStyle: MenuStyle { public init() {} }
-public struct BorderedButtonMenuStyle: MenuStyle { public init() {} }
+/// Menu styles: built-in presentations or a custom `makeBody(configuration:)`.
+@MainActor @preconcurrency
+public protocol MenuStyle {
+    associatedtype Body: View
+    typealias Configuration = MenuStyleConfiguration
+    @ViewBuilder func makeBody(configuration: Configuration) -> Body
+    var _isBuiltin: Bool { get }
+}
+
+extension MenuStyle {
+    public var _isBuiltin: Bool { false }
+}
+
+public struct MenuStyleConfiguration {
+    public typealias Label = _StyleContent
+    public typealias Content = _StyleContent
+    let label: Label
+    let content: Content
+}
+
+public struct DefaultMenuStyle: MenuStyle {
+    public init() {}
+    public var _isBuiltin: Bool { true }
+    public func makeBody(configuration: Configuration) -> some View { Menu(configuration) }
+}
+public struct BorderlessButtonMenuStyle: MenuStyle {
+    public init() {}
+    public var _isBuiltin: Bool { true }
+    public func makeBody(configuration: Configuration) -> some View { Menu(configuration).environment(\.menuIsBorderless, true) }
+}
+public struct ButtonMenuStyle: MenuStyle {
+    public init() {}
+    public var _isBuiltin: Bool { true }
+    public func makeBody(configuration: Configuration) -> some View { Menu(configuration) }
+}
+public struct BorderedButtonMenuStyle: MenuStyle {
+    public init() {}
+    public var _isBuiltin: Bool { true }
+    public func makeBody(configuration: Configuration) -> some View { Menu(configuration) }
+}
 extension MenuStyle where Self == DefaultMenuStyle { public static var automatic: DefaultMenuStyle { .init() } }
 extension MenuStyle where Self == BorderlessButtonMenuStyle { public static var borderlessButton: BorderlessButtonMenuStyle { .init() } }
 extension MenuStyle where Self == ButtonMenuStyle { public static var button: ButtonMenuStyle { .init() } }
@@ -221,12 +256,20 @@ extension EnvironmentValues {
     }
 }
 
-public protocol DatePickerStyle {}
-public struct DefaultDatePickerStyle: DatePickerStyle { public init() {} }
-public struct FieldDatePickerStyle: DatePickerStyle { public init() {} }
-public struct StepperFieldDatePickerStyle: DatePickerStyle { public init() {} }
-public struct CompactDatePickerStyle: DatePickerStyle { public init() {} }
-public struct GraphicalDatePickerStyle: DatePickerStyle { public init() {} }
+public protocol DatePickerStyle { var _kind: DatePickerStyleKind { get } }
+public struct DefaultDatePickerStyle: DatePickerStyle { public init() {}; public var _kind: DatePickerStyleKind { .automatic } }
+public struct FieldDatePickerStyle: DatePickerStyle { public init() {}; public var _kind: DatePickerStyleKind { .field } }
+public struct StepperFieldDatePickerStyle: DatePickerStyle { public init() {}; public var _kind: DatePickerStyleKind { .stepperField } }
+public struct CompactDatePickerStyle: DatePickerStyle { public init() {}; public var _kind: DatePickerStyleKind { .compact } }
+public struct GraphicalDatePickerStyle: DatePickerStyle { public init() {}; public var _kind: DatePickerStyleKind { .graphical } }
+
+struct DatePickerStyleKey: EnvironmentKey { static let defaultValue = DatePickerStyleKind.automatic }
+extension EnvironmentValues {
+    var datePickerStyle: DatePickerStyleKind {
+        get { self[DatePickerStyleKey.self] }
+        set { self[DatePickerStyleKey.self] = newValue }
+    }
+}
 extension DatePickerStyle where Self == DefaultDatePickerStyle { public static var automatic: DefaultDatePickerStyle { .init() } }
 extension DatePickerStyle where Self == FieldDatePickerStyle { public static var field: FieldDatePickerStyle { .init() } }
 extension DatePickerStyle where Self == StepperFieldDatePickerStyle { public static var stepperField: StepperFieldDatePickerStyle { .init() } }
@@ -259,14 +302,17 @@ extension ScrollTargetBehavior where Self == ViewAlignedScrollTargetBehavior { p
 
 extension View {
     public func menuStyle<S: MenuStyle>(_ style: S) -> some View {
-        environment(\.menuIsBorderless, style is BorderlessButtonMenuStyle)
+        transformEnvironment(\.self) { environment in
+            environment[style: MenuStyleConfiguration.self] = style._isBuiltin ? nil : _AnyStyle(style) { AnyView(style.makeBody(configuration: $0)) }
+            environment.menuIsBorderless = style is BorderlessButtonMenuStyle
+        }
     }
 
     public func menuIndicator(_ visibility: Visibility) -> some View {
         environment(\.menuIndicatorVisibility, visibility)
     }
 
-    public func datePickerStyle<S: DatePickerStyle>(_ style: S) -> some View { self }
+    public func datePickerStyle<S: DatePickerStyle>(_ style: S) -> some View { environment(\.datePickerStyle, style._kind) }
 
     public func fontDesign(_ design: Font.Design?) -> some View {
         transformEnvironment(\.font) { font in

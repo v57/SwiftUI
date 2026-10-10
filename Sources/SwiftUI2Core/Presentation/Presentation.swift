@@ -387,6 +387,9 @@ public struct Menu<Label: View, Content: View>: View {
     @Environment(\.menuIndicatorVisibility) private var indicator
     @Environment(\.buttonStyle) private var buttonStyle
     @Environment(\.customButtonStyle) private var customStyle
+    @Environment(\.customMenuStyle) private var customMenuStyle
+    /// Menus created from a style configuration render natively (not through the style again).
+    var fromConfiguration = false
 
     public init(@ViewBuilder content: () -> Content, @ViewBuilder label: () -> Label) {
         self.content = content()
@@ -401,6 +404,14 @@ public struct Menu<Label: View, Content: View>: View {
     }
 
     public var body: some View {
+        if !fromConfiguration, let customMenuStyle {
+            customMenuStyle.make(MenuStyleConfiguration(label: _StyleContent(label), content: _StyleContent(content)))
+        } else {
+            nativeMenu
+        }
+    }
+
+    private var nativeMenu: some View {
         Button {
             if let primaryAction { primaryAction() } else { isPresented = true }
         } label: {
@@ -445,6 +456,18 @@ struct _MenuIndicator: View {
     var body: some View {
         Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
     }
+}
+
+extension Menu where Label == MenuStyleConfiguration.Label, Content == MenuStyleConfiguration.Content {
+    /// A native menu from a style configuration (inside custom menu styles).
+    public init(_ configuration: MenuStyleConfiguration) {
+        self.init(content: { configuration.content }, label: { configuration.label })
+        self.fromConfiguration = true
+    }
+}
+
+extension EnvironmentValues {
+    var customMenuStyle: _AnyStyle<MenuStyleConfiguration>? { self[style: MenuStyleConfiguration.self] }
 }
 
 extension Menu where Label == Text {

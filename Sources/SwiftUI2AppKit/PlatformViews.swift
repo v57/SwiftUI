@@ -415,6 +415,10 @@ final class TextFieldNodeView: FlippedView, PlatformNodeView, NSTextFieldDelegat
                 textView = text
             }
             if textView!.string != model.text { textView!.string = model.text }
+            // .textEditorStyle(.plain): no bezel or background.
+            scrollView!.borderType = model.style == .plain ? .noBorder : .bezelBorder
+            textView!.drawsBackground = model.style != .plain
+            scrollView!.drawsBackground = model.style != .plain
             textView!.font = AppKitText.font(model.font)
             textView!.isEditable = model.isEnabled
             scrollView!.frame = bounds
@@ -500,6 +504,9 @@ final class DatePickerNodeView: FlippedView, PlatformNodeView {
 
     func apply(_ content: RenderContent, backend: AppKitBackend) {
         guard case .datePicker(let model) = content else { return }
+        picker.datePickerStyle = Self.nativeStyle(model.style)
+        picker.minDate = model.range?.lowerBound
+        picker.maxDate = model.range?.upperBound
         var elements: NSDatePicker.ElementFlags = []
         if model.components.contains(.date) { elements.insert(.yearMonthDay) }
         if model.components.contains(.hourAndMinute) { elements.insert(.hourMinute) }
@@ -510,6 +517,14 @@ final class DatePickerNodeView: FlippedView, PlatformNodeView {
     }
 
     @objc private func changed() { node?.actions.setDate?(picker.dateValue) }
+
+    static func nativeStyle(_ style: DatePickerStyleKind) -> NSDatePicker.Style {
+        switch style {
+        case .graphical: return .clockAndCalendar
+        case .field: return .textField
+        case .automatic, .compact, .stepperField: return .textFieldAndStepper
+        }
+    }
 }
 
 final class ColorWellNodeView: FlippedView, PlatformNodeView {
