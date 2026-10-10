@@ -139,6 +139,8 @@ public struct Color: Hashable, Sendable, CustomStringConvertible {
     public static let primary = dynamic(rgb(0, 0, 0, 0.85), rgb(1, 1, 1, 0.85))
     public static let secondary = dynamic(rgb(0, 0, 0, 0.5), rgb(1, 1, 1, 0.55))
     public static let accentColor = Color(storage: .accent)
+    /// The second of the alternating content background colors (striped rows).
+    static let alternatingRow = dynamic(rgb(0, 0, 0, 0.03), rgb(1, 1, 1, 0.05))
     static let separator = dynamic(rgb(0, 0, 0, 0.1), rgb(1, 1, 1, 0.1))
     static let controlBackground = dynamic(rgb(1, 1, 1), rgb(0.118, 0.118, 0.118))
     /// Split view sidebar column (the window background on macOS 26+).
@@ -160,6 +162,49 @@ public protocol ShapeStyle: Sendable {
     associatedtype Resolved: ShapeStyle = _UnresolvedShapeStyle
     func resolve(in environment: EnvironmentValues) -> Resolved
     func _resolvePaint(in environment: EnvironmentValues) -> ResolvedPaint
+    /// A drop shadow drawn with the shape (`.shadow(_:)` styles).
+    func _resolveShadow(in environment: EnvironmentValues) -> ResolvedShadow?
+}
+
+extension ShapeStyle {
+    public func _resolveShadow(in environment: EnvironmentValues) -> ResolvedShadow? { nil }
+}
+
+/// Shadows of shape styles (`.fill(.blue.shadow(.drop(radius: 4)))`).
+public struct ShadowStyle: Equatable, Sendable {
+    enum Kind: Equatable, Sendable { case drop, inner }
+    let kind: Kind
+    let color: Color
+    let radius: CGFloat
+    let x: CGFloat
+    let y: CGFloat
+
+    public static func drop(color: Color = Color(white: 0, opacity: 0.33), radius: CGFloat, x: CGFloat = 0, y: CGFloat = 0) -> ShadowStyle {
+        ShadowStyle(kind: .drop, color: color, radius: radius, x: x, y: y)
+    }
+
+    /// Inner shadows are not drawn (accepted for source compatibility).
+    public static func inner(color: Color = Color(white: 0, opacity: 0.55), radius: CGFloat, x: CGFloat = 0, y: CGFloat = 0) -> ShadowStyle {
+        ShadowStyle(kind: .inner, color: color, radius: radius, x: x, y: y)
+    }
+}
+
+public struct _ShadowShapeStyle<Base: ShapeStyle>: ShapeStyle {
+    let base: Base
+    let shadow: ShadowStyle
+    public func _resolvePaint(in environment: EnvironmentValues) -> ResolvedPaint { base._resolvePaint(in: environment) }
+    public func _resolveShadow(in environment: EnvironmentValues) -> ResolvedShadow? {
+        guard shadow.kind == .drop else { return base._resolveShadow(in: environment) }
+        return ResolvedShadow(color: shadow.color.resolve(in: environment), radius: shadow.radius, offset: CGSize(width: shadow.x, height: shadow.y))
+    }
+}
+
+extension ShapeStyle {
+    public func shadow(_ style: ShadowStyle) -> _ShadowShapeStyle<Self> { _ShadowShapeStyle(base: self, shadow: style) }
+}
+
+extension ShapeStyle where Self == _ShadowShapeStyle<ForegroundStyle> {
+    public static func shadow(_ style: ShadowStyle) -> _ShadowShapeStyle<ForegroundStyle> { _ShadowShapeStyle(base: ForegroundStyle(), shadow: style) }
 }
 
 /// Placeholder `Resolved` type of the built-in styles (they resolve directly to paint).
@@ -274,6 +319,7 @@ public struct AnyShapeStyle: ShapeStyle, Equatable {
         if let any = style as? AnyShapeStyle { base = any.base } else { base = style }
     }
     public func _resolvePaint(in environment: EnvironmentValues) -> ResolvedPaint { base._resolvePaint(in: environment) }
+    public func _resolveShadow(in environment: EnvironmentValues) -> ResolvedShadow? { base._resolveShadow(in: environment) }
 }
 
 extension AnyShapeStyle: _GraphComparable {

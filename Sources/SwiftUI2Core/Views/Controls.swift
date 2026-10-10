@@ -464,6 +464,8 @@ extension View {
 public struct Toggle<Label: View>: View {
     let isOn: Binding<Bool>
     let label: Label
+    /// `sources:` toggles: some but not all sources are on.
+    var isMixed: (() -> Bool)? = nil
     @Environment(\.customToggleStyle) private var customStyle
     @Environment(\.toggleStyle) private var kind
     @Environment(\.labelsHidden) private var labelsHidden
@@ -476,9 +478,17 @@ public struct Toggle<Label: View>: View {
         self.label = label()
     }
 
+    /// One toggle for several values: on when all are on, mixed when some are; setting it sets all.
+    public init<C: RandomAccessCollection>(sources: C, isOn: KeyPath<C.Element, Binding<Bool>>, @ViewBuilder label: () -> Label) {
+        let bindings = sources.map { $0[keyPath: isOn] }
+        self.isOn = Binding(get: { !bindings.isEmpty && bindings.allSatisfy(\.wrappedValue) }, set: { value in bindings.forEach { $0.wrappedValue = value } })
+        self.label = label()
+        self.isMixed = { bindings.contains(where: \.wrappedValue) && !bindings.allSatisfy(\.wrappedValue) }
+    }
+
     public var body: some View {
         if let customStyle {
-            customStyle.make(ToggleStyleConfiguration(label: .init(content: AnyView(label)), isOn: isOn))
+            customStyle.make(ToggleStyleConfiguration(label: .init(content: AnyView(label)), isOn: isOn, isMixed: isMixed?() ?? false))
         } else if kind == .button {
             Button { isOn.wrappedValue.toggle() } label: { label }
                 .environment(\.buttonStyle, isOn.wrappedValue ? .borderedProminent : .bordered)
@@ -498,7 +508,7 @@ public struct Toggle<Label: View>: View {
             }
         } else {
             HStack(spacing: controlSize == .small || controlSize == .mini ? 4 : 5) {
-                _ToggleControl(isOn: isOn)
+                _ToggleControl(isOn: isOn, isMixed: isMixed?() ?? false)
                 if !labelsHidden { label.font(font ?? Font.controlFont(controlSize)) }
             }
         }
@@ -508,6 +518,14 @@ public struct Toggle<Label: View>: View {
 extension Toggle where Label == Text {
     public init(_ titleKey: LocalizedStringKey, isOn: Binding<Bool>) {
         self.init(isOn: isOn) { Text(titleKey) }
+    }
+
+    public init<C: RandomAccessCollection>(_ titleKey: LocalizedStringKey, sources: C, isOn: KeyPath<C.Element, Binding<Bool>>) {
+        self.init(sources: sources, isOn: isOn) { Text(titleKey) }
+    }
+
+    @_disfavoredOverload public init<S: StringProtocol, C: RandomAccessCollection>(_ title: S, sources: C, isOn: KeyPath<C.Element, Binding<Bool>>) {
+        self.init(sources: sources, isOn: isOn) { Text(title) }
     }
 
     @_disfavoredOverload public init<S: StringProtocol>(_ title: S, isOn: Binding<Bool>) {
@@ -524,6 +542,7 @@ extension Toggle where Label == SwiftUI2Core.Label<Text, Image> {
 /// The platform checkbox / switch.
 public struct _ToggleControl: View {
     let isOn: Binding<Bool>
+    var isMixed = false
     public var body: Never { primitiveBody(Self.self) }
 
     public static func _makeView(view: _GraphValue<Self>, inputs: _ViewInputs) -> _ViewOutputs {
@@ -532,7 +551,8 @@ public struct _ToggleControl: View {
         let content = makeObservedAttribute(inputs.subgraph, of: RenderContent.self, isEqual: { $0 == $1 }) {
             let env = environment.value
             let style: ToggleStyleKind = env.toggleStyle == .switch ? .switch : .checkbox
-            return .toggle(ResolvedToggle(isOn: view.attribute.value.isOn.wrappedValue, style: style, isEnabled: env.isEnabled))
+            let control = view.attribute.value
+            return .toggle(ResolvedToggle(isOn: control.isOn.wrappedValue, style: style, isEnabled: env.isEnabled, isMixed: control.isMixed))
         }
         let viewAttribute = view.attribute
         var actions = RenderActions()
@@ -847,20 +867,22 @@ public struct Slider<Label: View>: View {
     let label: Label?
     let minimumLabel: AnyView?
     let maximumLabel: AnyView?
+    var onEditingChanged: (Bool) -> Void = { _ in }
     @Environment(\.labelsHidden) private var labelsHidden
 
     public var body: some View {
         HStack(spacing: 6) {
             if let label, !labelsHidden { label }
             if let minimumLabel { minimumLabel }
-            _SliderControl(value: value, range: range, step: step)
+            _SliderControl(value: value, range: range, step: step, onEditingChanged: onEditingChanged)
             if let maximumLabel { maximumLabel }
         }
     }
 }
 
 extension Slider {
-    public init<V: BinaryFloatingPoint>(value: Binding<V>, in bounds: ClosedRange<V> = 0...1, step: V.Stride? = nil, @ViewBuilder label: () -> Label) where V.Stride: BinaryFloatingPoint {
+    public init<V: BinaryFloatingPoint>(value: Binding<V>, in bounds: ClosedRange<V> = 0...1, step: V.Stride? = nil, @ViewBuilder label: () -> Label, onEditingChanged: @escaping (Bool) -> Void = { _ in }) where V.Stride: BinaryFloatingPoint {
+        self.onEditingChanged = onEditingChanged
         self.value = Binding(get: { Double(value.wrappedValue) }, set: { value.wrappedValue = V($0) })
         self.range = Double(bounds.lowerBound)...Double(bounds.upperBound)
         self.step = step.map { Double($0) }
@@ -869,7 +891,8 @@ extension Slider {
         self.maximumLabel = nil
     }
 
-    public init<V: BinaryFloatingPoint, Min: View, Max: View>(value: Binding<V>, in bounds: ClosedRange<V> = 0...1, step: V.Stride? = nil, @ViewBuilder label: () -> Label, @ViewBuilder minimumValueLabel: () -> Min, @ViewBuilder maximumValueLabel: () -> Max) where V.Stride: BinaryFloatingPoint {
+    public init<V: BinaryFloatingPoint, Min: View, Max: View>(value: Binding<V>, in bounds: ClosedRange<V> = 0...1, step: V.Stride? = nil, @ViewBuilder label: () -> Label, @ViewBuilder minimumValueLabel: () -> Min, @ViewBuilder maximumValueLabel: () -> Max, onEditingChanged: @escaping (Bool) -> Void = { _ in }) where V.Stride: BinaryFloatingPoint {
+        self.onEditingChanged = onEditingChanged
         self.value = Binding(get: { Double(value.wrappedValue) }, set: { value.wrappedValue = V($0) })
         self.range = Double(bounds.lowerBound)...Double(bounds.upperBound)
         self.step = step.map { Double($0) }
@@ -880,7 +903,8 @@ extension Slider {
 }
 
 extension Slider where Label == EmptyView {
-    public init<V: BinaryFloatingPoint>(value: Binding<V>, in bounds: ClosedRange<V> = 0...1, step: V.Stride? = nil) where V.Stride: BinaryFloatingPoint {
+    public init<V: BinaryFloatingPoint>(value: Binding<V>, in bounds: ClosedRange<V> = 0...1, step: V.Stride? = nil, onEditingChanged: @escaping (Bool) -> Void = { _ in }) where V.Stride: BinaryFloatingPoint {
+        self.onEditingChanged = onEditingChanged
         self.value = Binding(get: { Double(value.wrappedValue) }, set: { value.wrappedValue = V($0) })
         self.range = Double(bounds.lowerBound)...Double(bounds.upperBound)
         self.step = step.map { Double($0) }
@@ -894,6 +918,7 @@ struct _SliderControl: View {
     let value: Binding<Double>
     let range: ClosedRange<Double>
     let step: Double?
+    var onEditingChanged: (Bool) -> Void = { _ in }
 
     var body: Never { primitiveBody(Self.self) }
 
@@ -916,6 +941,10 @@ struct _SliderControl: View {
                 }
                 slider.value.wrappedValue = min(max(value, slider.range.lowerBound), slider.range.upperBound)
             }
+        }
+        actions.editingChanged = { [weak viewAttribute] editing in
+            guard let viewAttribute else { return }
+            AnyAttribute.withoutDependencies { viewAttribute.value.onEditingChanged(editing) }
         }
         inputs.makePlatformNode(content: content, actions: actions)
         let services = inputs.services

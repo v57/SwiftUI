@@ -370,6 +370,14 @@ final class ShapeNodeView: FlippedView, PlatformNodeView {
         self.shape = shape
         let path = scaledPath(shape)
         shapeLayer.path = path
+        if let shadow = shape.shadow {
+            shapeLayer.shadowColor = NSColor(shadow.color).cgColor
+            shapeLayer.shadowOpacity = 1
+            shapeLayer.shadowRadius = shadow.radius
+            shapeLayer.shadowOffset = CGSize(width: shadow.offset.width, height: shadow.offset.height)
+        } else {
+            shapeLayer.shadowOpacity = 0
+        }
         shapeLayer.lineWidth = shape.lineWidth
         if let style = shape.strokeStyle {
             shapeLayer.lineCap = style.lineCap == .round ? .round : style.lineCap == .square ? .square : .butt
@@ -593,7 +601,9 @@ final class ToggleNodeView: FlippedView, PlatformNodeView {
             addSubview(control)
         }
         style = toggle.style
-        checkbox.state = toggle.isOn ? .on : .off
+        checkbox.allowsMixedState = toggle.isMixed
+        checkbox.state = toggle.isMixed ? .mixed : toggle.isOn ? .on : .off
+        isMixed = toggle.isMixed
         toggleSwitch.state = toggle.isOn ? .on : .off
         control.isEnabled = toggle.isEnabled
         control.frame = bounds
@@ -604,8 +614,11 @@ final class ToggleNodeView: FlippedView, PlatformNodeView {
         subviews.first?.frame = bounds
     }
 
+    private var isMixed = false
+
     @objc private func changed(_ sender: NSControl) {
-        let isOn = (sender as? NSButton)?.state == .on || (sender as? NSSwitch)?.state == .on
+        // Clicking a mixed checkbox turns everything on (as in SwiftUI).
+        let isOn = isMixed || (sender as? NSButton)?.state == .on || (sender as? NSSwitch)?.state == .on
         node?.actions.setBool?(isOn)
     }
 }
@@ -803,8 +816,19 @@ final class ColorWellNodeView: FlippedView, PlatformNodeView {
     }
 }
 
+/// Reports the drag around AppKit's tracking loop (`onEditingChanged`).
+final class EditingSlider: NSSlider {
+    var editingChanged: ((Bool) -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        editingChanged?(true)
+        super.mouseDown(with: event)
+        editingChanged?(false)
+    }
+}
+
 final class SliderNodeView: FlippedView, PlatformNodeView {
-    private let slider = NSSlider()
+    private let slider = EditingSlider()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -823,6 +847,7 @@ final class SliderNodeView: FlippedView, PlatformNodeView {
         slider.doubleValue = model.value
         slider.isEnabled = model.isEnabled
         slider.frame = bounds
+        slider.editingChanged = { [weak self] editing in self?.node?.actions.editingChanged?(editing) }
     }
 
     @objc private func changed() {

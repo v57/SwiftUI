@@ -99,12 +99,19 @@ public enum ListStyleKind: Hashable, Sendable { case automatic, plain, inset, in
 public protocol ListStyle {}
 public struct DefaultListStyle: ListStyle { public init() {} }
 public struct PlainListStyle: ListStyle { public init() {} }
-public struct InsetListStyle: ListStyle { public init() {} }
+public struct InsetListStyle: ListStyle {
+    var alternatesRowBackgrounds = false
+    public init() {}
+    public init(alternatesRowBackgrounds: Bool) { self.alternatesRowBackgrounds = alternatesRowBackgrounds }
+}
 public struct SidebarListStyle: ListStyle { public init() {} }
 public struct BorderedListStyle: ListStyle { public init() {} }
 extension ListStyle where Self == DefaultListStyle { public static var automatic: DefaultListStyle { .init() } }
 extension ListStyle where Self == PlainListStyle { public static var plain: PlainListStyle { .init() } }
-extension ListStyle where Self == InsetListStyle { public static var inset: InsetListStyle { .init() } }
+extension ListStyle where Self == InsetListStyle {
+    public static var inset: InsetListStyle { .init() }
+    public static func inset(alternatesRowBackgrounds: Bool) -> InsetListStyle { .init(alternatesRowBackgrounds: alternatesRowBackgrounds) }
+}
 extension ListStyle where Self == SidebarListStyle { public static var sidebar: SidebarListStyle { .init() } }
 extension ListStyle where Self == BorderedListStyle { public static var bordered: BorderedListStyle { .init() } }
 
@@ -187,7 +194,8 @@ extension View {
         case is BorderedListStyle: kind = .bordered
         default: kind = .automatic
         }
-        return environment(\.listStyleKind, kind)
+        let stripes = (style as? InsetListStyle)?.alternatesRowBackgrounds == true
+        return environment(\.listStyleKind, kind).transformEnvironment(\.tableStripes) { if stripes { $0 = .enabled } }
     }
 }
 
@@ -287,6 +295,7 @@ struct _ListRowModifier: ViewModifier {
     var rowSpacing: CGFloat?
     var sectionSpacing: CGFloat?
     var headerProminence = Prominence.standard
+    @Environment(\.tableStripes) private var stripes
 
     func body(content: Content) -> some View {
         if isForm {
@@ -316,6 +325,8 @@ struct _ListRowModifier: ViewModifier {
                         RoundedRectangle(cornerRadius: 5).fill(Color.listSelection)
                     } else if let background {
                         background
+                    } else if stripes == .enabled, role == .row, position.index % 2 == 1 {
+                        Color.alternatingRow
                     }
                 }
                 .overlay(alignment: .bottom) {
@@ -544,19 +555,19 @@ extension List where SelectionValue == Never {
 }
 
 extension List {
-    public init(selection: Binding<SelectionValue?>, @ViewBuilder content: () -> Content) {
+    public init(selection: Binding<SelectionValue?>?, @ViewBuilder content: () -> Content) {
         self.content = content()
-        self.selection = .optional(selection)
+        self.selection = selection.map { .optional($0) }
     }
 
-    public init(selection: Binding<SelectionValue>, @ViewBuilder content: () -> Content) {
+    @_disfavoredOverload public init(selection: Binding<SelectionValue>, @ViewBuilder content: () -> Content) {
         self.content = content()
         self.selection = .single(selection)
     }
 
-    public init(selection: Binding<Set<SelectionValue>>, @ViewBuilder content: () -> Content) {
+    public init(selection: Binding<Set<SelectionValue>>?, @ViewBuilder content: () -> Content) {
         self.content = content()
-        self.selection = .multiple(selection)
+        self.selection = selection.map { .multiple($0) }
     }
 }
 

@@ -544,21 +544,6 @@ extension NSColor {
     }
 }
 
-extension SwiftUI2Core.Path {
-    var cgPath: CGPath {
-        let path = CGMutablePath()
-        for element in elements {
-            switch element {
-            case .move(let p): path.move(to: p)
-            case .line(let p): path.addLine(to: p)
-            case let .quadCurve(p, c): path.addQuadCurve(to: p, control: c)
-            case let .curve(p, c1, c2): path.addCurve(to: p, control1: c1, control2: c2)
-            case .closeSubpath: path.closeSubpath()
-            }
-        }
-        return path
-    }
-}
 #endif
 
 /// `fileDialogURLEnabled`: which URLs a panel lets the user pick.

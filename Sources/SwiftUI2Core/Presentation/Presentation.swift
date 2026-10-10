@@ -487,13 +487,37 @@ extension EnvironmentValues {
 }
 
 extension Menu where Label == Text {
+    public init(_ titleKey: LocalizedStringKey, @ViewBuilder content: () -> Content) {
+        self.init(content: content) { Text(titleKey) }
+    }
+
+    public init(_ titleKey: LocalizedStringKey, @ViewBuilder content: () -> Content, primaryAction: @escaping @MainActor () -> Void) {
+        self.init(content: content, label: { Text(titleKey) }, primaryAction: primaryAction)
+    }
+
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content, primaryAction: @escaping @MainActor () -> Void) {
+        self.init(content: content, label: { Text(title) }, primaryAction: primaryAction)
+    }
+
     @_disfavoredOverload public init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content) {
         self.init(content: content) { Text(title) }
     }
 }
 
 extension Menu where Label == SwiftUI2Core.Label<Text, Image> {
-    public init(_ title: String, systemImage: String, @ViewBuilder content: () -> Content) {
+    public init(_ titleKey: LocalizedStringKey, systemImage: String, @ViewBuilder content: () -> Content) {
+        self.init(content: content) { SwiftUI2Core.Label(titleKey, systemImage: systemImage) }
+    }
+
+    public init(_ titleKey: LocalizedStringKey, systemImage: String, @ViewBuilder content: () -> Content, primaryAction: @escaping @MainActor () -> Void) {
+        self.init(content: content, label: { SwiftUI2Core.Label(titleKey, systemImage: systemImage) }, primaryAction: primaryAction)
+    }
+
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, systemImage: String, @ViewBuilder content: () -> Content, primaryAction: @escaping @MainActor () -> Void) {
+        self.init(content: content, label: { SwiftUI2Core.Label(title, systemImage: systemImage) }, primaryAction: primaryAction)
+    }
+
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, systemImage: String, @ViewBuilder content: () -> Content) {
         self.init(content: content) { SwiftUI2Core.Label(title, systemImage: systemImage) }
     }
 }

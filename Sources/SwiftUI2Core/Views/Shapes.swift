@@ -388,10 +388,11 @@ public struct _ShapeView<S: Shape, Style: ShapeStyle>: View {
             case .color(let c): color = c
             case .gradient(let g): gradient = g
             }
+            let shadow = shapeView.style._resolveShadow(in: environment.value)
             if let stroke = shapeView.stroke {
-                return .shape(ResolvedShape(path: path, fill: nil, stroke: color, lineWidth: stroke.lineWidth, gradient: gradient, strokeStyle: stroke, pathSize: size))
+                return .shape(ResolvedShape(path: path, fill: nil, stroke: color, lineWidth: stroke.lineWidth, gradient: gradient, strokeStyle: stroke, shadow: shadow, pathSize: size))
             }
-            return .shape(ResolvedShape(path: path, fill: color, stroke: nil, lineWidth: 0, gradient: gradient, pathSize: size))
+            return .shape(ResolvedShape(path: path, fill: color, stroke: nil, lineWidth: 0, gradient: gradient, shadow: shadow, pathSize: size))
         }
         inputs.makePlatformNode(content: content)
         let tracer = inputs.tracer

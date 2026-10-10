@@ -62,6 +62,8 @@ public struct ResolvedToggle: Equatable, Sendable {
     public var isOn: Bool
     public var style: ToggleStyleKind
     public var isEnabled: Bool
+    /// A checkbox showing the mixed state (`Toggle(sources:isOn:)`).
+    public var isMixed = false
 }
 
 public struct ResolvedTextField: Equatable, Sendable {
@@ -160,6 +162,8 @@ public struct RenderActions {
     public var setBool: (@MainActor (Bool) -> Void)?
     public var setText: (@MainActor (String) -> Void)?
     public var setDouble: (@MainActor (Double) -> Void)?
+    /// A continuous control's interaction began (true) or ended (false).
+    public var editingChanged: (@MainActor (Bool) -> Void)?
     public var setDate: (@MainActor (Date) -> Void)?
     public var setColor: (@MainActor (Color.Resolved) -> Void)?
     /// Press state for tap targets (custom ButtonStyles).
