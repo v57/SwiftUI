@@ -368,8 +368,6 @@ extension View {
         toolbar(content: content)
     }
 
-    public func toolbar(_ visibility: Visibility, for bars: ToolbarPlacement...) -> some View { self }
-    public func toolbarBackground(_ visibility: Visibility, for bars: ToolbarPlacement...) -> some View { self }
     public func toolbarRole(_ role: ToolbarRole) -> some View { self }
     public func toolbarTitleDisplayMode(_ mode: ToolbarTitleDisplayMode) -> some View { self }
 }

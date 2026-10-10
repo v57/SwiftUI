@@ -117,3 +117,19 @@ struct TestHostWindow {
         host = TestHost(graph: { backend in scene.makeGraphForValue(backend, AnyHashable(_DocumentWindowValue(handle: handle))) })
     }
 }
+
+@MainActor
+@Suite(.serialized)
+struct WindowConfigurationTests {
+    @Test func innerViewsOverrideWindowBehavior() {
+        let host = TestHost(VStack {
+            Text("a").windowResizeBehavior(.enabled)
+            Text("b").toolbar(.hidden, for: .windowToolbar)
+        }.windowResizeBehavior(.disabled).windowFullScreenBehavior(.disabled))
+        host.flush()
+        let configuration = host.graph.windowConfiguration
+        #expect(configuration.resizeBehavior == .enabled)
+        #expect(configuration.fullScreenBehavior == .disabled)
+        #expect(configuration.isToolbarHidden == true)
+    }
+}

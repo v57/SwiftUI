@@ -187,6 +187,10 @@ open class GraphHostingView: NSView {
 
     open override var acceptsFirstResponder: Bool { true }
 
+    /// Click-through for inactive windows (`allowsWindowActivationEvents`).
+    var acceptsFirstMouseEvents = false
+    open override func acceptsFirstMouse(for event: NSEvent?) -> Bool { acceptsFirstMouseEvents || super.acceptsFirstMouse(for: event) }
+
     open override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         graph?.setProposedSize(ProposedViewSize(newSize))
@@ -385,6 +389,11 @@ public enum AppKitAppRunner {
         }
         window.contentView = host
         window.initialFirstResponder = host
+        let sceneResizable = window.styleMask.contains(.resizable)
+        host.graph.onWindowConfigurationChange = { [weak window, weak host] configuration in
+            guard let window, let host else { return }
+            AppKitAppRunner.apply(configuration, to: window, host: host, sceneResizable: sceneResizable)
+        }
         let toolbarController = WindowToolbarController(window: window, host: host)
         toolbarControllers.append(toolbarController)
         host.graph.onToolbarChange = { [weak toolbarController] toolbar in toolbarController?.update(toolbar) }

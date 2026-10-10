@@ -51,6 +51,16 @@ class FlippedView: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// Click-through follows the hosting view (`allowsWindowActivationEvents`).
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        var view = superview
+        while let current = view {
+            if let host = current as? GraphHostingView { return host.acceptsFirstMouseEvents }
+            view = current.superview
+        }
+        return super.acceptsFirstMouse(for: event)
+    }
+
     // MARK: Accessibility
 
     /// Properties from accessibility modifiers (nil: the view's default accessibility).

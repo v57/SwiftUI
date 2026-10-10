@@ -13,7 +13,6 @@ public enum SearchPresentationToolbarBehavior: Sendable { case automatic, avoidH
 public enum PresentationSizing: Sendable { case automatic, form, page, fitted }
 public enum ContentMarginPlacement: Sendable { case automatic, scrollContent, scrollIndicators }
 public enum DialogSeverity: Sendable { case automatic, critical, standard }
-public enum WindowInteractionBehavior: Sendable { case automatic, enabled, disabled }
 public enum HoverEffect: Sendable { case automatic, highlight, lift }
 public enum BadgeProminence: Sendable { case standard, increased, decreased }
 public enum ButtonBorderShape: Sendable {
@@ -32,8 +31,6 @@ extension View {
     public func searchSuggestions<S: View>(@ViewBuilder _ suggestions: () -> S) -> some View { self }
     public func searchScopes<V: Hashable, S: View>(_ scope: Binding<V>, @ViewBuilder scopes: () -> S) -> some View { self }
     public func searchCompletion<S: StringProtocol>(_ completion: S) -> some View { self }
-    public func toolbarBackgroundVisibility(_ visibility: Visibility, for bars: ToolbarPlacement...) -> some View { self }
-    public func toolbarVisibility(_ visibility: Visibility, for bars: ToolbarPlacement...) -> some View { self }
     public func presentationBackground<S: ShapeStyle>(_ style: S) -> some View { self }
     public func presentationCornerRadius(_ radius: CGFloat?) -> some View { self }
     public func presentationSizing(_ sizing: PresentationSizing) -> some View { self }
@@ -44,9 +41,6 @@ extension View {
     public func fileDialogDefaultDirectory(_ url: URL?) -> some View { self }
     public func fileDialogMessage(_ message: Text?) -> some View { self }
     public func fileDialogConfirmationLabel(_ label: Text?) -> some View { self }
-    public func windowDismissBehavior(_ behavior: WindowInteractionBehavior) -> some View { self }
-    public func windowMinimizeBehavior(_ behavior: WindowInteractionBehavior) -> some View { self }
-    public func windowResizeBehavior(_ behavior: WindowInteractionBehavior) -> some View { self }
     public func toolbarTitleMenu<C: View>(@ViewBuilder content: () -> C) -> some View { self }
     public func labelsVisibility(_ visibility: Visibility) -> some View { environment(\.labelsHidden, visibility == .hidden) }
     public func allowsTightening(_ flag: Bool) -> some View { self }
@@ -62,7 +56,6 @@ extension View {
     public func springLoadingBehavior(_ behavior: SpringLoadingBehavior) -> some View { self }
     public func textScale(_ scale: TextScale, isEnabled: Bool = true) -> some View { self }
     public func horizontalRadioGroupLayout() -> some View { self }
-    public func navigationDocument(_ url: URL) -> some View { self }
     public func scrollEdgeEffectStyle(_ style: ScrollEdgeEffectStyle?, for edges: Edge.Set) -> some View { self }
     public func backgroundExtensionEffect() -> some View { self }
     public func flipsForRightToLeftLayoutDirection(_ enabled: Bool) -> some View { self }

@@ -98,7 +98,7 @@ public final class ViewGraph: AttributeGraphDelegate {
             modifierContent: nil
         )
         presentations = PresentationRegistry(subgraph: rootSubgraph)
-        rootOutputs = Root._makeView(view: _GraphValue(root), inputs: inputs.requesting(NavigationTitleKey.self).requesting(NavigationSubtitleKey.self).requesting(ToolbarItemsKey.self).requesting(NavigationChromeKey.self))
+        rootOutputs = Root._makeView(view: _GraphValue(root), inputs: inputs.requesting(NavigationTitleKey.self).requesting(NavigationSubtitleKey.self).requesting(ToolbarItemsKey.self).requesting(NavigationChromeKey.self).requesting(WindowConfigurationKey.self))
         let titleAttribute = rootOutputs.preferences[NavigationTitleKey.self]
         let titleObserver = Attribute<String?>(rootSubgraph, isEqual: { $0 == $1 }) { titleAttribute?.value?.plainString }
         titleObserver.onChange = { [unowned self] title in
@@ -123,6 +123,14 @@ public final class ViewGraph: AttributeGraphDelegate {
             enqueueAfterUpdate { [unowned self] in windowToolbar = toolbar }
         }
         toolbarObserver.isEager = true
+
+        // Window behavior set by views (`windowResizeBehavior`, `navigationDocument`, ...).
+        let windowAttribute = rootOutputs.preferences[WindowConfigurationKey.self]
+        let windowObserver = Attribute<WindowConfiguration>(rootSubgraph, isEqual: { $0 == $1 }) { windowAttribute?.value ?? WindowConfiguration() }
+        windowObserver.onChange = { [unowned self] configuration in
+            enqueueAfterUpdate { [unowned self] in windowConfiguration = configuration }
+        }
+        windowObserver.isEager = true
 
         // Presentation layer (sheets, alerts, popovers, menus) above the root, covering the window.
         let layerGeometry = Attribute<ViewGeometry>(rootSubgraph, isEqual: { $0 == $1 })
@@ -247,6 +255,15 @@ public final class ViewGraph: AttributeGraphDelegate {
 
     public private(set) var windowToolbar = WindowToolbar() {
         didSet { if windowToolbar != oldValue { onToolbarChange?(windowToolbar) } }
+    }
+
+    /// Called when views change window behavior (resizing, represented document, background, ...).
+    public var onWindowConfigurationChange: ((WindowConfiguration) -> Void)? {
+        didSet { onWindowConfigurationChange?(windowConfiguration) }
+    }
+
+    public private(set) var windowConfiguration = WindowConfiguration() {
+        didSet { if windowConfiguration != oldValue { onWindowConfigurationChange?(windowConfiguration) } }
     }
 
     /// Called with the root's `.navigationSubtitle` (the window subtitle).

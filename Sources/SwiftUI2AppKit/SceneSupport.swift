@@ -137,12 +137,44 @@ extension AppKitAppRunner {
             if !alive { timer.invalidate() }
         }
         RunLoop.main.add(timer, forMode: .common)
-        let delegate = DocumentWindowDelegate()
-        documentDelegates[ObjectIdentifier(window)] = delegate
-        window.delegate = delegate
+        sceneDelegate(for: window).isDocument = true
     }
 
-    nonisolated(unsafe) static var documentDelegates: [ObjectIdentifier: DocumentWindowDelegate] = [:]
+    nonisolated(unsafe) static var sceneDelegates: [ObjectIdentifier: SceneWindowDelegate] = [:]
+
+    /// The window's delegate (created on first use).
+    static func sceneDelegate(for window: NSWindow) -> SceneWindowDelegate {
+        if let existing = sceneDelegates[ObjectIdentifier(window)] { return existing }
+        let delegate = SceneWindowDelegate()
+        sceneDelegates[ObjectIdentifier(window)] = delegate
+        window.delegate = delegate
+        return delegate
+    }
+
+    /// Applies views' window behavior (`windowResizeBehavior`, `navigationDocument`, ...).
+    static func apply(_ configuration: WindowConfiguration, to window: NSWindow, host: GraphHostingView, sceneResizable: Bool) {
+        sceneDelegate(for: window).configuration = configuration
+        func set(_ mask: NSWindow.StyleMask, _ on: Bool) { if on { window.styleMask.insert(mask) } else { window.styleMask.remove(mask) } }
+        if window.styleMask.contains(.titled) {
+            set(.resizable, configuration.resizeBehavior == .disabled ? false : sceneResizable)
+            set(.miniaturizable, configuration.minimizeBehavior != .disabled)
+            set(.closable, configuration.dismissBehavior != .disabled)
+        }
+        switch configuration.fullScreenBehavior {
+        case .disabled:
+            window.collectionBehavior.remove(.fullScreenPrimary)
+            window.collectionBehavior.insert(.fullScreenNone)
+        case .enabled:
+            window.collectionBehavior.remove(.fullScreenNone)
+            window.collectionBehavior.insert(.fullScreenPrimary)
+        case .automatic: break
+        }
+        if let url = configuration.representedURL, documentHandle(of: window) == nil { window.representedURL = url }
+        if let background = configuration.background { window.backgroundColor = NSColor(background) }
+        if let hidden = configuration.isToolbarHidden { window.toolbar?.isVisible = !hidden }
+        if let hidden = configuration.isToolbarBackgroundHidden { window.titlebarAppearsTransparent = hidden }
+        host.acceptsFirstMouseEvents = configuration.allowsActivationEvents ?? false
+    }
 
     static func updateDocumentWindow(_ window: NSWindow?) {
         guard let window, let handle = documentHandle(of: window) else { return }
@@ -153,11 +185,27 @@ extension AppKitAppRunner {
     }
 }
 
-/// Asks to save edited documents before their window closes.
-final class DocumentWindowDelegate: NSObject, NSWindowDelegate {
+/// Window delegate of scene windows: document save prompts, full-screen options and live resize.
+final class SceneWindowDelegate: NSObject, NSWindowDelegate {
+    var isDocument = false
+    nonisolated(unsafe) var configuration = WindowConfiguration()
+
+    func windowWillStartLiveResize(_ notification: Notification) {
+        MainActor.assumeIsolated { for observer in configuration.resizeObservers { observer.notify(true) } }
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        MainActor.assumeIsolated { for observer in configuration.resizeObservers { observer.notify(false) } }
+    }
+
+    func window(_ window: NSWindow, willUseFullScreenPresentationOptions proposedOptions: NSApplication.PresentationOptions = []) -> NSApplication.PresentationOptions {
+        guard configuration.toolbarFullScreenVisibility == .onHover else { return proposedOptions }
+        return proposedOptions.union([.autoHideToolbar, .autoHideMenuBar, .fullScreen])
+    }
+
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         MainActor.assumeIsolated {
-            guard let handle = AppKitAppRunner.documentHandle(of: sender), handle.isEdited else { return true }
+            guard isDocument, let handle = AppKitAppRunner.documentHandle(of: sender), handle.isEdited else { return true }
             let alert = NSAlert()
             alert.messageText = "Do you want to save the changes made to the document “\(sender.title)”?"
             alert.informativeText = "Your changes will be lost if you don’t save them."

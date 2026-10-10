@@ -84,6 +84,26 @@ struct AppKitBackendTests {
         #expect(host.supplementalTarget(forAction: Selector(("unknownAction:")), sender: nil) == nil)
     }
 
+    @Test func windowConfigurationAppliesToNativeWindows() throws {
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 300, height: 200), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: true)
+        let host = NSHostingView(rootView: Text("x")
+            .windowResizeBehavior(.disabled)
+            .windowMinimizeBehavior(.disabled)
+            .navigationDocument(URL(fileURLWithPath: "/tmp/doc.txt"))
+            .containerBackground(Color.red, for: .window)
+            .allowsWindowActivationEvents())
+        window.contentView = host
+        host.graph.update()
+        AppKitAppRunner.apply(host.graph.windowConfiguration, to: window, host: host, sceneResizable: true)
+        #expect(!window.styleMask.contains(.resizable))
+        #expect(!window.styleMask.contains(.miniaturizable))
+        #expect(window.styleMask.contains(.closable))
+        #expect(window.representedURL?.path == "/tmp/doc.txt")
+        #expect(host.acceptsFirstMouse(for: nil))
+        let red = try #require(window.backgroundColor.usingColorSpace(.sRGB))
+        #expect(red.redComponent > 0.9 && red.greenComponent < 0.3)
+    }
+
     @Test func textMeasurementMatchesDrawing() {
         let backend = AppKitBackend(rootView: NSView())
         let text = Text("Hello, world").resolve(in: EnvironmentValues())
