@@ -714,7 +714,15 @@ public struct Section<Parent: View, Content: View, Footer: View>: View {
             })
         }
         // Sections without a header are still separated (an empty spacer element).
-        if hasHeader { nodes.append(element(.header) { _ListSectionHeader(content: $0.header) }) } else { nodes.append(element(.sectionGap) { _ in EmptyView() }) }
+        if hasHeader {
+            if inputs.rawSectionHeaders {
+                nodes.append(element(.header) { $0.header })
+            } else {
+                nodes.append(element(.header) { _ListSectionHeader(content: $0.header) })
+            }
+        } else {
+            nodes.append(element(.sectionGap) { _ in EmptyView() })
+        }
         let rows = Content._makeViewList(view: view.project(inputs) { $0.content }, inputs: inputs).list
         nodes.append(.nested(.index(1), rows))
         if hasFooter { nodes.append(element(.footer) { $0.footer }) }

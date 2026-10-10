@@ -271,6 +271,8 @@ public protocol RenderBackend: PlatformServices {
     func writeToPasteboard(_ items: [Any])
     /// Plays haptic feedback.
     func performHapticFeedback(_ feedback: SensoryFeedback)
+    /// Decodes image data (PNG, JPEG, ...) into a platform image.
+    func decodeImage(_ data: Data, scale: CGFloat) -> PlatformImage?
     /// Called after the renderer applied a batch of changes (e.g. to refresh view masks).
     func didCommit()
     /// Applies `node.accessibility` to the node's view.
@@ -283,6 +285,7 @@ extension RenderBackend {
     public func share(_ items: [Any]) {}
     public func writeToPasteboard(_ items: [Any]) {}
     public func performHapticFeedback(_ feedback: SensoryFeedback) {}
+    public func decodeImage(_ data: Data, scale: CGFloat) -> PlatformImage? { nil }
     public func didCommit() {}
     public func updateAccessibility(of view: AnyObject, node: RenderNode) {}
     public func presentFileDialog(_ request: FileDialogRequest, completion: @escaping @MainActor ([URL]?) -> Void) {

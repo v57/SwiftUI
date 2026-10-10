@@ -195,6 +195,15 @@ public final class AppKitBackend: RenderBackend {
         }
     }
 
+    public func decodeImage(_ data: Data, scale: CGFloat) -> PlatformImage? {
+        guard let image = NSImage(data: data) else { return nil }
+        // Pixel-based size divided by the requested scale (like SwiftUI's AsyncImage).
+        if let rep = image.representations.first, rep.pixelsWide > 0, rep.pixelsHigh > 0 {
+            image.size = CGSize(width: CGFloat(rep.pixelsWide) / max(scale, 0.01), height: CGFloat(rep.pixelsHigh) / max(scale, 0.01))
+        }
+        return PlatformImage(object: image, size: image.size)
+    }
+
     public func performHapticFeedback(_ feedback: SensoryFeedback) {
         let pattern: NSHapticFeedbackManager.FeedbackPattern
         switch feedback.kind {

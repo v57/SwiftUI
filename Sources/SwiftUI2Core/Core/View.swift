@@ -172,6 +172,8 @@ public struct _ViewListInputs {
     var flattensSections = false
     /// Sections stay single (grouped) elements (Form).
     var groupsSections = false
+    /// With `flattensSections`: headers stay as written (Group(sections:)), not list-styled.
+    var rawSectionHeaders = false
 
     func with(path component: String) -> _ViewListInputs {
         var copy = self

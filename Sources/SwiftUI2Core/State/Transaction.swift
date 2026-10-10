@@ -171,8 +171,15 @@ public struct Transaction: @unchecked Sendable {
     public var disablesAnimations = false
     public var isContinuous = false
     var completions: [@MainActor () -> Void] = []
+    /// Custom values (`TransactionKey`, `@Entry` in `extension Transaction`).
+    var values: [ObjectIdentifier: Any] = [:]
 
     public init() {}
+
+    public subscript<Key: TransactionKey>(key: Key.Type) -> Key.Value {
+        get { values[ObjectIdentifier(key)] as? Key.Value ?? Key.defaultValue }
+        set { values[ObjectIdentifier(key)] = newValue }
+    }
     public init(animation: Animation?) { self.animation = animation }
 
     var isEmpty: Bool { animation == nil && !disablesAnimations && completions.isEmpty }

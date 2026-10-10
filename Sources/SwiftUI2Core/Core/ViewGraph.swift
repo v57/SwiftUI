@@ -63,6 +63,9 @@ public final class ViewGraph: AttributeGraphDelegate {
         rootEnvironment._share = ShareAction { [weak backend] items in backend?.share(items) }
         rootEnvironment._pasteboard = PasteboardWriter { [weak backend] items in backend?.writeToPasteboard(items) }
         rootEnvironment._haptics = HapticPerformer { [weak backend] feedback in backend?.performHapticFeedback(feedback) }
+        rootEnvironment._imageDecoder = ImageDecoder { [weak backend] data, scale in
+            backend?.decodeImage(data, scale: scale).map { Image(_platformImage: $0) }
+        }
         rootEnvironment._fileDialogs = FileDialogPresenter { [weak backend] request, completion in
             if let backend { backend.presentFileDialog(request, completion: completion) } else { completion(nil) }
         }

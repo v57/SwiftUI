@@ -272,6 +272,11 @@ extension ForEach: View where Content: View {
     public var body: Never { primitiveBody(Self.self) }
 
     public static func _makeViewList(view: _GraphValue<Self>, inputs: _ViewListInputs) -> _ViewListOutputs {
+        // ForEach(subviews:) / ForEach(sections:): the graph resolves the data itself.
+        if Data.self is _GraphResolvedForEachData.Type {
+            let make = AnyAttribute.withoutDependencies { (view.attribute.value.data as! _GraphResolvedForEachData)._make }
+            return make(inputs)
+        }
         let state = ForEachState<Data, ID>()
         let parent = inputs.subgraph
         let inputs = inputs.with(path: "ForEach")
