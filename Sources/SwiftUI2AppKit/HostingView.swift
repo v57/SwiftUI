@@ -245,6 +245,7 @@ open class GraphHostingView: NSView {
         }
         offscreenTimer?.invalidate()
         offscreenTimer = nil
+        FrameTrace.log("displayLink start")
         let link = displayLink(target: self, selector: #selector(displayLinkFired(_:)))
         link.add(to: .main, forMode: .common)
         displayLink = link
@@ -257,7 +258,7 @@ open class GraphHostingView: NSView {
             if graph.hasActiveAnimations { startDisplayLink() }
             return
         }
-        graph.renderAnimationFrame()
+        FrameTrace.measure("animationFrame(timer)") { graph.renderAnimationFrame() }
         if !graph.hasActiveAnimations {
             offscreenTimer?.invalidate()
             offscreenTimer = nil
@@ -277,8 +278,10 @@ open class GraphHostingView: NSView {
     }
 
     @objc private func displayLinkFired(_ link: CADisplayLink) {
-        graph.renderAnimationFrame()
+        FrameTrace.log("frame(link) target=\(String(format: "%.4f", link.targetTimestamp)) active=\(graph.hasActiveAnimations)")
+        FrameTrace.measure("animationFrame") { graph.renderAnimationFrame() }
         if !graph.hasActiveAnimations {
+            FrameTrace.log("displayLink stop")
             link.invalidate()
             displayLink = nil
         }
@@ -299,7 +302,7 @@ open class GraphHostingView: NSView {
     private func flush() {
         guard updateScheduled else { return }
         updateScheduled = false
-        graph.update()
+        FrameTrace.measure("update(runloop)") { graph.update() }
     }
 }
 

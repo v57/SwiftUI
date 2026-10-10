@@ -465,9 +465,11 @@ final class ShapeNodeView: FlippedView, PlatformNodeView {
 
     override func layout() {
         super.layout()
-        shapeLayer.frame = bounds
-        gradientLayer?.frame = bounds
-        maskLayer.frame = bounds
+        withoutImplicitAnimations {
+            shapeLayer.frame = bounds
+            gradientLayer?.frame = bounds
+            maskLayer.frame = bounds
+        }
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -1276,7 +1278,9 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
 
     override func mouseMoved(with event: NSEvent) {
         guard let hoverLocation = node?.actions.hoverLocation else { return super.mouseMoved(with: event) }
-        hoverLocation(convert(event.locationInWindow, from: nil))
+        let point = convert(event.locationInWindow, from: nil)
+        FrameTrace.log("mouseMoved event=\(String(format: "%.4f", event.timestamp)) at=(\(Int(point.x)),\(Int(point.y)))")
+        hoverLocation(point)
     }
 
     override func mouseExited(with event: NSEvent) {

@@ -20,6 +20,10 @@ public final class AppKitBackend: RenderBackend {
     // MARK: Rendering
 
     public func makeView(for node: RenderNode) -> AnyObject {
+        withoutImplicitAnimations { makeNodeView(for: node) }
+    }
+
+    private func makeNodeView(for node: RenderNode) -> AnyObject {
         let view: NSView & PlatformNodeView
         switch node.content {
         case .text: view = TextNodeView()
@@ -45,15 +49,15 @@ public final class AppKitBackend: RenderBackend {
     }
 
     public func updateContent(of view: AnyObject, node: RenderNode) {
-        (view as! PlatformNodeView).apply(node.content, backend: self)
+        withoutImplicitAnimations { (view as! PlatformNodeView).apply(node.content, backend: self) }
     }
 
     public func setFrame(of view: AnyObject, node: RenderNode) {
-        (view as! NSView).frame = node.frame
+        withoutImplicitAnimations { (view as! NSView).frame = node.frame }
     }
 
     public func setPresentation(of view: AnyObject, node: RenderNode) {
-        (view as? FlippedView)?.applyPresentation(node.presentation)
+        withoutImplicitAnimations { (view as? FlippedView)?.applyPresentation(node.presentation) }
     }
 
     /// Mask containers whose alpha mask is re-rendered after each commit.
@@ -64,10 +68,16 @@ public final class AppKitBackend: RenderBackend {
     }
 
     public func didCommit() {
-        for view in maskedViews.allObjects { view.refreshMask() }
+        withoutImplicitAnimations {
+            for view in maskedViews.allObjects { view.refreshMask() }
+        }
     }
 
     public func setChildren(of view: AnyObject, node: RenderNode, to children: [AnyObject]) {
+        withoutImplicitAnimations { setNodeChildren(of: view, node: node, to: children) }
+    }
+
+    private func setNodeChildren(of view: AnyObject, node: RenderNode, to children: [AnyObject]) {
         if let effect = view as? EffectNodeView, case .effect(.mask) = node.content {
             // The mask source stays out of the visible hierarchy; it is drawn into the layer mask.
             let views = children.map { $0 as! NSView }
