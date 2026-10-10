@@ -21,6 +21,8 @@ public struct ResolvedImage: Hashable, Sendable {
     public var scale: Image.Scale = .medium
     /// Variable-value symbols: layers above the value are drawn dimmed (0...1).
     public var variableValue: Double?
+    /// Drawn as a placeholder shape (`redacted(reason:)`), in this color.
+    public var redactedColor: Color.Resolved? = nil
 }
 
 /// An opaque platform image with its intrinsic size (compared by identity).
@@ -99,7 +101,9 @@ public struct Image: Equatable {
             let missing = environment.symbolVariants.names.filter { !name.split(separator: ".").contains(Substring($0)) }
             if !missing.isEmpty { source = .system(([name] + missing).joined(separator: ".")) }
         }
-        return ResolvedImage(source: source, isResizable: isResizable, pointSize: font.size, weight: font.weight, tint: tint, scale: environment.imageScale, variableValue: variableValue)
+        var resolved = ResolvedImage(source: source, isResizable: isResizable, pointSize: font.size, weight: font.weight, tint: tint, scale: environment.imageScale, variableValue: variableValue)
+        if environment._isRedacted { resolved.redactedColor = ForegroundStyle()._resolveColor(in: environment) }
+        return resolved
     }
 }
 

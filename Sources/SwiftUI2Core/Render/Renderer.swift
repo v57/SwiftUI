@@ -533,6 +533,7 @@ extension RenderContent {
         case let (.effect(x), .effect(y)):
             switch (x, y) {
             case (.opacity, .opacity), (.transform, .transform), (.clip, .clip), (.shadow, .shadow): return true
+            case let (.colorFilter(f0), .colorFilter(f1)): return ColorFilter.interpolate(f0, f1, 0) != nil
             default: return false
             }
         default: return false
@@ -570,6 +571,8 @@ extension RenderContent {
                 return .effect(.clip(.interpolate(p0, p1, t)))
             case let (.shadow(s0), .shadow(s1)):
                 return .effect(.shadow(ResolvedShadow.interpolate(s0, s1, t)))
+            case let (.colorFilter(f0), .colorFilter(f1)):
+                return .effect(.colorFilter(ColorFilter.interpolate(f0, f1, t) ?? f1))
             default:
                 return b
             }

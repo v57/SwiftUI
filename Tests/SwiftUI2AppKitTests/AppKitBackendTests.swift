@@ -51,6 +51,25 @@ struct AppKitBackendTests {
         })
     }
 
+    @Test func colorEffectsAndTransformsReachTheLayers() throws {
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 300, height: 200), styleMask: [.titled], backing: .buffered, defer: true)
+        let host = NSHostingView(rootView: VStack {
+            Color.red.frame(width: 20, height: 20).grayscale(1)
+            Color.blue.frame(width: 20, height: 20).blendMode(.multiply)
+            Color.green.frame(width: 20, height: 20).scaleEffect(0.5, anchor: .topLeading)
+        })
+        window.contentView = host
+        host.frame = CGRect(x: 0, y: 0, width: 300, height: 200)
+        host.layoutSubtreeIfNeeded()
+        let effects = descendants(of: host).compactMap { $0 as? EffectNodeView }
+        let filtered = try #require(effects.first { ($0.layer?.filters?.count ?? 0) > 0 })
+        #expect((filtered.layer?.filters?.first as? CIFilter)?.name == "CIColorControls")
+        #expect(effects.contains { ($0.layer?.compositingFilter as? CIFilter)?.name == "CIMultiplyBlendMode" })
+        // Transforms survive AppKit's layer geometry sync (frame set after the effect).
+        let scaled = try #require(effects.first { $0.layer.map { !CATransform3DIsIdentity($0.transform) } ?? false })
+        #expect(scaled.layer?.transform.m11 == 0.5)
+    }
+
     @Test func accessibilityReachesNativeViews() throws {
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 300, height: 200), styleMask: [.titled], backing: .buffered, defer: true)
         var pressed = 0

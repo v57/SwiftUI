@@ -225,8 +225,29 @@ final class TextNodeView: FlippedView, PlatformNodeView {
             fittedWidth = bounds.width
             string = AppKitText.attributedString(resolved.scaled(by: AppKitText.fittingScale(resolved, width: bounds.width)), placeholders: true)
         }
+        if let resolved, resolved.isRedacted { return drawPlaceholders(resolved) }
         string.draw(with: bounds, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         drawInlineImages()
+    }
+
+    /// Redacted text: a rounded bar per line, in the text color (faded).
+    private func drawPlaceholders(_ text: ResolvedText) {
+        let storage = NSTextStorage(attributedString: string)
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(size: CGSize(width: bounds.width, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        layout.addTextContainer(container)
+        storage.addLayoutManager(layout)
+        let font = AppKitText.font(text.font)
+        NSColor(text.color).withAlphaComponent(CGFloat(text.color.opacity) * 0.16).setFill()
+        layout.enumerateLineFragments(forGlyphRange: layout.glyphRange(for: container)) { _, used, _, _, _ in
+            guard used.minY < self.bounds.height else { return }
+            // Cap-height bars, centered on the line (as SwiftUI draws them).
+            let height = (font.capHeight * 2).rounded(.up) / 2
+            let scale = self.window?.backingScaleFactor ?? 2
+            let bar = CGRect(x: used.minX, y: ((used.midY - height / 2) * scale).rounded() / scale, width: used.width, height: height)
+            NSBezierPath(roundedRect: bar, xRadius: height / 4, yRadius: height / 4).fill()
+        }
     }
 
     /// Draws inline images over their zero-height placeholders, on the line's baseline.
@@ -436,6 +457,21 @@ final class ImageNodeView: FlippedView, PlatformNodeView {
         imageView.imageScaling = image.isResizable ? .scaleAxesIndependently : .scaleProportionallyUpOrDown
         imageView.contentTintColor = image.tint.map { NSColor($0) }
         imageView.frame = bounds
+        redactedColor = image.redactedColor
+        imageView.isHidden = redactedColor != nil
+        needsDisplay = true
+    }
+
+    private var redactedColor: Color.Resolved?
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let redactedColor else { return }
+        NSColor(redactedColor).withAlphaComponent(CGFloat(redactedColor.opacity) * 0.16).setFill()
+        // A square of the image's smaller side, centered.
+        let side = min(bounds.width, bounds.height)
+        let square = CGRect(x: bounds.midX - side / 2, y: bounds.midY - side / 2, width: side, height: side)
+        let radius = side / 6
+        NSBezierPath(roundedRect: square, xRadius: radius, yRadius: radius).fill()
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -957,6 +993,8 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
         layer?.shadowOpacity = 0
         var geometry = EffectGeometry.identity
         defer { effectGeometry = geometry }
+        if layer?.filters != nil { layer?.filters = nil }
+        if layer?.compositingFilter != nil { layer?.compositingFilter = nil }
         isTapTarget = false
         isMaskContainer = false
         isFocusable = false
@@ -1004,6 +1042,12 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
             geometry = .projection(matrix)
         case let .transform(offset, scale, rotation, anchor):
             geometry = .anchored(offset: offset, scale: scale, rotationDegrees: rotation, anchor: anchor)
+        case let .colorFilter(filter):
+            layerUsesCoreImageFilters = true
+            layer?.filters = AppKitFilters.filters(for: filter)
+        case let .blendMode(mode):
+            layerUsesCoreImageFilters = true
+            layer?.compositingFilter = AppKitFilters.compositingFilter(for: mode)
         }
     }
 
@@ -1257,6 +1301,79 @@ final class CanvasNodeView: FlippedView, PlatformNodeView {
 #endif
 
 #if canImport(AppKit)
+/// Core Image filters for color effects and blend modes.
+enum AppKitFilters {
+    static func filters(for filter: ColorFilter) -> [CIFilter] {
+        switch filter {
+        case .grayscale(let amount):
+            return [controls(saturation: max(0, 1 - amount))]
+        case .saturation(let amount):
+            return [controls(saturation: amount)]
+        case .brightness(let amount):
+            return [controls(brightness: amount)]
+        case .contrast(let amount):
+            return [controls(contrast: amount)]
+        case .hueRotation(let radians):
+            let hue = CIFilter(name: "CIHueAdjust")!
+            hue.setValue(radians, forKey: kCIInputAngleKey)
+            return [hue]
+        case .invert:
+            return [CIFilter(name: "CIColorInvert")!]
+        case .multiply(let color):
+            let matrix = CIFilter(name: "CIColorMatrix")!
+            matrix.setValue(CIVector(x: CGFloat(color.red), y: 0, z: 0, w: 0), forKey: "inputRVector")
+            matrix.setValue(CIVector(x: 0, y: CGFloat(color.green), z: 0, w: 0), forKey: "inputGVector")
+            matrix.setValue(CIVector(x: 0, y: 0, z: CGFloat(color.blue), w: 0), forKey: "inputBVector")
+            matrix.setValue(CIVector(x: 0, y: 0, z: 0, w: CGFloat(color.opacity)), forKey: "inputAVector")
+            return [matrix]
+        case .luminanceToAlpha:
+            // Black, with the luminance as alpha.
+            let mask = CIFilter(name: "CIMaskToAlpha")!
+            let black = CIFilter(name: "CIColorMatrix")!
+            black.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputRVector")
+            black.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputGVector")
+            black.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputBVector")
+            return [mask, black]
+        }
+    }
+
+    private static func controls(saturation: Double = 1, brightness: Double = 0, contrast: Double = 1) -> CIFilter {
+        let filter = CIFilter(name: "CIColorControls")!
+        filter.setValue(saturation, forKey: kCIInputSaturationKey)
+        filter.setValue(brightness, forKey: kCIInputBrightnessKey)
+        filter.setValue(contrast, forKey: kCIInputContrastKey)
+        return filter
+    }
+
+    static func compositingFilter(for mode: BlendMode) -> Any? {
+        let name: String
+        switch mode {
+        case .normal: return nil
+        case .multiply: name = "CIMultiplyBlendMode"
+        case .screen: name = "CIScreenBlendMode"
+        case .overlay: name = "CIOverlayBlendMode"
+        case .darken: name = "CIDarkenBlendMode"
+        case .lighten: name = "CILightenBlendMode"
+        case .colorDodge: name = "CIColorDodgeBlendMode"
+        case .colorBurn: name = "CIColorBurnBlendMode"
+        case .softLight: name = "CISoftLightBlendMode"
+        case .hardLight: name = "CIHardLightBlendMode"
+        case .difference: name = "CIDifferenceBlendMode"
+        case .exclusion: name = "CIExclusionBlendMode"
+        case .hue: name = "CIHueBlendMode"
+        case .saturation: name = "CISaturationBlendMode"
+        case .color: name = "CIColorBlendMode"
+        case .luminosity: name = "CILuminosityBlendMode"
+        case .sourceAtop: name = "CISourceAtopCompositing"
+        case .destinationOver: name = "CISourceOverCompositing"
+        case .destinationOut: name = "CISourceOutCompositing"
+        case .plusDarker: name = "CILinearBurnBlendMode"
+        case .plusLighter: name = "CIAdditionCompositing"
+        }
+        return CIFilter(name: name)
+    }
+}
+
 extension CATransform3D {
     /// The z = 0 plane transform of a projection (z passes through unchanged).
     init(_ m: ProjectionTransform) {

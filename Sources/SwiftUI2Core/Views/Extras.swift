@@ -302,22 +302,9 @@ extension View {
         _PhaseAnimatorView(base: self, phases: Array(phases), trigger: trigger, loops: false, content: content, animation: animation)
     }
 
-    // Visual filters require compositing support (excluded with blur/shaders); accepted for
-    // source compatibility.
-    public func grayscale(_ amount: Double) -> some View { self }
-    public func saturation(_ amount: Double) -> some View { self }
-    public func brightness(_ amount: Double) -> some View { self }
-    public func contrast(_ amount: Double) -> some View { self }
-    public func hueRotation(_ angle: Angle) -> some View { self }
-    public func colorInvert() -> some View { self }
-    public func colorMultiply(_ color: Color) -> some View { self }
-    public func luminanceToAlpha() -> some View { self }
+    // Blur needs a platform blur filter (excluded from this implementation, like shaders).
     public func blur(radius: CGFloat, opaque: Bool = false) -> some View { self }
-    public func blendMode(_ mode: BlendMode) -> some View { self }
     public func contentTransition(_ transition: ContentTransition) -> some View { self }
-    public func redacted(reason: RedactionReasons) -> some View { opacity(reason.isEmpty ? 1 : 0.4) }
-    public func unredacted() -> some View { self }
-    public func privacySensitive(_ sensitive: Bool = true) -> some View { self }
     public func dynamicTypeSize<T>(_ size: T) -> some View { self }
     public func monospaced(_ isActive: Bool = true) -> some View {
         transformEnvironment(\.font) { font in if isActive { font = (font ?? .body).monospaced() } }
@@ -328,7 +315,7 @@ extension View {
 }
 
 public enum HorizontalEdge: Int8, Hashable, Sendable { case leading, trailing }
-public enum BlendMode: Sendable { case normal, multiply, screen, overlay, darken, lighten, colorDodge, colorBurn, softLight, hardLight, difference, exclusion, hue, saturation, color, luminosity, sourceAtop, destinationOver, destinationOut, plusDarker, plusLighter }
+public enum BlendMode: Hashable, Sendable { case normal, multiply, screen, overlay, darken, lighten, colorDodge, colorBurn, softLight, hardLight, difference, exclusion, hue, saturation, color, luminosity, sourceAtop, destinationOver, destinationOut, plusDarker, plusLighter }
 public struct ContentTransition: Sendable {
     public static let identity = ContentTransition()
     public static let opacity = ContentTransition()

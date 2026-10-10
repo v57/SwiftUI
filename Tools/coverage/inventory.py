@@ -42,10 +42,24 @@ src = ''
 for f in glob.glob('' + ROOT + '/Sources/**/*.swift', recursive=True):
     src += open(f).read()
 have_funcs = set(re.findall(r'func (\w+)', src))
-# A modifier is a stub when every definition of it just returns `self` (or `modifier(EmptyModifier())`).
+# A modifier is a stub when every definition of it inside `extension View` just returns `self`.
+def balanced(text, i):
+    d = 0
+    for j in range(i, len(text)):
+        if text[j] == '{': d += 1
+        elif text[j] == '}':
+            d -= 1
+            if d == 0: return j
+    return len(text)
 defs = {}
-for m in re.finditer(r'func (\w+)\b[^{\n]*\{([^\n]*)', src):
-    defs.setdefault(m.group(1), []).append(m.group(2).strip())
+for f in glob.glob(ROOT + '/Sources/SwiftUI2*/**/*.swift', recursive=True):
+    text = open(f).read()
+    spans = []
+    for m in re.finditer(r'^\s*(?:@\w+\s+)*(?:public\s+)?extension\s+(?:SwiftUI2Core\.)?View\b[^{]*\{', text, re.M):
+        spans.append((m.end(), balanced(text, m.end() - 1)))
+    for m in re.finditer(r'func (\w+)\b[^{\n]*\{([^\n]*)', text):
+        if any(a <= m.start() < b for a, b in spans):
+            defs.setdefault(m.group(1), []).append(m.group(2).strip())
 stubs = {n for n, bodies in defs.items() if bodies and all(b in ('self }', 'self}') for b in bodies)}
 have_types = set(re.findall(r'(?:struct|class|enum|protocol|typealias) (\w+)', src))
 def report(title, d, have):

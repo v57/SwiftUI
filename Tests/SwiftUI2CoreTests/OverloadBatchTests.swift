@@ -107,4 +107,37 @@ struct OverloadBatchTests {
         host.flush()
         #expect(host.texts.contains("y 20"))
     }
+
+    @Test func colorEffectsAnimateAndRedactionMarksContent() {
+        let model = SlideModel()
+        struct Screen: View {
+            let model: SlideModel
+            var body: some View {
+                VStack {
+                    Color.red.frame(width: 10, height: 10).grayscale(model.amount / 100)
+                    Group {
+                        Text("Secret")
+                        Text("Shown").unredacted()
+                        Image(systemName: "star")
+                    }
+                    .redacted(reason: .placeholder)
+                }
+            }
+        }
+        let host = TestHost(Screen(model: model))
+        func grayscale() -> Double? {
+            host.allViews.lazy.compactMap { if case .effect(.colorFilter(.grayscale(let a))) = $0.content { return a } else { return nil } }.first
+        }
+        #expect(grayscale() == 0)
+        withAnimation(.linear(duration: 1)) { model.amount = 100 }
+        host.flush()
+        host.advance(by: 0.5)
+        let mid = grayscale() ?? -1
+        #expect(mid > 0.3 && mid < 0.7)
+        let texts: [ResolvedText] = host.allViews.compactMap { if case .text(let t) = $0.content { return t } else { return nil } }
+        #expect(texts.first { $0.string == "Secret" }?.isRedacted == true)
+        #expect(texts.first { $0.string == "Shown" }?.isRedacted == false)
+        let image: ResolvedImage? = host.allViews.lazy.compactMap { if case .image(let i) = $0.content { return i } else { return nil } }.first
+        #expect(image?.redactedColor != nil)
+    }
 }

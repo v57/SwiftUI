@@ -135,6 +135,10 @@ public enum DisplayEffect: Equatable, Sendable {
     case focusable(wantsFocus: Bool, showsFocusRing: Bool)
     /// Mouse pointer over the view (`pointerStyle`, `pointerVisibility`).
     case pointer(PointerStyle?, hidden: Bool)
+    /// A color filter on the view's rendering (`grayscale`, `saturation`, `colorInvert`, ...).
+    case colorFilter(ColorFilter)
+    /// How the view composites with what is behind it.
+    case blendMode(BlendMode)
 }
 
 public struct ResolvedShadow: Equatable, Sendable {
