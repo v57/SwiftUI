@@ -135,68 +135,130 @@ public final class RenderNode {
     }
 }
 
-/// One animation of a node's frame and content. An animation interrupted by a newer one keeps
-/// running underneath it: the newer one starts from the interrupted one's *moving* value, so
-/// motion (and velocity) stays continuous, like SwiftUI's additive/merging animations — e.g. a
-/// spring retargeted on every mouse move follows the pointer instead of restarting from rest.
+/// The running animations of a node's frame and content, combined additively like SwiftUI's:
+/// every animated change adds a layer that animates from the previous target to the new one,
+/// and earlier layers keep running. The presented value is
+/// `target − Σ (targetᵢ − targetᵢ₋₁)·(1 − progressᵢ)`, evaluated as an affine combination of the
+/// targets (so content only needs interpolation). Retargeting on every mouse move therefore
+/// keeps the motion's velocity instead of restarting from rest.
 @MainActor
 final class NodeAnimation {
-    var fromFrame: CGRect
-    var fromContent: RenderContent
-    /// The values this animation heads to (kept current while it is the node's top animation).
-    var toFrame: CGRect
-    var toContent: RenderContent
-    let animation: Animation
-    let start: Double
+    struct Layer {
+        var frame: CGRect
+        var content: RenderContent
+        let animation: Animation
+        let start: Double
+    }
+
+    private var baseFrame: CGRect
+    private var baseContent: RenderContent
+    private var layers: [Layer]
     var group: CompletionGroup?
-    /// The animation this one interrupted (its value is this one's starting point).
-    var previous: NodeAnimation?
+
+    /// The newest layer's target (kept current by non-animated retargets).
+    var toFrame: CGRect {
+        get { layers[layers.count - 1].frame }
+        set { layers[layers.count - 1].frame = newValue }
+    }
+    var toContent: RenderContent {
+        get { layers[layers.count - 1].content }
+        set { layers[layers.count - 1].content = newValue }
+    }
 
     init(fromFrame: CGRect, fromContent: RenderContent, toFrame: CGRect, toContent: RenderContent, animation: Animation, start: Double, group: CompletionGroup?, previous: NodeAnimation? = nil) {
-        self.fromFrame = fromFrame
-        self.fromContent = fromContent
-        self.toFrame = toFrame
-        self.toContent = toContent
-        self.animation = animation
-        self.start = start
-        self.group = group
-        self.previous = previous
-        trim()
-    }
-
-    /// Bounds the chain (rapid retargeting): the oldest animations are frozen at their value.
-    private func trim(depth: Int = 0) {
-        guard let previous else { return }
-        if depth >= 12 {
-            fromFrame = previous.frame(at: start)
-            fromContent = previous.content(at: start)
-            self.previous = nil
-        } else {
-            previous.trim(depth: depth + 1)
-        }
-    }
-
-    /// Samples the chain at `now`; drops interrupted animations that have finished.
-    func value(at now: Double) -> (frame: CGRect, content: RenderContent, finished: Bool) {
-        var from = (fromFrame, fromContent)
+        let layer = Layer(frame: toFrame, content: toContent, animation: animation, start: start)
         if let previous {
-            let underlying = previous.value(at: now)
-            if underlying.finished {
-                fromFrame = previous.toFrame
-                fromContent = previous.toContent
-                self.previous = nil
-                from = (fromFrame, fromContent)
-            } else {
-                from = (underlying.frame, underlying.content)
-            }
+            baseFrame = previous.baseFrame
+            baseContent = previous.baseContent
+            layers = previous.layers + [layer]
+        } else {
+            baseFrame = fromFrame
+            baseContent = fromContent
+            layers = [layer]
         }
-        let (progress, finished) = animation.sample(at: now - start)
-        if finished, previous == nil { return (toFrame, toContent, true) }
-        return (Renderer.lerp(from.0, toFrame, progress), RenderContent.interpolate(from.1, toContent, progress), false)
+        self.group = group
+        // Bound rapid retargeting: the oldest (nearly settled) layers complete at once.
+        while layers.count > 64 {
+            baseFrame = layers[0].frame
+            baseContent = layers[0].content
+            layers.removeFirst()
+        }
     }
 
-    private func frame(at now: Double) -> CGRect { value(at: now).frame }
-    private func content(at now: Double) -> RenderContent { value(at: now).content }
+    /// A non-animated change while animating applies at once: the frame shifts every layer by the
+    /// change (so running motion continues around it), new content replaces all layers' content.
+    func applyImmediately(frame: CGRect?, content: RenderContent?) {
+        if let frame {
+            let old = toFrame
+            let dx = frame.minX - old.minX, dy = frame.minY - old.minY
+            let dw = frame.width - old.width, dh = frame.height - old.height
+            func shift(_ rect: inout CGRect) {
+                rect.origin.x += dx; rect.origin.y += dy
+                rect.size.width += dw; rect.size.height += dh
+            }
+            shift(&baseFrame)
+            for index in layers.indices { shift(&layers[index].frame) }
+        }
+        if let content {
+            // Parts recomputed every frame (Animatable paths, geometry-effect projections) take
+            // the new value everywhere; the newest layer takes all of it.
+            baseContent = Self.merging(content, into: baseContent)
+            for index in layers.indices { layers[index].content = Self.merging(content, into: layers[index].content) }
+            toContent = content
+        }
+    }
+
+    private static func merging(_ new: RenderContent, into old: RenderContent) -> RenderContent {
+        switch (old, new) {
+        case let (.shape(previous), .shape(next)):
+            var shape = previous
+            shape.path = next.path
+            shape.pathSize = next.pathSize
+            return .shape(shape)
+        case (.effect(.projection), .effect(.projection)):
+            return new
+        default:
+            return old
+        }
+    }
+
+    /// Samples the animation at `now`; finished oldest layers fold into the base.
+    func value(at now: Double) -> (frame: CGRect, content: RenderContent, finished: Bool) {
+        var progress = layers.map { $0.animation.sample(at: now - $0.start) }
+        while let first = progress.first, first.finished {
+            baseFrame = layers[0].frame
+            baseContent = layers[0].content
+            layers.removeFirst()
+            progress.removeFirst()
+            if layers.isEmpty { return (baseFrame, baseContent, true) }
+        }
+        // Affine weights of base, target₁ … targetₙ: (1 − p₁), (pₖ − pₖ₊₁), pₙ.
+        let p = progress.map(\.progress)
+        var weights = [1 - p[0]]
+        for index in layers.indices {
+            weights.append(index + 1 < layers.count ? p[index] - p[index + 1] : p[index])
+        }
+        var frame = baseFrame
+        frame.origin.x *= weights[0]; frame.origin.y *= weights[0]
+        frame.size.width *= weights[0]; frame.size.height *= weights[0]
+        var content = baseContent
+        var total = weights[0]
+        for (index, layer) in layers.enumerated() {
+            let w = weights[index + 1]
+            frame.origin.x += layer.frame.origin.x * w
+            frame.origin.y += layer.frame.origin.y * w
+            frame.size.width += layer.frame.size.width * w
+            frame.size.height += layer.frame.size.height * w
+            let newTotal = total + w
+            if abs(newTotal) > 1e-9 {
+                content = RenderContent.interpolate(content, layer.content, w / newTotal)
+            } else {
+                content = layer.content
+            }
+            total = newTotal
+        }
+        return (frame, content, false)
+    }
 }
 
 struct TransitionAnimation {
@@ -431,9 +493,10 @@ public final class Renderer {
             if let animation = animation(for: node), created[ObjectIdentifier(node)] == nil {
                 let group = groupForCommit()
                 if node.animation?.group == nil { group?.remaining += 1 }
+                // Earlier animations keep running (non-interpolable content simply takes the
+                // newest value), so the frame keeps its motion.
                 let interrupted = node.animation
-                let canContinue = interrupted != nil && (!contentChanged || RenderContent.canInterpolate(node.content, node.targetContent))
-                node.animation = NodeAnimation(fromFrame: node.frame, fromContent: node.content, toFrame: node.targetFrame, toContent: node.targetContent, animation: animation, start: now, group: group ?? interrupted?.group, previous: canContinue ? interrupted : nil)
+                node.animation = NodeAnimation(fromFrame: node.frame, fromContent: node.content, toFrame: node.targetFrame, toContent: node.targetContent, animation: animation, start: now, group: group ?? interrupted?.group, previous: interrupted)
                 animating[ObjectIdentifier(node)] = node
                 if contentChanged, !RenderContent.canInterpolate(node.content, node.targetContent) {
                     node.content = node.targetContent
@@ -443,9 +506,8 @@ public final class Renderer {
                 }
             } else if let running = node.animation {
                 // A non-animated change during a running animation (e.g. an Animatable view's
-                // per-frame value) retargets it instead of cancelling it.
-                running.toFrame = node.targetFrame
-                running.toContent = node.targetContent
+                // per-frame value) applies at once without cancelling the animation.
+                running.applyImmediately(frame: frameChanged ? node.targetFrame : nil, content: contentChanged ? node.targetContent : nil)
                 if contentChanged, !RenderContent.canInterpolate(node.content, node.targetContent) {
                     node.content = node.targetContent
                     backend.updateContent(of: handle, node: node)
@@ -493,8 +555,6 @@ public final class Renderer {
             }
             var active = false
             if let running = node.animation {
-                running.toFrame = node.targetFrame
-                running.toContent = node.targetContent
                 let sample = running.value(at: now)
                 if sample.finished {
                     node.animation = nil
@@ -599,7 +659,7 @@ extension RenderContent {
         case let (.text(x), .text(y)): return x.string == y.string && x.font == y.font
         case let (.effect(x), .effect(y)):
             switch (x, y) {
-            case (.opacity, .opacity), (.transform, .transform), (.clip, .clip), (.shadow, .shadow): return true
+            case (.opacity, .opacity), (.transform, .transform), (.clip, .clip), (.shadow, .shadow), (.projection, .projection): return true
             case let (.colorFilter(f0), .colorFilter(f1)): return ColorFilter.interpolate(f0, f1, 0) != nil
             default: return false
             }
@@ -618,6 +678,7 @@ extension RenderContent {
             var shape = y
             if let f0 = x.fill, let f1 = y.fill { shape.fill = .interpolate(f0, f1, t) }
             if let s0 = x.stroke, let s1 = y.stroke { shape.stroke = .interpolate(s0, s1, t) }
+            if let g0 = x.gradient, let g1 = y.gradient { shape.gradient = .interpolate(g0, g1, t) }
             shape.lineWidth = lerp(x.lineWidth, y.lineWidth, t)
             return .shape(shape)
         case let (.text(x), .text(y)):
@@ -640,6 +701,12 @@ extension RenderContent {
                 return .effect(.shadow(ResolvedShadow.interpolate(s0, s1, t)))
             case let (.colorFilter(f0), .colorFilter(f1)):
                 return .effect(.colorFilter(ColorFilter.interpolate(f0, f1, t) ?? f1))
+            case let (.projection(m0), .projection(m1)):
+                var m = m1
+                m.m11 = lerp(m0.m11, m1.m11, t); m.m12 = lerp(m0.m12, m1.m12, t); m.m13 = lerp(m0.m13, m1.m13, t)
+                m.m21 = lerp(m0.m21, m1.m21, t); m.m22 = lerp(m0.m22, m1.m22, t); m.m23 = lerp(m0.m23, m1.m23, t)
+                m.m31 = lerp(m0.m31, m1.m31, t); m.m32 = lerp(m0.m32, m1.m32, t); m.m33 = lerp(m0.m33, m1.m33, t)
+                return .effect(.projection(m))
             default:
                 return b
             }

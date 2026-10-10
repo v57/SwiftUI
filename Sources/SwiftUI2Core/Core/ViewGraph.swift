@@ -220,6 +220,10 @@ public final class ViewGraph: AttributeGraphDelegate {
         guard !isTornDown else { return }
         let time = now
         if activeAnimators > 0 {
+            // State changed by events since the last update (e.g. a hover) is applied in its own
+            // update first, in its own transaction; advancing animators must not run inside that
+            // transaction, or their per-frame values would be animated again by the renderer.
+            if graph.hasPendingUpdates { update() }
             animationTime.setValue(time)
             update()
         }

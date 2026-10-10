@@ -1161,7 +1161,9 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
 
     func apply(_ content: RenderContent, backend: AppKitBackend) {
         baseAlpha = 1
-        layer?.mask = nil
+        // A mask container keeps its rendered mask until the commit refreshes it (dropping it
+        // here would show the unmasked content for a frame while the container animates).
+        if case .effect(.mask) = content {} else { layer?.mask = nil }
         layer?.masksToBounds = false
         layer?.shadowOpacity = 0
         var geometry = EffectGeometry.identity

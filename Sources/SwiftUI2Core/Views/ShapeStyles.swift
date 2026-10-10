@@ -21,6 +21,29 @@ public struct ResolvedGradient: Hashable, Sendable {
     public var kind: Kind
     public var stops: [Stop]
 
+    /// Interpolates matching gradients (same kind and stop count): points, radii, angles and stop
+    /// colors/locations; others jump to `b`.
+    static func interpolate(_ a: ResolvedGradient, _ b: ResolvedGradient, _ t: Double) -> ResolvedGradient {
+        guard a.stops.count == b.stops.count else { return b }
+        func mix(_ x: CGFloat, _ y: CGFloat) -> CGFloat { x + (y - x) * CGFloat(t) }
+        func point(_ p: UnitPoint, _ q: UnitPoint) -> UnitPoint { UnitPoint(x: mix(p.x, q.x), y: mix(p.y, q.y)) }
+        var result = b
+        switch (a.kind, b.kind) {
+        case let (.linear(s0, e0), .linear(s1, e1)):
+            result.kind = .linear(start: point(s0, s1), end: point(e0, e1))
+        case let (.radial(c0, r0, R0), .radial(c1, r1, R1)):
+            result.kind = .radial(center: point(c0, c1), startRadius: mix(r0, r1), endRadius: mix(R0, R1))
+        case let (.angular(c0, s0, e0), .angular(c1, s1, e1)):
+            result.kind = .angular(center: point(c0, c1), startAngle: s0 + (s1 - s0) * t, endAngle: e0 + (e1 - e0) * t)
+        case let (.elliptical(c0, s0, e0), .elliptical(c1, s1, e1)):
+            result.kind = .elliptical(center: point(c0, c1), startFraction: mix(s0, s1), endFraction: mix(e0, e1))
+        default:
+            return b
+        }
+        result.stops = zip(a.stops, b.stops).map { Stop(color: .interpolate($0.color, $1.color, t), location: mix($0.location, $1.location)) }
+        return result
+    }
+
     /// The average color, used where gradients can't be drawn (text).
     var averageColor: Color.Resolved {
         guard !stops.isEmpty else { return Color.Resolved(red: 0, green: 0, blue: 0, opacity: 0) }
