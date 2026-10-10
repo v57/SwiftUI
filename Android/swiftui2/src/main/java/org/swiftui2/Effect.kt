@@ -175,7 +175,11 @@ class EffectNode(host: HostView, id: Int) : NodeView(host, id, KIND_EFFECT) {
         return super.dispatchTouchEvent(event)
     }
 
+    /** The node has hover handlers (HostView feeds them from touches and pointer hover). */
+    val tracksHover get() = touchFlags and FLAG_HOVER != 0
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        val touchFlags = touchFlags and FLAG_HOVER.inv()
         if (touchFlags == 0 && !isFocusable) return false
         if (touchFlags == 0) {
             if (event.actionMasked == MotionEvent.ACTION_DOWN) requestFocus()
@@ -244,6 +248,7 @@ class EffectNode(host: HostView, id: Int) : NodeView(host, id, KIND_EFFECT) {
         const val FLAG_POINTER = 2
         const val FLAG_PRESSED = 4
         const val FLAG_SECONDARY = 8
+        const val FLAG_HOVER = 16
 
         /** Reads ByteWriter.effect. Values: opacity [o]; transform [dx, dy, sx, sy, deg, ax, ay];
          *  projection [9]; shadow [_, radius, dx, dy] + color in flags; focusable [wants, ring];

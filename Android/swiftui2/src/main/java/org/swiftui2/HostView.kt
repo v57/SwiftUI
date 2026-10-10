@@ -10,6 +10,7 @@ import android.net.Uri
 import android.util.SparseArray
 import android.view.Choreographer
 import android.view.HapticFeedbackConstants
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -148,6 +149,73 @@ class HostView(context: Context, scene: Int = -1) : ViewGroup(context), Choreogr
     override fun doFrame(frameTimeNanos: Long) {
         frameRequested = false
         if (host != 0L) Native.frame(host, frameTimeNanos)
+    }
+
+    // MARK: Hover
+
+    /** Nodes currently hovered, by the touch (or mouse/stylus) under them. */
+    private var hovered = emptyList<EffectNode>()
+    private var hoverSuppressed = false
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        // A touch platform has no hover: a finger down on views with hover handlers hovers them
+        // (like a pointer), so hover effects follow the touch. Touches are still dispatched as usual.
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> { hoverSuppressed = false; updateHover(event.x, event.y) }
+            MotionEvent.ACTION_MOVE -> if (!hoverSuppressed) updateHover(event.x, event.y)
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> endHover()
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
+    override fun dispatchHoverEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> { hoverSuppressed = false; updateHover(event.x, event.y) }
+            MotionEvent.ACTION_HOVER_EXIT -> endHover()
+        }
+        return super.dispatchHoverEvent(event)
+    }
+
+    /** Ends hovering until the next touch (e.g. the touch started scrolling). */
+    fun endHover() {
+        hoverSuppressed = true
+        for (node in hovered) {
+            event(node.nodeId, Events.HOVER_LOCATION)
+            event(node.nodeId, Events.HOVER, 0.0)
+        }
+        hovered = emptyList()
+    }
+
+    private fun updateHover(x: Float, y: Float) {
+        val found = ArrayList<Pair<EffectNode, FloatArray>>()
+        collectHovered(root, floatArrayOf(x - root.left, y - root.top), found)
+        val now = found.map { it.first }
+        for (node in hovered) if (node !in now) {
+            event(node.nodeId, Events.HOVER_LOCATION)
+            event(node.nodeId, Events.HOVER, 0.0)
+        }
+        for ((node, point) in found) {
+            if (node !in hovered) event(node.nodeId, Events.HOVER, 1.0)
+            event(node.nodeId, Events.HOVER_LOCATION, (point[0] / density).toDouble(), (point[1] / density).toDouble(), 1.0)
+        }
+        hovered = now
+    }
+
+    /** Hover-tracking nodes containing `point` (in `view`'s coordinates), with local points. */
+    private fun collectHovered(view: ViewGroup, point: FloatArray, into: MutableList<Pair<EffectNode, FloatArray>>) {
+        for (i in view.childCount - 1 downTo 0) {
+            val child = view.getChildAt(i) as? NodeView ?: continue
+            if (child.visibility != VISIBLE || child.alpha == 0f) continue
+            val local = floatArrayOf(point[0] + view.scrollX - child.left, point[1] + view.scrollY - child.top)
+            if (!child.matrix.isIdentity) {
+                val inverse = android.graphics.Matrix()
+                if (child.matrix.invert(inverse)) inverse.mapPoints(local)
+            }
+            val inside = local[0] >= 0 && local[1] >= 0 && local[0] < child.width && local[1] < child.height
+            if (inside && child is EffectNode && child.tracksHover) into += child to local.copyOf()
+            // Content can extend past a node's frame: descend regardless.
+            collectHovered(child, local, into)
+        }
     }
 
     fun event(node: Int, type: Int, a: Double = 0.0, b: Double = 0.0, c: Double = 0.0, text: String? = null) {

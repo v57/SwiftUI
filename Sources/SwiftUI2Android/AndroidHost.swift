@@ -98,6 +98,7 @@ final class AndroidHost {
         case primary = 1, setBool, setText, setDouble, editingChanged, pressed, submit = 8, focusChanged, secondaryClick
         case scrolled, scrollPhase, openURL, setDate, setColor
         case pointerBegan = 20, pointerMoved, pointerEnded, pointerCancelled
+        case hover = 24, hoverLocation
     }
 
     func handle(node id: Int32, type: Int32, a: Double, b: Double, c: Double, text: String?) {
@@ -129,6 +130,10 @@ final class AndroidHost {
             let argb = UInt32(truncatingIfNeeded: Int64(a))
             func channel(_ shift: UInt32) -> Float { Float((argb >> shift) & 0xFF) / 255 }
             actions.setColor?(Color.Resolved(red: channel(16), green: channel(8), blue: channel(0), opacity: channel(24)))
+        case .hover:
+            actions.hover?(a != 0)
+        case .hoverLocation:
+            actions.hoverLocation?(c != 0 ? CGPoint(x: a, y: b) : nil)
         case .pointerBegan, .pointerMoved, .pointerEnded, .pointerCancelled:
             let phase: PointerEvent.Phase = event == .pointerBegan ? .began : event == .pointerMoved ? .moved : event == .pointerEnded ? .ended : .cancelled
             actions.pointer?(PointerEvent(phase: phase, location: CGPoint(x: a, y: b), timestamp: c))

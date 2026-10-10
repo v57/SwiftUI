@@ -105,6 +105,8 @@ class ScrollNode(host: HostView, id: Int) : NodeView(host, id, KIND_SCROLL) {
     }
 
     private fun setPhase(value: Int) {
+        // A touch that becomes a scroll no longer hovers what's under it.
+        if (value == PHASE_INTERACTING) host.endHover()
         if (value == phase) return
         phase = value
         host.event(nodeId, Events.SCROLL_PHASE, value.toDouble())

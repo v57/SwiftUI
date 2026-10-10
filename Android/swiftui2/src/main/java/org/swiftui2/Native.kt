@@ -34,6 +34,8 @@ object Events {
     const val POINTER_MOVED = 21
     const val POINTER_ENDED = 22
     const val POINTER_CANCELLED = 23
+    const val HOVER = 24
+    const val HOVER_LOCATION = 25
 }
 
 /** Environment keys (AndroidHost.setEnvironment). */

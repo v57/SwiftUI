@@ -426,15 +426,23 @@ public struct Link<Label: View>: View {
     let destination: URL
     let label: Label
     @Environment(\.openURL) private var openURL
+    @Environment(\.customButtonStyle) private var customStyle
+    @Environment(\.buttonStyle) private var style
 
     public init(destination: URL, @ViewBuilder label: () -> Label) {
         self.destination = destination
         self.label = label()
     }
 
+    /// Links look like links by default; an explicit `buttonStyle` (built-in or custom) styles
+    /// them like buttons, as in SwiftUI.
     public var body: some View {
-        Button { openURL(destination) } label: { label }
-            .buttonStyle(.link)
+        let button = Button { openURL(destination) } label: { label }
+        if customStyle == nil, style == .automatic {
+            button.buttonStyle(.link)
+        } else {
+            button
+        }
     }
 }
 

@@ -289,6 +289,9 @@ extension ByteWriter {
             if actions.pointer != nil || actions.dragItem != nil { flags |= 2 }
             if actions.pressed != nil { flags |= 4 }
             if actions.secondaryClick != nil { flags |= 8 }
+            // Hover handlers (onHover, onContinuousHover): fed by mouse/stylus hover and by
+            // touches (a touch platform has no hover); they never claim touches.
+            if actions.hover != nil || actions.hoverLocation != nil { flags |= 16 }
             u8(flags)
         case .datePicker(let picker):
             f64(picker.date.timeIntervalSince1970)
