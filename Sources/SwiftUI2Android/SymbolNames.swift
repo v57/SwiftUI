@@ -28,6 +28,7 @@ enum SymbolNames {
         "chevron.left": g("chevron_left"),
         "chevron.right": g("chevron_right"),
         "chevron.up": g("expand_less"),
+        "chevron.up.chevron.down": g("unfold_more"),
         "circle": g("radio_button_unchecked"),
         "clock": g("schedule"),
         "cloud": g("cloud"),

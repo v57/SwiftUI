@@ -146,6 +146,8 @@ class ImageNode(host: HostView, id: Int) : NodeView(host, id, KIND_IMAGE) {
         invalidate()
     }
 
+    override fun describe() = glyph?.let { " glyph:$it" } ?: ""
+
     override fun onDraw(canvas: Canvas) {
         redacted?.let { color ->
             val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = (color and 0x00FFFFFF) or 0x29000000 }

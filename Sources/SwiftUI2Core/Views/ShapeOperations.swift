@@ -64,10 +64,30 @@ extension Path {
         Path(cgPath.lineSubtracting(other.cgPath, using: eoFill ? .evenOdd : .winding))
     }
 }
+#else
+extension Path {
+    /// Path boolean operations on platforms without Core Graphics, provided by the backend
+    /// (Android: `android.graphics.Path.op`). Without one, operations return `self`.
+    nonisolated(unsafe) public static var _platformOperation: ((_ a: Path, _ b: Path, _ operation: _PathOperation, _ eoFill: Bool) -> Path)?
+
+    private func operation(_ other: Path, _ operation: _PathOperation, _ eoFill: Bool) -> Path {
+        Self._platformOperation?(self, other, operation, eoFill) ?? self
+    }
+
+    public func union(_ other: Path, eoFill: Bool = false) -> Path { operation(other, .union, eoFill) }
+    public func intersection(_ other: Path, eoFill: Bool = false) -> Path { operation(other, .intersection, eoFill) }
+    public func subtracting(_ other: Path, eoFill: Bool = false) -> Path { operation(other, .subtracting, eoFill) }
+    public func symmetricDifference(_ other: Path, eoFill: Bool = false) -> Path { operation(other, .symmetricDifference, eoFill) }
+    public func lineIntersection(_ other: Path, eoFill: Bool = false) -> Path { operation(other, .lineIntersection, eoFill) }
+    public func lineSubtraction(_ other: Path, eoFill: Bool = false) -> Path { operation(other, .lineSubtraction, eoFill) }
+}
+#endif
+
+public enum _PathOperation: Sendable { case union, intersection, subtracting, symmetricDifference, lineIntersection, lineSubtraction }
 
 /// A shape combining two shapes with a path operation.
 public struct _ShapeOperation<A: Shape, B: Shape>: Shape {
-    enum Operation { case union, intersection, subtracting, symmetricDifference, lineIntersection, lineSubtraction }
+    typealias Operation = _PathOperation
     let first: A
     let second: B
     let operation: Operation
@@ -94,7 +114,6 @@ extension Shape {
     public func lineIntersection<T: Shape>(_ other: T, eoFill: Bool = false) -> some Shape { _ShapeOperation(first: self, second: other, operation: .lineIntersection, eoFill: eoFill) }
     public func lineSubtraction<T: Shape>(_ other: T, eoFill: Bool = false) -> some Shape { _ShapeOperation(first: self, second: other, operation: .lineSubtraction, eoFill: eoFill) }
 }
-#endif
 
 // MARK: - Hierarchical lists
 

@@ -281,6 +281,18 @@ public struct ControlMetrics: Hashable, Sendable {
     public var idealWidth: CGFloat
     /// Height independent of the content's font (e.g. rounded-border text fields).
     public var fixedHeight: CGFloat?
+    /// The backend's own control-size table (height, horizontal inset); nil uses SwiftUI's
+    /// macOS sizes for the design.
+    public var sizeTable: [ControlSize: SizeVariant]?
+
+    public struct SizeVariant: Hashable, Sendable {
+        public var height: CGFloat
+        public var horizontalInset: CGFloat
+        public init(height: CGFloat, horizontalInset: CGFloat) {
+            self.height = height
+            self.horizontalInset = horizontalInset
+        }
+    }
 
     public init(contentInsets: EdgeInsets = EdgeInsets(), minSize: CGSize = .zero, idealWidth: CGFloat = 0, fixedHeight: CGFloat? = nil) {
         self.contentInsets = contentInsets

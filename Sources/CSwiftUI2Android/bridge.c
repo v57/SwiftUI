@@ -9,12 +9,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/timerfd.h>
+#include <pthread.h>
 #include <time.h>
 #include <unistd.h>
 
 static JavaVM *vm;
-static jclass hostViewClass, textMeasureClass;
-static jmethodID applyMethod, requestFrameMethod, platformMethod, measureMethod;
+static jclass hostViewClass, textMeasureClass, pathsClass;
+static jmethodID applyMethod, requestFrameMethod, platformMethod, measureMethod, pathOpMethod;
 static jfloatArray measureOut;
 
 static JNIEnv *env(void) {
@@ -69,6 +70,22 @@ void sui_measure_text(const void *spec, int32_t length, float maxWidth, float *o
     check(e);
     (*e)->GetFloatArrayRegion(e, measureOut, 0, 4, out);
     (*e)->DeleteLocalRef(e, buffer);
+}
+
+void *sui_path_op(const void *paths, int32_t length, int32_t op, bool evenOdd, int32_t *resultLength) {
+    JNIEnv *e = env();
+    jobject buffer = (*e)->NewDirectByteBuffer(e, (void *)paths, length);
+    jbyteArray result = (jbyteArray)(*e)->CallStaticObjectMethod(e, pathsClass, pathOpMethod, buffer, op, (jboolean)evenOdd);
+    check(e);
+    (*e)->DeleteLocalRef(e, buffer);
+    *resultLength = 0;
+    if (!result) return NULL;
+    jsize count = (*e)->GetArrayLength(e, result);
+    void *bytes = malloc(count > 0 ? count : 1);
+    (*e)->GetByteArrayRegion(e, result, 0, count, bytes);
+    (*e)->DeleteLocalRef(e, result);
+    *resultLength = count;
+    return bytes;
 }
 
 void sui_delete_global_ref(sui_ref ref) {
@@ -162,8 +179,44 @@ static void event(JNIEnv *e, jclass cls, jlong host, jint node, jint type, jdoub
 static void frame(JNIEnv *e, jclass cls, jlong host, jlong nanos) { swiftui2_frame(host, (double)nanos / 1e9); }
 static jboolean back(JNIEnv *e, jclass cls, jlong host) { return swiftui2_back(host); }
 
+// MARK: stdout/stderr → logcat (print() output, e.g. geometry probes)
+
+static int outputPipe[2];
+
+static void *forwardOutput(void *unused) {
+    char buffer[2048];
+    size_t used = 0;
+    for (;;) {
+        ssize_t count = read(outputPipe[0], buffer + used, sizeof buffer - 1 - used);
+        if (count <= 0) break;
+        used += (size_t)count;
+        buffer[used] = 0;
+        char *start = buffer, *newline;
+        while ((newline = strchr(start, '\n'))) {
+            *newline = 0;
+            __android_log_write(ANDROID_LOG_INFO, "SwiftUI2.stdout", start);
+            start = newline + 1;
+        }
+        used = strlen(start);
+        memmove(buffer, start, used);
+        if (used == sizeof buffer - 1) { __android_log_write(ANDROID_LOG_INFO, "SwiftUI2.stdout", buffer); used = 0; }
+    }
+    return NULL;
+}
+
+static void redirectOutput(void) {
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+    if (pipe(outputPipe) != 0) return;
+    dup2(outputPipe[1], STDOUT_FILENO);
+    dup2(outputPipe[1], STDERR_FILENO);
+    pthread_t thread;
+    if (pthread_create(&thread, NULL, forwardOutput, NULL) == 0) pthread_detach(thread);
+}
+
 JNIEXPORT jint JNI_OnLoad(JavaVM *javaVM, void *reserved) {
     vm = javaVM;
+    redirectOutput();
     JNIEnv *e = env();
     jclass native = (*e)->FindClass(e, "org/swiftui2/Native");
     if (!native) { check(e); return JNI_VERSION_1_6; }
@@ -187,6 +240,8 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *javaVM, void *reserved) {
     textMeasureClass = (*e)->NewGlobalRef(e, (*e)->FindClass(e, "org/swiftui2/TextMeasure"));
     measureMethod = (*e)->GetStaticMethodID(e, textMeasureClass, "measure", "(Ljava/nio/ByteBuffer;F[F)V");
     measureOut = (*e)->NewGlobalRef(e, (*e)->NewFloatArray(e, 4));
+    pathsClass = (*e)->NewGlobalRef(e, (*e)->FindClass(e, "org/swiftui2/Paths"));
+    pathOpMethod = (*e)->GetStaticMethodID(e, pathsClass, "op", "(Ljava/nio/ByteBuffer;IZ)[B");
     check(e);
     return JNI_VERSION_1_6;
 }

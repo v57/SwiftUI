@@ -125,6 +125,9 @@ abstract class NodeView(val host: HostView, val nodeId: Int, val kind: Int) : Vi
 
     abstract fun applyContent(r: Reader)
 
+    /** Extra description for tree dumps. */
+    open fun describe(): String = ""
+
     open fun destroyed() {}
 
     // MARK: Presentation and transforms
@@ -278,6 +281,67 @@ object Paths {
             }
         }
         return into
+    }
+
+    /** Boolean operation of two encoded paths (dp), for Swift's `Path.union` & co. */
+    @JvmStatic
+    fun op(buffer: java.nio.ByteBuffer, operation: Int, evenOdd: Boolean): ByteArray {
+        buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        val r = Reader(buffer)
+        val a = read(r, 1f)
+        val b = read(r, 1f)
+        if (evenOdd) { a.fillType = Path.FillType.EVEN_ODD; b.fillType = Path.FillType.EVEN_ODD }
+        val op = when (operation) {
+            1, 4 -> Path.Op.INTERSECT
+            2, 5 -> Path.Op.DIFFERENCE
+            3 -> Path.Op.XOR
+            else -> Path.Op.UNION
+        }
+        val result = Path()
+        result.op(a, b, op)
+        return encode(result)
+    }
+
+    /** Encodes a path like Swift's ByteWriter.path (dp). */
+    fun encode(path: Path): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        val buffer = java.nio.ByteBuffer.allocate(4 + 25).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        val elements = ArrayList<Pair<Int, FloatArray>>()
+        if (android.os.Build.VERSION.SDK_INT >= 34) {
+            val iterator = path.pathIterator
+            val points = FloatArray(8)
+            while (iterator.hasNext()) {
+                when (iterator.next(points, 0)) {
+                    android.graphics.PathIterator.VERB_MOVE -> elements += 0 to floatArrayOf(points[0], points[1])
+                    android.graphics.PathIterator.VERB_LINE -> elements += 1 to floatArrayOf(points[2], points[3])
+                    android.graphics.PathIterator.VERB_QUAD -> elements += 2 to floatArrayOf(points[2], points[3], points[4], points[5])
+                    android.graphics.PathIterator.VERB_CUBIC -> elements += 3 to floatArrayOf(points[2], points[3], points[4], points[5], points[6], points[7])
+                    android.graphics.PathIterator.VERB_CLOSE -> elements += 4 to floatArrayOf()
+                    android.graphics.PathIterator.VERB_CONIC -> elements += 2 to floatArrayOf(points[2], points[3], points[4], points[5])
+                    else -> {}
+                }
+            }
+        } else {
+            // Before API 34: a polyline approximation (one contour per jump).
+            val approx = path.approximate(0.25f)
+            var i = 0
+            var lastFraction = -1f
+            while (i < approx.size) {
+                val fraction = approx[i]; val x = approx[i + 1]; val y = approx[i + 2]
+                elements += (if (fraction == lastFraction || elements.isEmpty()) 0 else 1) to floatArrayOf(x, y)
+                lastFraction = fraction
+                i += 3
+            }
+        }
+        buffer.putInt(elements.size)
+        out.write(buffer.array(), 0, 4)
+        for ((verb, values) in elements) {
+            buffer.clear()
+            buffer.put(verb.toByte())
+            for (v in values) buffer.putFloat(v)
+            out.write(buffer.array(), 0, buffer.position())
+        }
+        return out.toByteArray()
     }
 
     /** A rounded-rect clip (the common case) can use the view outline: fast and antialiased. */

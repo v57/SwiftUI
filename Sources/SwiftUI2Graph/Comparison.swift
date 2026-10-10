@@ -1,6 +1,6 @@
 import Foundation
 
-#if canImport(Darwin)
+#if canImport(ObjectiveC)
 import Darwin
 #elseif canImport(Glibc)
 import Glibc
@@ -8,6 +8,8 @@ import Glibc
 import Musl
 #elseif canImport(ucrt)
 import ucrt
+#elseif canImport(Android)
+import Android
 #elseif canImport(Bionic)
 import Bionic
 #endif

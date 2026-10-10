@@ -401,7 +401,7 @@ public struct Text: Equatable {
             formatter.timeStyle = .none
             return formatter.string(from: date)
         case .relative, .offset:
-            #if !canImport(Darwin)
+            #if !canImport(ObjectiveC)
             // swift-corelibs-foundation has no DateComponentsFormatter.
             let interval = date.timeIntervalSince(now)
             let text = componentsString(abs(interval).rounded(.down), short: style == .relative, maximumUnits: style == .relative ? 2 : 1)

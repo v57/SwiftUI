@@ -198,6 +198,30 @@ class HostView(context: Context, scene: Int = -1) : ViewGroup(context), Choreogr
 
     fun px(dp: Float): Int = (dp * density).roundToInt()
 
+    /** Logs the node tree with frames in dp, relative to the root (tag SwiftUI2Dump). */
+    fun dump() {
+        val lines = ArrayList<String>()
+        fun fmt(v: Float) = if (v == v.roundToInt().toFloat()) v.roundToInt().toString() else String.format("%.1f", v)
+        fun visit(view: View, depth: Int, ox: Float, oy: Float) {
+            val node = view as? NodeView
+            val x = ox + view.left + view.translationX
+            val y = oy + view.top + view.translationY
+            if (node != null && node !== root) {
+                val name = node.javaClass.simpleName.removeSuffix("Node")
+                lines += "  ".repeat(depth) + "$name #${node.nodeId} (${fmt(x / density)}, ${fmt(y / density)}, ${fmt(view.width / density)}, ${fmt(view.height / density)})" + node.describe()
+            }
+            if (view is ViewGroup && (node != null)) {
+                for (i in 0 until view.childCount) {
+                    val child = view.getChildAt(i)
+                    if (child is NodeView) visit(child, if (node === root) depth else depth + 1, x - view.scrollX, y - view.scrollY)
+                }
+            }
+        }
+        visit(root, 0, -root.left.toFloat(), -root.top.toFloat())
+        lines.chunked(40).forEach { android.util.Log.i("SwiftUI2Dump", it.joinToString("\n")) }
+        android.util.Log.i("SwiftUI2Dump", "END ${lines.size} nodes")
+    }
+
     companion object {
         const val OP_CREATE = 1
         const val OP_DESTROY = 2

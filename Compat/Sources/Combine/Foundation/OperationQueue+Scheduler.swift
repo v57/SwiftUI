@@ -270,7 +270,7 @@ extension OperationQueue {
 // Smart key paths don't work with NSOperation in swift-corelibs-foundation prior to
 // Swift 5.1 and on OS version prior to iOS 11.
 // The string key paths work fine everywhere on Darwin platforms.
-#if canImport(Darwin) || swift(<5.1)
+#if canImport(ObjectiveC) || swift(<5.1)
                 willChangeValue(forKey: "isReady")
 #else
                 willChangeValue(for: \.isReady)
@@ -283,7 +283,7 @@ extension OperationQueue {
 // Smart key paths don't work with NSOperation in swift-corelibs-foundation prior to
 // Swift 5.1 and on OS version prior to iOS 11.
 // The string key paths work fine everywhere on Darwin platforms.
-#if canImport(Darwin) || swift(<5.1)
+#if canImport(ObjectiveC) || swift(<5.1)
                 didChangeValue(forKey: "isReady")
 #else
                 didChangeValue(for: \.isReady)

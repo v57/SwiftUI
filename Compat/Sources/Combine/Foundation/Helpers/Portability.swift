@@ -23,7 +23,7 @@ import Foundation
 /// Also, there are sume bugs in swift-corelibs-foundation in earlier Swift version.
 internal struct Timer {
 
-#if canImport(Darwin)
+#if canImport(ObjectiveC)
     fileprivate typealias UnderlyingTimer = CFRunLoopTimer?
 #else
     fileprivate typealias UnderlyingTimer = Foundation.Timer
@@ -39,7 +39,7 @@ internal struct Timer {
                   interval: TimeInterval,
                   repeats: Bool,
                   block: @escaping (Timer) -> Void) {
-#if canImport(Darwin)
+#if canImport(ObjectiveC)
         underlyingTimer = CFRunLoopTimerCreateWithHandler(
             nil,
             date.timeIntervalSinceReferenceDate,
@@ -73,14 +73,14 @@ internal struct Timer {
 
     internal var tolerance: TimeInterval {
         get {
-#if canImport(Darwin)
+#if canImport(ObjectiveC)
             return CFRunLoopTimerGetTolerance(underlyingTimer)
 #else
             return underlyingTimer.tolerance
 #endif
         }
         nonmutating set {
-#if canImport(Darwin)
+#if canImport(ObjectiveC)
             CFRunLoopTimerSetTolerance(underlyingTimer, newValue)
 #else
             underlyingTimer.tolerance = newValue
@@ -89,7 +89,7 @@ internal struct Timer {
     }
 
     internal func invalidate() {
-#if canImport(Darwin)
+#if canImport(ObjectiveC)
             CFRunLoopTimerInvalidate(underlyingTimer)
 #else
             underlyingTimer.invalidate()
@@ -98,7 +98,7 @@ internal struct Timer {
 
 #if canImport(CoreFoundation)
     fileprivate func getCFRunLoopTimer() -> CFRunLoopTimer? {
-#if canImport(Darwin)
+#if canImport(ObjectiveC)
         return underlyingTimer
 #elseif swift(<5.2)
         // Here we use the fact that in the specified version of swift-corelibs-foundation
@@ -125,7 +125,7 @@ extension RunLoop {
         // There is a bug in swift-corelibs-foundation prior to Swift 5.2 where
         // the timer is added to the current run loop instead of the one we're calling
         // this method on, so we fall back to CoreFoundation.
-#if canImport(Darwin) || swift(<5.2)
+#if canImport(ObjectiveC) || swift(<5.2)
         CFRunLoopAddTimer(getCFRunLoop(),
                           timer.getCFRunLoopTimer(),
                           mode.asCFRunLoopMode())
@@ -135,7 +135,7 @@ extension RunLoop {
     }
 
     internal func performBlockPortably(_ block: @escaping () -> Void) {
-#if canImport(Darwin)
+#if canImport(ObjectiveC)
         CFRunLoopPerformBlock(getCFRunLoop(), CFRunLoopMode.defaultMode.rawValue, block)
 #else
         perform(block)
@@ -146,7 +146,7 @@ extension RunLoop {
 #if canImport(CoreFoundation)
 extension RunLoop.Mode {
     fileprivate func asCFRunLoopMode() -> CFRunLoopMode {
-#if canImport(Darwin)
+#if canImport(ObjectiveC)
         return CFRunLoopMode(rawValue as CFString)
 #else
         return rawValue.withCString {

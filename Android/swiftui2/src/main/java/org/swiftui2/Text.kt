@@ -230,6 +230,8 @@ class TextNode(host: HostView, id: Int) : NodeView(host, id, KIND_TEXT) {
         layout = null
     }
 
+    override fun describe() = " \"${spec?.text}\""
+
     private fun currentLayout(): StaticLayout? {
         val spec = spec ?: return null
         layout?.let { return it }

@@ -139,7 +139,7 @@ extension DispatchQueue {
 // See https://forums.swift.org/t/unknown-default-produces-a-warning-on-linux-with-non-frozen-enum/31687
 //
 // Thanks to Jeremy David Giesbrecht for suggesting this workaround.
-#if canImport(Darwin)
+#if canImport(ObjectiveC)
                     case .never:
                         self = .nanoseconds(.max)
                     @unknown default:
@@ -412,7 +412,7 @@ private func clampedIntProduct(_ lhs: Int64, _ rhs: Int64) -> Int64 {
 extension DispatchTime {
 
     fileprivate func polyfillDistance(to other: DispatchTime) -> DispatchTimeInterval {
-#if canImport(Darwin) && compiler(>=5.1)
+#if canImport(ObjectiveC) && compiler(>=5.1)
         if #available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *) {
             return distance(to: other)
         }

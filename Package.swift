@@ -75,6 +75,8 @@ let package = Package(
                 "SwiftUI2Core",
                 .target(name: "SwiftUI2AppKit", condition: .when(platforms: [.macOS])),
                 .target(name: "SwiftUI2Android", condition: .when(platforms: [.android])),
+                // Apple-only modules apps import, as stand-ins elsewhere (Compat/).
+                .product(name: "Darwin", package: "Compat", condition: .when(platforms: nonApple)),
                 .target(name: "SwiftUI2SwiftData", condition: .when(platforms: [.macOS, .iOS])),
             ]
         ),

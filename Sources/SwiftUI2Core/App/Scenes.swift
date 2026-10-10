@@ -380,7 +380,7 @@ final class _ReferenceDocumentBox<Document: ReferenceFileDocument>: _DocumentHan
 
 func _readConfiguration(url: URL, types: [UTType]) throws -> FileDocumentReadConfiguration {
     let wrapper = try FileWrapper(url: url, options: .immediate)
-    #if canImport(Darwin)
+    #if canImport(ObjectiveC)
     let fileType = (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType) ?? types.first ?? .data
     #else
     let fileType = UTType(filenameExtension: url.pathExtension) ?? types.first ?? .data

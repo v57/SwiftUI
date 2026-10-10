@@ -325,6 +325,14 @@ extension ControlMetrics {
             let vertical = max(0, (height - 16) / 2)
             copy.contentInsets = EdgeInsets(top: vertical, leading: inset, bottom: vertical, trailing: inset)
         }
+        if let table = sizeTable {
+            if let variant = table[size] {
+                copy.minSize.height = variant.height
+                let vertical = max(0, contentInsets.top * variant.height / max(minSize.height, 1)).rounded()
+                copy.contentInsets = EdgeInsets(top: vertical, leading: variant.horizontalInset, bottom: vertical, trailing: variant.horizontalInset)
+            }
+            return copy
+        }
         if design == .modern {
             switch size {
             case .mini: set(13, 8)
@@ -347,8 +355,12 @@ extension ControlMetrics {
 
 extension Font {
     /// The label font of controls at a control size when no font is set (`nil`: the default font).
+    /// The platform's label fonts per control size (set by backends; nil uses macOS's).
+    nonisolated(unsafe) public static var platformControlFont: ((ControlSize) -> Font?)?
+
     static func controlFont(_ size: ControlSize) -> Font? {
-        switch size {
+        if let platform = platformControlFont { return platform(size) }
+        return switch size {
         case .mini: .system(size: 9)
         case .small: .system(size: 11)
         default: nil
@@ -932,7 +944,7 @@ extension TextField where Label == Text {
 
     static func formatterBinding<V>(_ value: Binding<V>, _ formatter: Formatter) -> Binding<String> {
         Binding(get: { formatter.string(for: value.wrappedValue) ?? "" }, set: { string in
-            #if canImport(Darwin)
+            #if canImport(ObjectiveC)
             var object: AnyObject?
             if formatter.getObjectValue(&object, for: string, errorDescription: nil), let typed = object as? V { value.wrappedValue = typed }
             #else

@@ -52,7 +52,9 @@ struct CorpusImages: View {
             Image(systemName: "bolt").resizable().aspectRatio(contentMode: .fill).clipped()
             Image(decorative: "photo")
             Image("photo", bundle: .main).renderingMode(.template).interpolation(.high).antialiased(true)
+            #if canImport(AppKit)
             Image(nsImage: NSImage(size: NSSize(width: 4, height: 4)))
+            #endif
             Image(systemName: "wifi", variableValue: 0.5)
             AsyncImage(url: URL(string: "https://example.com/a.png")) { phase in
                 switch phase {
@@ -126,7 +128,9 @@ struct CorpusColorsAndMisc: View {
             Color(.sRGB, red: 1, green: 0, blue: 0, opacity: 0.5)
             Color(hue: 0.5, saturation: 0.8, brightness: 0.9)
             Color(white: 0.4)
+            #if canImport(AppKit)
             Color(nsColor: .windowBackgroundColor)
+            #endif
             Color.accentColor.opacity(0.3)
             Color.red.mix(with: .blue, by: 0.5)
             Rectangle().fill(Color.primary.secondary)
@@ -150,8 +154,10 @@ struct CorpusColorsAndMisc: View {
     }
 }
 
+#if canImport(AppKit)
 @MainActor func corpusRender() -> NSImage? {
     let renderer = ImageRenderer(content: Text("Render"))
     renderer.scale = 2
     return renderer.nsImage
 }
+#endif

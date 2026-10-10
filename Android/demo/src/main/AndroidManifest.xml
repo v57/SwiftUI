@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="SwiftUI2 Demo"
+        android:label="${appLabel}"
         android:theme="@android:style/Theme.DeviceDefault.DayNight"
         android:hardwareAccelerated="true">
         <activity
@@ -10,7 +10,7 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode|locale|layoutDirection|fontScale"
             android:windowSoftInputMode="adjustResize">
             <!-- The Swift app library (lib<name>.so) whose @main App runs in this activity. -->
-            <meta-data android:name="org.swiftui2.library" android:value="DemoAndroid" />
+            <meta-data android:name="org.swiftui2.library" android:value="${swiftLibrary}" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

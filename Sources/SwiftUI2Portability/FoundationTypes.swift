@@ -1,6 +1,6 @@
 // Foundation types that SwiftUI's API mentions but swift-corelibs-foundation lacks
 // (`NSItemProvider`, `NSUserActivity`, `FileWrapper`). Built on non-Apple platforms only.
-#if !canImport(Darwin)
+#if !canImport(ObjectiveC)
 import Foundation
 
 /// Lazily provides data for drag & drop, copy/paste and sharing, by type identifier.

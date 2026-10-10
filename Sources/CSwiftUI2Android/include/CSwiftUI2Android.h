@@ -22,6 +22,9 @@ char *sui_host_platform(sui_ref host, int32_t op, const char *argument);
 /// TextMeasure.measure(spec, maxWidth, out): out = width, height, first baseline, line height.
 void sui_measure_text(const void *spec, int32_t length, float maxWidth, float *out);
 void sui_delete_global_ref(sui_ref ref);
+/// Paths.op(ByteBuffer, op, evenOdd): boolean operation of two encoded paths (path a, path b).
+/// Returns the encoded result (malloc'd; caller frees) and its length.
+void *sui_path_op(const void *paths, int32_t length, int32_t op, bool evenOdd, int32_t *resultLength);
 
 // MARK: Main loop
 /// Drains libdispatch's main queue and fires Foundation run loop timers on the main ALooper.

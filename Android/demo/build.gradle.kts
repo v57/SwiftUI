@@ -2,11 +2,18 @@ plugins {
     id("com.android.application")
 }
 
+// The Swift app library to run (lib<name>.so) and the package id: -PswiftLibrary=X -PappId=Y.
+val swiftLibrary = (findProperty("swiftLibrary") as String?) ?: "DemoAndroid"
+val appId = (findProperty("appId") as String?) ?: "org.swiftui2.demo"
+val appLabel = (findProperty("appLabel") as String?) ?: "SwiftUI2 Demo"
+
 android {
     namespace = "org.swiftui2.demo"
     compileSdk = 36
     defaultConfig {
-        applicationId = "org.swiftui2.demo"
+        applicationId = appId
+        manifestPlaceholders["swiftLibrary"] = swiftLibrary
+        manifestPlaceholders["appLabel"] = appLabel
         minSdk = 28
         targetSdk = 35
         versionCode = 1

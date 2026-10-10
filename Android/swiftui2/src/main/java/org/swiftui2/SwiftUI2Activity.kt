@@ -23,6 +23,10 @@ open class SwiftUI2Activity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val library = libraryName()
+        // Debugging: `am start -e env.NAME value` sets environment variables for the Swift app.
+        intent.extras?.keySet()?.filter { it.startsWith("env.") }?.forEach { key ->
+            android.system.Os.setenv(key.removePrefix("env."), intent.getStringExtra(key) ?: "", true)
+        }
         if (!started) {
             System.loadLibrary(library)
             check(Native.runMain(library)) { "lib$library.so has no SwiftUI2 App entry point" }
@@ -30,6 +34,9 @@ open class SwiftUI2Activity : Activity() {
         }
         hostView = HostView(this, scene = intent.getIntExtra(EXTRA_SCENE, -1))
         setContentView(hostView)
+        // Debugging: `am start --ei org.swiftui2.dump <ms>` logs the view tree (tag SwiftUI2Dump).
+        val dumpDelay = intent.getIntExtra(EXTRA_DUMP, -1)
+        if (dumpDelay >= 0) hostView.postDelayed({ hostView.dump() }, dumpDelay.toLong())
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, backCallback)
         }
@@ -61,6 +68,7 @@ open class SwiftUI2Activity : Activity() {
         const val META_LIBRARY = "org.swiftui2.library"
         /** Index of the scene to show (default: the one that opens at launch). */
         const val EXTRA_SCENE = "org.swiftui2.scene"
+        const val EXTRA_DUMP = "org.swiftui2.dump"
         private var started = false
         internal const val TAG = "SwiftUI2"
 

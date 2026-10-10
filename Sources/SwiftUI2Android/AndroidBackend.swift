@@ -80,6 +80,7 @@ public final class AndroidBackend: RenderBackend {
         root = AndroidView(id: 0, kind: .container, releaseQueue: releaseQueue)
         views[0] = WeakView(view: root)
         AndroidText.install()
+        AndroidPaths.install()
     }
 
     func node(for id: Int32) -> RenderNode? { views[id]?.view?.node }

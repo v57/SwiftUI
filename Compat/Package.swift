@@ -18,10 +18,12 @@ let package = Package(
     products: [
         .library(name: "UniformTypeIdentifiers", targets: ["UniformTypeIdentifiers"]),
         .library(name: "Combine", targets: [crossCompiling ? "Combine" : "CombineUnavailableOnApplePlatforms"]),
+        .library(name: "Darwin", targets: [crossCompiling ? "Darwin" : "DarwinUnavailableOnApplePlatforms"]),
     ],
     targets: [
         .target(name: "UniformTypeIdentifiers"),
         .target(name: "CombineUnavailableOnApplePlatforms"),
+        .target(name: "DarwinUnavailableOnApplePlatforms"),
         .testTarget(name: "CompatTests", dependencies: ["UniformTypeIdentifiers"] + (crossCompiling ? ["Combine"] : [])),
     ]
 )
@@ -31,6 +33,8 @@ if crossCompiling {
         // Combine: OpenCombine 0.14.0 (MIT, Sources/Combine/LICENSE-OpenCombine.txt) vendored as
         // one module named Combine, with its Apple spellings always on (DispatchQueue/RunLoop as
         // schedulers, Timer.publish, NotificationCenter.publisher, URLSession publishers).
+        // Darwin: re-exports the platform C library (POSIX).
+        .target(name: "Darwin"),
         .target(name: "COpenCombineHelpers"),
         .target(name: "Combine", dependencies: ["COpenCombineHelpers"], exclude: ["LICENSE-OpenCombine.txt"],
                 swiftSettings: [.swiftLanguageMode(.v5)]),

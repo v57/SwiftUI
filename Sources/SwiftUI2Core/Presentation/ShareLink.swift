@@ -42,7 +42,7 @@ func _shareItem(_ item: Any) -> Any {
     switch item {
     case is URL, is String, is NSAttributedString: return item
     default:
-        #if canImport(CoreTransferable) && canImport(Darwin)
+        #if canImport(CoreTransferable) && canImport(ObjectiveC)
         if let transferable = item as? any Transferable {
             let provider = NSItemProvider()
             func register<T: Transferable>(_ value: T) { provider.register(value) }

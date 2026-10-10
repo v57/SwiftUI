@@ -25,6 +25,13 @@ enum AndroidText {
 
     static func install() {
         Font.platformStyleMetrics = { styleMetrics($0) }
+        Font.platformControlFont = { size in
+            switch size {
+            case .mini: .system(size: 12)
+            case .small: .system(size: 14)
+            default: nil
+            }
+        }
     }
 
     /// SwiftUI weight → CSS/Android font weight (100…900).
@@ -74,6 +81,15 @@ enum AndroidControls {
         return result
     }
 
+    /// Material button heights per control size (M3 small/medium/large, denser).
+    static let buttonSizes: [ControlSize: ControlMetrics.SizeVariant] = [
+        .mini: .init(height: 28, horizontalInset: 10),
+        .small: .init(height: 32, horizontalInset: 12),
+        .regular: .init(height: 40, horizontalInset: 16),
+        .large: .init(height: 48, horizontalInset: 20),
+        .extraLarge: .init(height: 56, horizontalInset: 24),
+    ]
+
     static func metrics(_ control: ControlKind, host: sui_ref) -> ControlMetrics {
         let native = load(host)
         switch control {
@@ -81,7 +97,10 @@ enum AndroidControls {
             switch style {
             case .plain, .borderless, .link: return ControlMetrics()
             // Material buttons: 40dp tall, 16dp side padding (24 for filled M3; denser here).
-            default: return ControlMetrics(contentInsets: EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16), minSize: CGSize(width: 0, height: 40))
+            default:
+                var metrics = ControlMetrics(contentInsets: EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16), minSize: CGSize(width: 0, height: 40))
+                metrics.sizeTable = buttonSizes
+                return metrics
             }
         case .checkbox: return ControlMetrics(minSize: native.checkbox)
         case .switch: return ControlMetrics(minSize: native.switchSize)
@@ -149,6 +168,54 @@ enum AndroidPerf {
             counts = counts.map { _ in 0 }
         }
         return result
+    }
+}
+#endif
+
+#if os(Android)
+/// `Path` boolean operations through `android.graphics.Path.op`.
+enum AndroidPaths {
+    static func install() {
+        guard Path._platformOperation == nil else { return }
+        Path._platformOperation = { a, b, operation, eoFill in
+            var writer = ByteWriter(capacity: 512)
+            writer.path(a)
+            writer.path(b)
+            let code: Int32
+            switch operation {
+            case .union: code = 0
+            case .intersection: code = 1
+            case .subtracting: code = 2
+            case .symmetricDifference: code = 3
+            case .lineIntersection: code = 4
+            case .lineSubtraction: code = 5
+            }
+            var length: Int32 = 0
+            guard let bytes = writer.withBytes({ sui_path_op($0.baseAddress, Int32($0.count), code, eoFill, &length) }) else { return a }
+            defer { free(bytes) }
+            return decode(UnsafeRawBufferPointer(start: bytes, count: Int(length)))
+        }
+    }
+
+    static func decode(_ bytes: UnsafeRawBufferPointer) -> Path {
+        var offset = 0
+        func i32() -> Int32 { defer { offset += 4 }; return Int32(littleEndian: bytes.loadUnaligned(fromByteOffset: offset, as: Int32.self)) }
+        func f32() -> CGFloat { defer { offset += 4 }; return CGFloat(Float(bitPattern: UInt32(littleEndian: bytes.loadUnaligned(fromByteOffset: offset, as: UInt32.self)))) }
+        func point() -> CGPoint { CGPoint(x: f32(), y: f32()) }
+        var path = Path()
+        guard bytes.count >= 4 else { return path }
+        let count = i32()
+        for _ in 0..<count where offset < bytes.count {
+            let verb = bytes[offset]; offset += 1
+            switch verb {
+            case 0: path.move(to: point())
+            case 1: path.addLine(to: point())
+            case 2: let c = point(); path.addQuadCurve(to: point(), control: c)
+            case 3: let c1 = point(), c2 = point(); path.addCurve(to: point(), control1: c1, control2: c2)
+            default: path.closeSubpath()
+            }
+        }
+        return path
     }
 }
 #endif

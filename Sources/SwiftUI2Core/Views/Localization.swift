@@ -271,7 +271,7 @@ extension Text {
     /// SwiftUI applies to localized string keys.
     static func markdown(_ string: String) -> [Text] {
         guard string.contains(where: { "*_`~[\\".contains($0) }) else { return [Text(verbatim: string)] }
-        #if canImport(Darwin)
+        #if canImport(ObjectiveC)
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         guard let attributed = try? AttributedString(markdown: string, options: options) else { return [Text(verbatim: string)] }
         var parts: [Text] = []
