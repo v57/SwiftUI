@@ -188,11 +188,17 @@ extension EnvironmentValues {
 }
 
 struct ButtonRepeatsKey: EnvironmentKey { static let defaultValue = false }
+struct ToggleButtonIsOnKey: EnvironmentKey { static let defaultValue = false }
 
 extension EnvironmentValues {
     var _buttonRepeats: Bool {
         get { self[ButtonRepeatsKey.self] }
         set { self[ButtonRepeatsKey.self] = newValue }
+    }
+    /// The button is a `.button`-style toggle that is on (drawn selected).
+    var _toggleButtonIsOn: Bool {
+        get { self[ToggleButtonIsOnKey.self] }
+        set { self[ToggleButtonIsOnKey.self] = newValue }
     }
 }
 

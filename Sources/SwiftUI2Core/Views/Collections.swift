@@ -1113,7 +1113,7 @@ public struct Picker<Label: View, SelectionValue: Hashable, Content: View>: View
                             return _RadioModifier(isSelected: context.isSelected(tag), select: { context.select(tag) })
                         }
                     }
-                }, layout: isInForm || horizontalRadioGroup ? AnyLayout(_HStackLayout(spacing: 12)) : AnyLayout(_VStackLayout(alignment: .leading, spacing: 4)))
+                }, layout: isInForm || horizontalRadioGroup ? AnyLayout(_HStackLayout(spacing: horizontalRadioGroup && !isInForm ? 8 : 12)) : AnyLayout(_VStackLayout(alignment: .leading, spacing: 4)))
             default:
                 Button { menuPresented = true } label: {
                     // Modern pop-ups: 15pt between the title and the arrows (7.5 classic / borderless);
@@ -1190,11 +1190,7 @@ struct _RadioModifier: ViewModifier {
     let select: @MainActor () -> Void
     func body(content: Content) -> some View {
         HStack(spacing: 5) {
-            ZStack {
-                Circle().strokeBorder(Color.gray, lineWidth: 1)
-                if isSelected { Circle().fill(Color.accentColor).padding(3) }
-            }
-            .frame(width: 14, height: 14)
+            _RadioControl(isSelected: isSelected, select: select)
             content
         }
         .onTapGesture(perform: select)

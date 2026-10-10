@@ -360,4 +360,28 @@ public struct AnyLayout: Layout {
         }
         open(storage)
     }
+
+    public func explicitAlignment(of guide: HorizontalAlignment, in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGFloat? {
+        func open<L: Layout>(_ layout: L) -> CGFloat? {
+            var c = layout.makeCache(subviews: subviews)
+            return layout.explicitAlignment(of: guide, in: bounds, proposal: proposal, subviews: subviews, cache: &c)
+        }
+        return open(storage)
+    }
+
+    public func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGFloat? {
+        func open<L: Layout>(_ layout: L) -> CGFloat? {
+            var c = layout.makeCache(subviews: subviews)
+            return layout.explicitAlignment(of: guide, in: bounds, proposal: proposal, subviews: subviews, cache: &c)
+        }
+        return open(storage)
+    }
+
+    public func spacing(subviews: Subviews, cache: inout Void) -> ViewSpacing {
+        func open<L: Layout>(_ layout: L) -> ViewSpacing {
+            var c = layout.makeCache(subviews: subviews)
+            return layout.spacing(subviews: subviews, cache: &c)
+        }
+        return open(storage)
+    }
 }

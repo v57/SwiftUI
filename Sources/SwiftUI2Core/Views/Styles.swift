@@ -81,17 +81,57 @@ public protocol GroupBoxStyle {
     @ViewBuilder func makeBody(configuration: Configuration) -> Body
 }
 
-/// macOS group box: a headline label over a rounded, tinted box.
+/// macOS group box (measured, classic design): an 11pt label 10pt in from the leading edge, 3pt
+/// above a rounded box with a hairline border; content 5pt inside the box, leading. The box hugs
+/// its content (or its label, if wider) rather than filling the offered width.
 public struct DefaultGroupBoxStyle: GroupBoxStyle {
     public init() {}
     public func makeBody(configuration: Configuration) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            configuration.label.font(.headline)
+        _GroupBoxLayout {
+            configuration.label.font(.system(size: 11))
+            RoundedRectangle(cornerRadius: 5).fill(Color.groupBoxFill)
+                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.groupBoxBorder, lineWidth: 0.5))
+                .padding(0.5)
             VStack(alignment: .leading) { configuration.content }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.12)))
         }
+    }
+}
+
+/// Label (absent for unlabeled boxes), box and content of a group box (see
+/// `DefaultGroupBoxStyle`).
+struct _GroupBoxLayout: Layout {
+    private struct Metrics {
+        var label: CGSize
+        var top: CGFloat
+        var content: CGSize
+    }
+
+    private func metrics(_ proposal: ProposedViewSize, _ subviews: Subviews) -> Metrics {
+        let label = subviews.count == 3 ? subviews[0].sizeThatFits(.unspecified) : .zero
+        let hasLabel = label.width > 0 || label.height > 0
+        let top = hasLabel ? label.height + 3 : 0
+        let content = subviews[subviews.count - 1].sizeThatFits(ProposedViewSize(
+            width: proposal.width.map { max(0, $0 - 10) },
+            height: proposal.height.map { max(0, $0 - top - 10) }
+        ))
+        return Metrics(label: hasLabel ? label : .zero, top: top, content: content)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
+        guard subviews.count >= 2 else { return .zero }
+        let m = metrics(proposal, subviews)
+        let width = max(m.content.width + 10, m.label.width > 0 ? m.label.width + 10 : 0)
+        return CGSize(width: width, height: m.top + m.content.height + 10)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
+        guard subviews.count >= 2 else { return }
+        let m = metrics(ProposedViewSize(bounds.size), subviews)
+        if subviews.count == 3 {
+            subviews[0].place(at: CGPoint(x: bounds.minX + 10, y: bounds.minY), proposal: ProposedViewSize(m.label))
+        }
+        subviews[subviews.count - 2].place(at: CGPoint(x: bounds.minX, y: bounds.minY + m.top), proposal: ProposedViewSize(width: bounds.width, height: bounds.height - m.top))
+        subviews[subviews.count - 1].place(at: CGPoint(x: bounds.minX + 5, y: bounds.minY + m.top + 5), proposal: ProposedViewSize(width: bounds.width - 10, height: bounds.height - m.top - 10))
     }
 }
 
@@ -254,7 +294,9 @@ struct _DefaultProgressView: View {
 
     var body: some View {
         let small = controlSize == .small || controlSize == .mini
-        VStack(alignment: .leading, spacing: 4) {
+        let linear = configuration.fractionCompleted != nil && !circular
+        // Measured (linear): label, 18pt bar and an 11pt current value label without gaps.
+        VStack(alignment: .leading, spacing: linear ? 0 : 4) {
             if let label = configuration.label { label }
             if let fraction = configuration.fractionCompleted, !circular {
                 _LinearProgressBar(fraction: fraction, height: small ? 12 : 18)
@@ -263,7 +305,7 @@ struct _DefaultProgressView: View {
             } else {
                 _Spinner(size: small ? 16 : 32)
             }
-            if let currentValueLabel = configuration.currentValueLabel { currentValueLabel.font(.caption).foregroundStyle(.secondary) }
+            if let currentValueLabel = configuration.currentValueLabel { currentValueLabel.font(.subheadline).foregroundStyle(.secondary) }
         }
     }
 }

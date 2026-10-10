@@ -129,6 +129,27 @@ public struct _VStackLayout: Layout, Equatable {
     public func spacing(subviews: Subviews, cache: inout Void) -> ViewSpacing {
         stackSpacing(subviews, axis: .vertical)
     }
+
+    public func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGFloat? {
+        // The first (last) child's text baseline is the stack's first (last) baseline.
+        guard guide == .firstTextBaseline || guide == .lastTextBaseline else { return nil }
+        let algorithm = StackAlgorithm(axis: .vertical, spacing: spacing)
+        let spacings = algorithm.spacings(subviews)
+        let sizes = algorithm.childSizes(ProposedViewSize(bounds.size), subviews, spacings: spacings)
+        var offsets: [CGFloat] = []
+        var y: CGFloat = 0
+        for index in subviews.indices {
+            offsets.append(y)
+            y += sizes[index].height + (index < spacings.count ? spacings[index] : 0)
+        }
+        let order = guide == .firstTextBaseline ? Array(subviews.indices) : subviews.indices.reversed()
+        for index in order {
+            if let baseline = subviews[index].computer.dimensions(size: sizes[index])[explicit: guide] {
+                return offsets[index] + baseline
+            }
+        }
+        return nil
+    }
 }
 
 public struct _HStackLayout: Layout, Equatable {

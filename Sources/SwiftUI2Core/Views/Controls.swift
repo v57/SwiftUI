@@ -6,7 +6,11 @@ import CoreGraphics
 // MARK: - Button styles
 
 public enum ButtonStyleKind: Hashable, Sendable { case automatic, bordered, borderedProminent, borderless, plain, link }
-public enum ToggleStyleKind: Hashable, Sendable { case automatic, checkbox, `switch`, button }
+public enum ToggleStyleKind: Hashable, Sendable {
+    case automatic, checkbox, `switch`, button
+    /// A radio button (radio group pickers).
+    case radio
+}
 public enum ButtonRole: Hashable, Sendable { case cancel, destructive }
 
 public struct ButtonStyleConfiguration {
@@ -251,7 +255,7 @@ public struct _PlatformButton<Label: View>: View {
             // In inactive windows, accent-colored prominent buttons draw as plain bordered ones.
             var drawnStyle = style.value
             if drawnStyle == .borderedProminent, tint == nil, !env.appearsActive { drawnStyle = .bordered }
-            return .button(ResolvedButton(style: drawnStyle, isEnabled: env.isEnabled && env.allowsHitTesting, tint: tint, repeats: env._buttonRepeats, borderShape: env.buttonBorderShape))
+            return .button(ResolvedButton(style: drawnStyle, isEnabled: env.isEnabled && env.allowsHitTesting, tint: tint, repeats: env._buttonRepeats, borderShape: env.buttonBorderShape, isOn: env._toggleButtonIsOn))
         }
         var actions = RenderActions()
         let viewAttribute = view.attribute
@@ -519,8 +523,10 @@ public struct Toggle<Label: View>: View {
         if let customStyle {
             customStyle.make(ToggleStyleConfiguration(label: .init(content: AnyView(label)), isOn: isOn, isMixed: isMixed?() ?? false))
         } else if kind == .button {
+            // A bordered button drawn selected while on (measured: a darker bezel, not the accent).
             Button { isOn.wrappedValue.toggle() } label: { label }
-                .environment(\.buttonStyle, isOn.wrappedValue ? .borderedProminent : .bordered)
+                .environment(\.buttonStyle, .bordered)
+                .environment(\._toggleButtonIsOn, isOn.wrappedValue)
         } else if isInForm && (kind == .switch || kind == .automatic) {
             // Grouped form row: a mini switch trailing.
             if labelsHidden {
@@ -604,6 +610,33 @@ public struct _ToggleControl: View {
             // Mini switches (grouped forms) are 26 × 16, as SwiftUI draws them.
             if kind == .switch, env.controlSize == .mini { size = CGSize(width: 26, height: env._controlDesign == .modern ? 16.5 : 16) }
             return FixedLayoutComputer(size: size, path: path, tracer: tracer)
+        }
+        return _ViewOutputs(layout: layout)
+    }
+}
+
+/// The platform radio button of a radio group picker item (14 × 14, like SwiftUI's).
+struct _RadioControl: View {
+    let isSelected: Bool
+    let select: @MainActor () -> Void
+    var body: Never { primitiveBody(Self.self) }
+
+    static func _makeView(view: _GraphValue<Self>, inputs: _ViewInputs) -> _ViewOutputs {
+        let inputs = inputs.with(path: "RadioControl")
+        let environment = inputs.environment
+        let content = makeObservedAttribute(inputs.subgraph, of: RenderContent.self, isEqual: { $0 == $1 }) {
+            let env = environment.value
+            return .toggle(ResolvedToggle(isOn: view.attribute.value.isSelected, style: .radio, isEnabled: env.isEnabled, controlSize: env.controlSize))
+        }
+        let viewAttribute = view.attribute
+        var actions = RenderActions()
+        actions.setBool = { [weak viewAttribute] value in
+            guard let viewAttribute, value else { return }
+            AnyAttribute.withoutDependencies { viewAttribute.value.select() }
+        }
+        inputs.makePlatformNode(content: content, actions: actions)
+        let layout = inputs.makeLayoutAttribute { [path = inputs.path, tracer = inputs.tracer] in
+            FixedLayoutComputer(size: CGSize(width: 14, height: 14), path: path, tracer: tracer)
         }
         return _ViewOutputs(layout: layout)
     }

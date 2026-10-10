@@ -160,6 +160,9 @@ public struct Color: Hashable, Sendable, CustomStringConvertible {
     /// Split view sidebar column (the window background on macOS 26+).
     static let sidebarBackground = dynamic(rgb(0, 0, 0, 0), rgb(1, 1, 1, 0))
     static let listSelection = dynamic(rgb(0, 0, 0, 0.1), rgb(1, 1, 1, 0.12))
+    /// Group box (classic): a faint fill with a hairline border.
+    static let groupBoxFill = dynamic(rgb(0, 0, 0, 0.016), rgb(1, 1, 1, 0.03))
+    static let groupBoxBorder = dynamic(rgb(0, 0, 0, 0.07), rgb(1, 1, 1, 0.1))
     static let listBorder = dynamic(rgb(0, 0, 0, 0.25), rgb(1, 1, 1, 0.3))
     /// The hairline under a list's pinned leading section header.
     static let pinnedHeaderLine = dynamic(rgb(0, 0, 0, 0.2), rgb(1, 1, 1, 0.2))

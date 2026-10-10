@@ -482,13 +482,13 @@ public struct Stepper<Label: View>: View {
 
     public init<V: Strideable, F: ParseableFormatStyle>(value: Binding<V>, in bounds: ClosedRange<V>, step: V.Stride = 1, format: F, @ViewBuilder label: () -> Label, onEditingChanged: @escaping (Bool) -> Void = { _ in }) where F.FormatInput == V, F.FormatOutput == String {
         self.init(value: value, in: bounds, step: step, label: label)
-        self.valueField = AnyView(TextField("", value: value, format: format).frame(width: 60).labelsHidden())
+        self.valueField = AnyView(TextField("", value: value, format: format).labelsHidden())
         self.onEditingChanged = onEditingChanged
     }
 
     public init<V: Strideable, F: ParseableFormatStyle>(value: Binding<V>, step: V.Stride = 1, format: F, @ViewBuilder label: () -> Label, onEditingChanged: @escaping (Bool) -> Void = { _ in }) where F.FormatInput == V, F.FormatOutput == String {
         self.init(value: value, step: step, label: label)
-        self.valueField = AnyView(TextField("", value: value, format: format).frame(width: 60).labelsHidden())
+        self.valueField = AnyView(TextField("", value: value, format: format).labelsHidden())
         self.onEditingChanged = onEditingChanged
     }
 
@@ -497,22 +497,25 @@ public struct Stepper<Label: View>: View {
             // Grouped form row: a mini (classic) or small (modern) stepper trailing.
             _FormLabeledRow { label } control: {
                 HStack(spacing: 6) {
-                    if let valueField { valueField }
+                    if let valueField { valueField.frame(width: 60) }
                     if design == .modern { arrows(width: 17, height: 10.25, symbolSize: 7) } else { arrows(width: 13, height: 8, symbolSize: 6) }
                 }
             }
         } else {
+            // Measured (classic): label, 8pt, an 80pt value field, 3pt, the 13pt stepper.
             HStack(spacing: design == .modern ? 8 : 6) {
                 if !labelsHidden { label }
                 if isInForm { Spacer(minLength: 8) }
-                if let valueField { valueField }
-                // Stepper arrows by control size (mini 13 × 16, small 17 × 20; regular modern
-                // 20 × 24, classic 15 × 20).
-                switch controlSize {
-                case .mini: arrows(width: 13, height: 8, symbolSize: 6)
-                case .small: arrows(width: 17, height: 10, symbolSize: 7)
-                default:
-                    if design == .modern { arrows(width: 20, height: 12, symbolSize: 8) } else { arrows(width: 15, height: 10, symbolSize: 8) }
+                HStack(spacing: design == .modern ? 8 : 3) {
+                    if let valueField { valueField.frame(width: design == .modern ? 60 : 80).padding(.leading, design == .modern ? 0 : 2) }
+                    // Stepper arrows by control size (mini 13 × 16, small 17 × 20; regular modern
+                    // 20 × 24, classic 15 × 20).
+                    switch controlSize {
+                    case .mini: arrows(width: 13, height: 8, symbolSize: 6)
+                    case .small: arrows(width: 17, height: 10, symbolSize: 7)
+                    default:
+                        if design == .modern { arrows(width: 20, height: 12, symbolSize: 8) } else { arrows(width: valueField == nil ? 15 : 13, height: 10, symbolSize: 8) }
+                    }
                 }
             }
         }

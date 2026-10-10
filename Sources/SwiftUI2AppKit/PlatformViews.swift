@@ -587,11 +587,12 @@ final class ButtonNodeView: FlippedView, PlatformNodeView {
         case .automatic where modern, .bordered where modern:
             let path = NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius)
             let fill = info.tint.map { NSColor($0).withAlphaComponent(0.2) } ?? Self.bezelColor
-            (isPressed ? fill.blended(withFraction: 0.12, of: .black)! : fill).setFill()
+            (isPressed || info.isOn ? fill.blended(withFraction: 0.12, of: .black)! : fill).setFill()
             path.fill()
         case .automatic, .bordered:
             let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 5, yRadius: 5)
-            (isPressed ? NSColor.controlColor.blended(withFraction: 0.15, of: .black)! : NSColor.controlColor).setFill()
+            let selected = NSColor.controlColor.blended(withFraction: 0.1, of: .black)!
+            (isPressed ? NSColor.controlColor.blended(withFraction: 0.15, of: .black)! : info.isOn ? selected : NSColor.controlColor).setFill()
             path.fill()
             NSColor.separatorColor.setStroke()
             path.stroke()
@@ -649,6 +650,7 @@ final class ButtonNodeView: FlippedView, PlatformNodeView {
 
 final class ToggleNodeView: FlippedView, PlatformNodeView {
     private let checkbox = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let radio = NSButton(radioButtonWithTitle: "", target: nil, action: nil)
     private let toggleSwitch = NSSwitch()
     private var style: ToggleStyleKind = .automatic
 
@@ -658,13 +660,15 @@ final class ToggleNodeView: FlippedView, PlatformNodeView {
         checkbox.action = #selector(changed(_:))
         toggleSwitch.target = self
         toggleSwitch.action = #selector(changed(_:))
+        radio.target = self
+        radio.action = #selector(changed(_:))
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     func apply(_ content: RenderContent, backend: AppKitBackend) {
         guard case .toggle(let toggle) = content else { return }
-        let control: NSControl = toggle.style == .switch ? toggleSwitch : checkbox
+        let control: NSControl = toggle.style == .switch ? toggleSwitch : toggle.style == .radio ? radio : checkbox
         if control.superview !== self {
             subviews.forEach { $0.removeFromSuperview() }
             addSubview(control)
@@ -675,13 +679,18 @@ final class ToggleNodeView: FlippedView, PlatformNodeView {
         checkbox.state = toggle.isMixed ? .mixed : toggle.isOn ? .on : .off
         isMixed = toggle.isMixed
         toggleSwitch.state = toggle.isOn ? .on : .off
+        radio.state = toggle.isOn ? .on : .off
+        radio.controlSize = toggle.controlSize == .mini ? .mini : toggle.controlSize == .small ? .small : .regular
         control.isEnabled = toggle.isEnabled
-        control.frame = bounds
+        control.frame = controlFrame
     }
+
+    /// Radio buttons draw in an 18pt frame around their 14pt layout box (as in SwiftUI).
+    private var controlFrame: NSRect { style == .radio ? bounds.insetBy(dx: -2, dy: -2) : bounds }
 
     override func layout() {
         super.layout()
-        subviews.first?.frame = bounds
+        subviews.first?.frame = controlFrame
     }
 
     private var isMixed = false
@@ -780,10 +789,16 @@ final class TextFieldNodeView: FlippedView, PlatformNodeView, NSTextFieldDelegat
                 field.isBordered = true
                 field.isBezeled = true
                 field.bezelStyle = .squareBezel
-            default:
+            case .roundedBorder:
                 field.isBordered = true
                 field.isBezeled = true
                 field.bezelStyle = .roundedBezel
+            default:
+                // Automatic: SwiftUI's classic fields are square bezels (text 4pt in), modern
+                // ones rounded.
+                field.isBordered = true
+                field.isBezeled = true
+                field.bezelStyle = AppKitBackend.controlDesign == .modern ? .roundedBezel : .squareBezel
             }
             field.frame = bounds
         }
