@@ -64,6 +64,13 @@ public final class GtkHost {
             }
         }
         connect(raw(drawingArea), "size-allocate", data, allocate)
+        let scaleChanged: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void = { _, _, data in
+            MainActor.assumeIsolated {
+                let host = object(data, as: GtkHost.self)
+                host.setSize(host.size)
+            }
+        }
+        connect(raw(drawingArea), "notify::scale-factor", data, scaleChanged)
         let press: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutablePointer<GdkEventButton>?, UnsafeMutableRawPointer?) -> gboolean = { _, event, data in
             guard let event else { return 0 }
             return MainActor.assumeIsolated { object(data, as: GtkHost.self).buttonPressed(event.pointee) }.gboolean
@@ -166,7 +173,16 @@ public final class GtkHost {
     /// An update after the current event (text editing, scrolling).
     func flushSoon() { scheduleUpdate() }
 
+    private var displayScale: CGFloat = 0
+
     private func setSize(_ size: CGSize) {
+        // The window's scale factor (HiDPI) as `displayScale`; known once the widget is realized.
+        let scale = CGFloat(max(1, gtk_widget_get_scale_factor(drawingArea)))
+        if scale != displayScale {
+            displayScale = scale
+            graph.setEnvironment { $0.displayScale = scale }
+            if size == self.size { flushNow() }
+        }
         guard size != self.size else { return }
         self.size = size
         graph.setProposedSize(ProposedViewSize(size))
@@ -454,6 +470,7 @@ public final class GtkHost {
                 changed = true
             }
             if let location = entry.node.actions.hoverLocation {
+                GtkDebug.log("hover \(entry.node.kindName) frame \(entry.node.frame) at \(entry.point)", level: 3)
                 location(entry.point)
                 changed = true
             }

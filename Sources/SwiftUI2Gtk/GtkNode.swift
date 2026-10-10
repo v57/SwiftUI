@@ -68,8 +68,7 @@ final class GtkNode {
         case let .transform(offset, scale, rotation, anchor):
             applyTransform(&matrix, offset: offset, scale: scale, rotation: rotation, anchor: anchor)
         case .projection(let m):
-            var projection = cairo_matrix_t()
-            cairo_matrix_init(&projection, Double(m.m11), Double(m.m12), Double(m.m21), Double(m.m22), Double(m.m31), Double(m.m32))
+            var projection = Self.affineFit(m, size: frame.size)
             var result = cairo_matrix_t()
             cairo_matrix_multiply(&result, &projection, &matrix)
             matrix = result
@@ -87,6 +86,55 @@ final class GtkNode {
         if rotation != 0 { cairo_matrix_rotate(&matrix, rotation * .pi / 180) }
         cairo_matrix_scale(&matrix, Double(max(scale.width, 0.0001)), Double(max(scale.height, 0.0001)))
         cairo_matrix_translate(&matrix, -ax, -ay)
+    }
+
+    /// The affine transform closest to a projective one over a `size` box (cairo has no
+    /// perspective): the box's corners are projected exactly (with the perspective divide) and an
+    /// affine map is least-squares fitted to them. Perspective scale and translation (e.g. from
+    /// `rotation3DEffect`'s `anchorZ`) are kept; only the keystone shape is lost.
+    static func affineFit(_ m: ProjectionTransform, size: CGSize) -> cairo_matrix_t {
+        var result = cairo_matrix_t()
+        let affine = m.m13 == 0 && m.m23 == 0 && m.m33 == 1
+        let w = max(Double(size.width), 1), h = max(Double(size.height), 1)
+        let corners = [(0.0, 0.0), (w, 0.0), (0.0, h), (w, h)]
+        var projected: [(Double, Double)] = []
+        for (x, y) in corners {
+            let d = x * Double(m.m13) + y * Double(m.m23) + Double(m.m33)
+            guard d > 1e-6 else { break }
+            projected.append(((x * Double(m.m11) + y * Double(m.m21) + Double(m.m31)) / d,
+                              (x * Double(m.m12) + y * Double(m.m22) + Double(m.m32)) / d))
+        }
+        guard !affine, projected.count == 4 else {
+            cairo_matrix_init(&result, Double(m.m11), Double(m.m12), Double(m.m21), Double(m.m22), Double(m.m31), Double(m.m32))
+            return result
+        }
+        // Normal equations: (Σ v vᵀ) a = Σ v·target, with v = (x, y, 1).
+        var n = [[Double]](repeating: [0, 0, 0], count: 3)
+        var bx = [0.0, 0.0, 0.0], by = [0.0, 0.0, 0.0]
+        for ((x, y), (px, py)) in zip(corners, projected) {
+            let v = [x, y, 1]
+            for i in 0..<3 {
+                for j in 0..<3 { n[i][j] += v[i] * v[j] }
+                bx[i] += v[i] * px
+                by[i] += v[i] * py
+            }
+        }
+        func solve(_ b: [Double]) -> [Double] {
+            func det(_ a: [[Double]]) -> Double {
+                a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1]) - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
+                    + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0])
+            }
+            let d = det(n)
+            return (0..<3).map { column in
+                var a = n
+                for row in 0..<3 { a[row][column] = b[row] }
+                return det(a) / d
+            }
+        }
+        let ax = solve(bx), ay = solve(by)
+        // x' = ax0·x + ax1·y + ax2, y' = ay0·x + ay1·y + ay2.
+        cairo_matrix_init(&result, ax[0], ay[0], ax[1], ay[1], ax[2], ay[2])
+        return result
     }
 
     /// Offset applied to children (scroll views scroll their content).
