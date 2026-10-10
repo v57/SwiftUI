@@ -450,20 +450,34 @@ public struct Stepper<Label: View>: View {
     }
 
     public var body: some View {
-        HStack(spacing: 6) {
-            if !labelsHidden { label }
-            if isInForm { Spacer(minLength: 8) }
-            if let valueField { valueField }
-            VStack(spacing: 0) {
-                Button { onIncrement?() } label: { Image(systemName: "chevron.up").font(.system(size: 8, weight: .bold)).frame(width: 15, height: 10) }
-                    .buttonStyle(.plain)
-                    .disabled(onIncrement == nil)
-                Button { onDecrement?() } label: { Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).frame(width: 15, height: 10) }
-                    .buttonStyle(.plain)
-                    .disabled(onDecrement == nil)
+        if isInForm, !labelsHidden {
+            // Grouped form row: a mini stepper (13 × 16) trailing.
+            _FormLabeledRow { label } control: {
+                HStack(spacing: 6) {
+                    if let valueField { valueField }
+                    arrows(width: 13, height: 8, symbolSize: 6)
+                }
             }
-            .background(RoundedRectangle(cornerRadius: 4).fill(Color.gray.opacity(0.2)))
+        } else {
+            HStack(spacing: 6) {
+                if !labelsHidden { label }
+                if isInForm { Spacer(minLength: 8) }
+                if let valueField { valueField }
+                arrows(width: 15, height: 10, symbolSize: 8)
+            }
         }
+    }
+
+    private func arrows(width: CGFloat, height: CGFloat, symbolSize: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            Button { onIncrement?() } label: { Image(systemName: "chevron.up").font(.system(size: symbolSize, weight: .bold)).frame(width: width, height: height) }
+                .buttonStyle(.plain)
+                .disabled(onIncrement == nil)
+            Button { onDecrement?() } label: { Image(systemName: "chevron.down").font(.system(size: symbolSize, weight: .bold)).frame(width: width, height: height) }
+                .buttonStyle(.plain)
+                .disabled(onDecrement == nil)
+        }
+        .background(RoundedRectangle(cornerRadius: 4).fill(Color.gray.opacity(0.2)))
     }
 }
 
@@ -707,7 +721,15 @@ extension LabeledContent where Label == Text, Content == Text {
     }
 
     @_disfavoredOverload public init<S: StringProtocol, F: FormatStyle>(_ title: S, value: F.FormatInput, format: F) where F.FormatOutput == String {
-        self.init(content: { Text(format.format(value)) }, label: { Text(title) })
+        self.init(content: { Text(value, format: format) }, label: { Text(title) })
+    }
+
+    public init<V: StringProtocol>(_ titleKey: LocalizedStringKey, value: V) {
+        self.init(content: { Text(value) }, label: { Text(titleKey) })
+    }
+
+    public init<F: FormatStyle>(_ titleKey: LocalizedStringKey, value: F.FormatInput, format: F) where F.FormatOutput == String {
+        self.init(content: { Text(value, format: format) }, label: { Text(titleKey) })
     }
 }
 

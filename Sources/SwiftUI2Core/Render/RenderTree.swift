@@ -64,6 +64,7 @@ public struct ResolvedToggle: Equatable, Sendable {
     public var isEnabled: Bool
     /// A checkbox showing the mixed state (`Toggle(sources:isOn:)`).
     public var isMixed = false
+    public var controlSize: ControlSize = .regular
 }
 
 public struct ResolvedTextField: Equatable, Sendable {
@@ -90,9 +91,12 @@ public struct ResolvedTextField: Equatable, Sendable {
     public var writingTools = WritingToolsBehavior.automatic
     /// Text editors offer the rich-text formatting bar (`textInputFormattingControlVisibility`).
     public var showsFormattingControls = false
+    /// Text alignment (`multilineTextAlignment`).
+    public var alignment: TextAlignment = .leading
 }
 
 public struct ResolvedSlider: Equatable, Sendable {
+    public var controlSize: ControlSize = .regular
     public var value: Double
     public var range: ClosedRange<Double>
     public var isEnabled: Bool

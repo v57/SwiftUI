@@ -263,4 +263,27 @@ struct OverloadBatchTests {
         let b = layoutHost.view(withText: "B")!.absoluteFrame.minX
         #expect(a < b)
     }
+
+    @Test func formattedTextUsesTheEnvironmentLocaleAndFormsLabelRows() {
+        var english = EnvironmentValues()
+        english.locale = Locale(identifier: "en_US")
+        var german = EnvironmentValues()
+        german.locale = Locale(identifier: "de_DE")
+        #expect(Text(0.5, format: .percent).resolve(in: english).string == "50%")
+        #expect(Text(0.5, format: .percent).resolve(in: german).string == "50\u{00A0}%")
+        struct Screen: View {
+            @State var name = "Ada"
+            var body: some View {
+                Form {
+                    TextField("Name", text: $name, prompt: Text("Your name"))
+                    LabeledContent("Share", value: 0.25, format: .percent)
+                }
+                .formStyle(.grouped)
+                .environment(\.locale, Locale(identifier: "en_US"))
+            }
+        }
+        let host = TestHost(Screen())
+        #expect(host.texts.contains("Name") && !host.texts.contains("Your name"))
+        #expect(host.texts.contains("25%"))
+    }
 }

@@ -131,10 +131,14 @@ struct _AutomaticLabeledContent: View {
     @Environment(\.labelsHidden) private var labelsHidden
     @Environment(\.isInForm) private var isInForm
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            if !labelsHidden { configuration.label }
-            if isInForm { Spacer(minLength: 8) }
-            configuration.content.foregroundStyle(.secondary)
+        if isInForm, !labelsHidden {
+            _FormLabeledRow { configuration.label } control: { configuration.content.foregroundStyle(.secondary) }
+        } else {
+            HStack(alignment: .firstTextBaseline) {
+                if !labelsHidden { configuration.label }
+                if isInForm { Spacer(minLength: 8) }
+                configuration.content.foregroundStyle(.secondary)
+            }
         }
     }
 }

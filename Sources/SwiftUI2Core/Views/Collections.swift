@@ -683,7 +683,7 @@ struct _FormStack<Content: View>: View {
         var listInputs = inputs.listInputs
         listInputs.groupsSections = true
         let list = Content._makeViewList(view: view.project(inputs) { $0.content }, inputs: listInputs).list
-        return inputs.makeUnary(list: list, layout: _VStackLayout(alignment: .leading, spacing: 16))
+        return inputs.makeUnary(list: list, layout: _VStackLayout(alignment: .leading, spacing: 30))
     }
 }
 
@@ -743,28 +743,45 @@ public struct Section<Parent: View, Content: View, Footer: View>: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if let header {
-                header.font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-                    .padding(.horizontal, listContext?.isForm == true ? 4 : 8)
-            }
-            if listContext?.isForm == true, formUsesColumns {
+        if listContext?.isForm == true, !formUsesColumns {
+            // Grouped form section (macOS 26): bold header, rounded card with a hairline border,
+            // trailing footer; 10pt between them and from the card edges.
+            VStack(alignment: .leading, spacing: 10) {
+                if let header {
+                    header.font(.system(size: 13, weight: .semibold)).padding(.horizontal, 10)
+                }
                 _FormRows(content: content)
+                    .background(Color.formSeparator)
+                    .padding(.horizontal, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-            } else if listContext?.isForm == true {
-                _FormRows(content: content)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.1)))
-            } else {
-                _ListRows(content: content)
+                    .background {
+                        RoundedRectangle(cornerRadius: 6).fill(Color.formCard)
+                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.formCardBorder, lineWidth: 0.5))
+                    }
+                if let footer {
+                    footer.font(.system(size: 13))
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.horizontal, 10)
+                }
             }
-            if let footer {
-                footer.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 8)
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                if let header {
+                    header.font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                        .padding(.horizontal, listContext?.isForm == true ? 4 : 8)
+                }
+                if listContext?.isForm == true {
+                    _FormRows(content: content)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    _ListRows(content: content)
+                }
+                if let footer {
+                    footer.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 8)
+                }
             }
+            .padding(.bottom, listContext == nil ? 0 : 6)
         }
-        .padding(.bottom, listContext == nil ? 0 : 6)
     }
 }
 
@@ -790,16 +807,18 @@ struct _FormRows<Content: View>: View {
         let rows = list.wrapped(in: inputs.subgraph) { _, subgraph in
             Attribute<_FormRowModifier>(subgraph, value: _FormRowModifier())
         }
-        return inputs.makeLayoutContainer(layout: inputs.constant(_VStackLayout(alignment: .leading, spacing: 0)), list: rows)
+        return inputs.makeLayoutContainer(layout: inputs.constant(_VStackLayout(alignment: .leading, spacing: 1)), list: rows)
     }
 }
 
+/// A grouped form row (macOS 26 metrics): 10pt above and below the content, on the card color;
+/// the 1pt gaps between rows show the separator color behind them.
 struct _FormRowModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .padding(.vertical, 6)
+            .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .overlay(alignment: .bottom) { Rectangle().fill(Color.separator).frame(height: 1) }
+            .background(Color.formCard)
     }
 }
 
@@ -906,12 +925,22 @@ public struct Picker<Label: View, SelectionValue: Hashable, Content: View>: View
     }
 
     public var body: some View {
-        let context = SelectionContext.single(selection)
-        HStack(alignment: style == .radioGroup || style == .inline ? .firstTextBaseline : .center, spacing: 8) {
-            if !labelsHidden {
-                label
-                if isInForm { Spacer(minLength: 8) }
+        if isInForm, !labelsHidden, style != .radioGroup, style != .inline, style != .segmented {
+            // Grouped form row: label leading, a borderless pop-up trailing.
+            _FormLabeledRow { label } control: { selector }
+        } else {
+            HStack(alignment: style == .radioGroup || style == .inline ? .firstTextBaseline : .center, spacing: 8) {
+                if !labelsHidden {
+                    label
+                    if isInForm { Spacer(minLength: 8) }
+                }
+                selector
             }
+        }
+    }
+
+    @ViewBuilder private var selector: some View {
+        let context = SelectionContext.single(selection)
             switch style {
             case .segmented:
                 _ListTransformView(content: content, transform: { list, inputs in
@@ -941,7 +970,7 @@ public struct Picker<Label: View, SelectionValue: Hashable, Content: View>: View
                         Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .semibold))
                     }
                 }
-                .buttonStyle(.bordered)
+                .modifier(_PickerButtonStyle(borderless: isInForm))
                 .modifier(_SheetModifier(isPresented: $menuPresented, onDismiss: nil, content: {
                     _ListTransformView(content: content, transform: { list, inputs in
                         list.wrapped(in: inputs.subgraph) { traits, subgraph in
@@ -954,6 +983,17 @@ public struct Picker<Label: View, SelectionValue: Hashable, Content: View>: View
                     .frame(minWidth: 140, alignment: .leading)
                 }, kind: .menu))
             }
+    }
+}
+
+/// Pop-up pickers are bordered, except in grouped forms (a borderless 16pt pop-up).
+struct _PickerButtonStyle: ViewModifier {
+    let borderless: Bool
+    func body(content: Content) -> some View {
+        if borderless {
+            content.buttonStyle(.plain).frame(height: 16)
+        } else {
+            content.buttonStyle(.bordered)
         }
     }
 }

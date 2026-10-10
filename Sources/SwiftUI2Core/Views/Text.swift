@@ -308,6 +308,8 @@ public struct Text: Equatable {
         /// A date shown relative to now (`.relative`, `.offset`, `.timer`): formatted when resolved.
         case date(Date, DateStyle)
         case timerInterval(ClosedRange<Date>, pauseTime: Date?, countsDown: Bool, showsHours: Bool)
+        /// A formatted value, formatted in the environment's locale when resolved.
+        case formatted(_FormattedValue)
     }
 
     enum Modifier: Equatable {
@@ -338,7 +340,7 @@ public struct Text: Equatable {
 
     public init(_ image: Image) { storage = .image(image) }
     public init<F: FormatStyle>(_ input: F.FormatInput, format: F) where F.FormatOutput == String {
-        storage = .verbatim(format.format(input))
+        storage = .formatted(_FormattedValue(input: input, format: format))
     }
 
     public enum DateStyle: Hashable, Sendable { case time, date, relative, offset, timer }
@@ -472,6 +474,7 @@ public struct Text: Equatable {
         case .localized: return expanded.plainString
         case .image: return ""
         case let .date(date, style): return Text.format(date, style: style, now: Date())
+        case .formatted(let value): return value.string(in: .autoupdatingCurrent)
         case let .timerInterval(range, pauseTime, countsDown, showsHours):
             let now = min(max(pauseTime ?? Date(), range.lowerBound), range.upperBound)
             let elapsed = countsDown ? range.upperBound.timeIntervalSince(now) : now.timeIntervalSince(range.lowerBound)
@@ -481,6 +484,9 @@ public struct Text: Equatable {
 
     public func resolve(in environment: EnvironmentValues) -> ResolvedText {
         if case .localized = storage { return expanded.resolve(in: environment) }
+        if case .formatted(let value) = storage {
+            return Text(verbatim: value.string(in: environment.locale)).withModifiers(modifiers).resolve(in: environment)
+        }
         if case .image(let image) = storage {
             var result = resolveStyle(in: environment, modifiers: modifiers)
             result.string = "\u{FFFC}"
@@ -628,4 +634,21 @@ extension AttributeDynamicLookup {
     public subscript<T: AttributedStringKey>(dynamicMember keyPath: KeyPath<AttributeScopes.SwiftUI2Attributes, T>) -> T {
         self[T.self]
     }
+}
+
+/// A value with its format style (compared by the style and the formatted text).
+public struct _FormattedValue: Equatable, @unchecked Sendable {
+    let format: AnyHashable
+    let text: String
+    let formatter: (Locale) -> String
+
+    init<F: FormatStyle>(input: F.FormatInput, format: F) where F.FormatOutput == String {
+        self.format = AnyHashable(format)
+        self.text = format.format(input)
+        self.formatter = { locale in format.locale(locale).format(input) }
+    }
+
+    func string(in locale: Locale) -> String { formatter(locale) }
+
+    public static func == (lhs: Self, rhs: Self) -> Bool { lhs.format == rhs.format && lhs.text == rhs.text }
 }

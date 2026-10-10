@@ -85,7 +85,8 @@ public struct LocalizedStringKey: Equatable, @unchecked Sendable, ExpressibleByS
 
         public mutating func appendInterpolation<F: FormatStyle>(_ input: F.FormatInput, format: F) where F.FormatOutput == String {
             key += "%@"
-            arguments.append(.string(format.format(input)))
+            // Formatted in the environment's locale when the text resolves.
+            arguments.append(.text(Text(input, format: format)))
         }
 
         public mutating func appendInterpolation(_ text: Text) {

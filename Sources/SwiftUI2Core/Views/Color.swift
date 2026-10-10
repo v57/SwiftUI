@@ -144,6 +144,10 @@ public struct Color: Hashable, Sendable, CustomStringConvertible {
     public static let accentColor = Color(storage: .accent)
     /// The second of the alternating content background colors (striped rows).
     static let alternatingRow = dynamic(rgb(0, 0, 0, 0.03), rgb(1, 1, 1, 0.05))
+    /// Grouped form card, its hairline border and row separators (macOS 26).
+    static let formCard = dynamic(rgb(1, 1, 1, 0.6), rgb(0.169, 0.169, 0.169))
+    static let formCardBorder = dynamic(rgb(0, 0, 0, 0.08), rgb(0.271, 0.271, 0.271))
+    static let formSeparator = dynamic(rgb(0, 0, 0, 0.06), rgb(0.208, 0.208, 0.208))
     static let separator = dynamic(rgb(0, 0, 0, 0.1), rgb(1, 1, 1, 0.1))
     static let controlBackground = dynamic(rgb(1, 1, 1), rgb(0.118, 0.118, 0.118))
     /// Split view sidebar column (the window background on macOS 26+).

@@ -3,7 +3,7 @@
 import Foundation
 import Combine
 import Observation
-#if canImport(SwiftUI2)
+#if canImport(SwiftUI2) && !APPLE_SWIFTUI
 import SwiftUI2
 #else
 import SwiftUI

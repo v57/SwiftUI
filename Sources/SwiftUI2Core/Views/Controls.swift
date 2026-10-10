@@ -493,12 +493,13 @@ public struct Toggle<Label: View>: View {
             Button { isOn.wrappedValue.toggle() } label: { label }
                 .environment(\.buttonStyle, isOn.wrappedValue ? .borderedProminent : .bordered)
         } else if isInForm && (kind == .switch || kind == .automatic) {
-            HStack(spacing: 8) {
-                if !labelsHidden {
-                    label
-                    Spacer(minLength: 0)
+            // Grouped form row: a mini switch trailing.
+            if labelsHidden {
+                _ToggleControl(isOn: isOn).environment(\.toggleStyle, .switch).controlSize(.mini)
+            } else {
+                _FormLabeledRow { label } control: {
+                    _ToggleControl(isOn: isOn).environment(\.toggleStyle, .switch).controlSize(.mini)
                 }
-                _ToggleControl(isOn: isOn).environment(\.toggleStyle, .switch)
             }
         } else if kind == .switch {
             // Outside forms a switch hugs its label (measured on macOS SwiftUI).
@@ -552,7 +553,7 @@ public struct _ToggleControl: View {
             let env = environment.value
             let style: ToggleStyleKind = env.toggleStyle == .switch ? .switch : .checkbox
             let control = view.attribute.value
-            return .toggle(ResolvedToggle(isOn: control.isOn.wrappedValue, style: style, isEnabled: env.isEnabled, isMixed: control.isMixed))
+            return .toggle(ResolvedToggle(isOn: control.isOn.wrappedValue, style: style, isEnabled: env.isEnabled, isMixed: control.isMixed, controlSize: env.controlSize))
         }
         let viewAttribute = view.attribute
         var actions = RenderActions()
@@ -571,6 +572,8 @@ public struct _ToggleControl: View {
             if kind == .checkbox, env.controlSize == .small || env.controlSize == .mini {
                 size = CGSize(width: max(0, size.width - 2), height: max(0, size.height - 2))
             }
+            // Mini switches (grouped forms) are 26 × 16, as SwiftUI draws them.
+            if kind == .switch, env.controlSize == .mini { size = CGSize(width: 26, height: 16) }
             return FixedLayoutComputer(size: size, path: path, tracer: tracer)
         }
         return _ViewOutputs(layout: layout)
@@ -660,7 +663,8 @@ struct _TextInput: View {
                 color: ForegroundStyle()._resolveColor(in: env), wraps: field.kind == .verticalField,
                 isFindEnabled: !env.findDisabled, showsFindNavigator: env.findNavigatorPresented?.wrappedValue ?? false,
                 isAutocorrectionDisabled: env.autocorrectionDisabled, contentType: env._textContentType,
-                writingTools: env.writingToolsBehavior, showsFormattingControls: env.textInputFormattingControlVisibility == .visible
+                writingTools: env.writingToolsBehavior, showsFormattingControls: env.textInputFormattingControlVisibility == .visible,
+                alignment: env.multilineTextAlignment
             ))
         }
         let viewAttribute = view.attribute
@@ -747,13 +751,43 @@ final class VerticalTextFieldLayoutComputer: LayoutComputer {
 
 public struct TextField<Label: View>: View {
     let text: Binding<String>
-    let prompt: String
+    /// The title (`TextField("Name", ...)`): the placeholder, or the row label in forms.
+    var title: Text?
+    var labelView: AnyView?
+    var promptText: Text?
     var axis: Axis = .horizontal
     @Environment(\.isInForm) private var isInForm
     @Environment(\.labelsHidden) private var labelsHidden
     @Environment(\.textInputSuggestions) private var suggestions
     @Environment(\.focusRequest) private var externalFocus
     @FocusState private var isEditing: Bool
+
+    init(text: Binding<String>, title: Text?, label: AnyView? = nil, prompt: Text?, axis: Axis = .horizontal) {
+        self.text = text
+        self.title = title
+        self.labelView = label
+        self.promptText = prompt
+        self.axis = axis
+    }
+
+    /// Placeholder outside forms: the prompt, else the title.
+    var prompt: String { promptText?.plainString ?? title?.plainString ?? "" }
+
+    public init(text: Binding<String>, prompt: Text? = nil, @ViewBuilder label: () -> Label) {
+        self.init(text: text, title: nil, label: AnyView(label()), prompt: prompt)
+    }
+
+    public init(text: Binding<String>, prompt: Text? = nil, axis: Axis, @ViewBuilder label: () -> Label) {
+        self.init(text: text, title: nil, label: AnyView(label()), prompt: prompt, axis: axis)
+    }
+
+    public init<F: ParseableFormatStyle>(value: Binding<F.FormatInput>, format: F, prompt: Text? = nil, @ViewBuilder label: () -> Label) where F.FormatOutput == String {
+        self.init(text: Self.formatted(value, format), title: nil, label: AnyView(label()), prompt: prompt)
+    }
+
+    static func formatted<F: ParseableFormatStyle>(_ value: Binding<F.FormatInput>, _ format: F) -> Binding<String> where F.FormatOutput == String {
+        Binding(get: { format.format(value.wrappedValue) }, set: { if let parsed = try? format.parseStrategy.parse($0) { value.wrappedValue = parsed } })
+    }
 
     /// The field with `textInputSuggestions` (tracking its own focus unless `focused` is set).
     private func input(_ prompt: String) -> some View {
@@ -765,12 +799,13 @@ public struct TextField<Label: View>: View {
 
     public var body: some View {
         if isInForm && !labelsHidden {
-            HStack {
-                Text(prompt)
-                Spacer(minLength: 16)
-                input("")
+            // Grouped form row: the title labels the row; the borderless field's text is trailing.
+            _FormLabeledRow {
+                if let labelView { labelView } else if let title { title }
+            } control: {
+                input(promptText?.plainString ?? "")
                     .textFieldStyle(.plain)
-                    .frame(maxWidth: 240)
+                    .multilineTextAlignment(.trailing)
             }
         } else if suggestions != nil {
             input(prompt)
@@ -781,58 +816,92 @@ public struct TextField<Label: View>: View {
 }
 
 extension TextField where Label == Text {
-    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, text: Binding<String>) {
-        self.text = text
-        self.prompt = String(title)
+    public init(_ titleKey: LocalizedStringKey, text: Binding<String>) {
+        self.init(text: text, title: Text(titleKey), prompt: nil)
     }
 
-    public init(_ titleKey: LocalizedStringKey, text: Binding<String>) {
-        self.text = text
-        self.prompt = titleKey.key
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, text: Binding<String>) {
+        self.init(text: text, title: Text(title), prompt: nil)
+    }
+
+    public init(_ titleKey: LocalizedStringKey, text: Binding<String>, prompt: Text?) {
+        self.init(text: text, title: Text(titleKey), prompt: prompt)
     }
 
     @_disfavoredOverload public init<S: StringProtocol>(_ title: S, text: Binding<String>, prompt: Text?) {
-        self.text = text
-        self.prompt = prompt?.plainString ?? String(title)
-    }
-
-    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, text: Binding<String>, axis: Axis) {
-        self.text = text
-        self.prompt = String(title)
-        self.axis = axis
+        self.init(text: text, title: Text(title), prompt: prompt)
     }
 
     public init(_ titleKey: LocalizedStringKey, text: Binding<String>, axis: Axis) {
-        self.text = text
-        self.prompt = titleKey.key
-        self.axis = axis
+        self.init(text: text, title: Text(titleKey), prompt: nil, axis: axis)
+    }
+
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, text: Binding<String>, axis: Axis) {
+        self.init(text: text, title: Text(title), prompt: nil, axis: axis)
+    }
+
+    public init(_ titleKey: LocalizedStringKey, text: Binding<String>, prompt: Text?, axis: Axis) {
+        self.init(text: text, title: Text(titleKey), prompt: prompt, axis: axis)
     }
 
     @_disfavoredOverload public init<S: StringProtocol>(_ title: S, text: Binding<String>, prompt: Text?, axis: Axis) {
-        self.text = text
-        self.prompt = prompt?.plainString ?? String(title)
-        self.axis = axis
+        self.init(text: text, title: Text(title), prompt: prompt, axis: axis)
     }
 
-    @_disfavoredOverload public init<S: StringProtocol, F: ParseableFormatStyle>(_ title: S, value: Binding<F.FormatInput>, format: F) where F.FormatOutput == String {
-        self.prompt = String(title)
-        self.text = Binding(get: { format.format(value.wrappedValue) }, set: { if let parsed = try? format.parseStrategy.parse($0) { value.wrappedValue = parsed } })
+    public init<F: ParseableFormatStyle>(_ titleKey: LocalizedStringKey, value: Binding<F.FormatInput>, format: F, prompt: Text? = nil) where F.FormatOutput == String {
+        self.init(text: Self.formatted(value, format), title: Text(titleKey), prompt: prompt)
+    }
+
+    @_disfavoredOverload public init<S: StringProtocol, F: ParseableFormatStyle>(_ title: S, value: Binding<F.FormatInput>, format: F, prompt: Text? = nil) where F.FormatOutput == String {
+        self.init(text: Self.formatted(value, format), title: Text(title), prompt: prompt)
+    }
+
+    /// A field editing a value through a `Formatter`.
+    public init<V>(_ titleKey: LocalizedStringKey, value: Binding<V>, formatter: Formatter, prompt: Text? = nil) {
+        self.init(text: Self.formatterBinding(value, formatter), title: Text(titleKey), prompt: prompt)
+    }
+
+    @_disfavoredOverload public init<S: StringProtocol, V>(_ title: S, value: Binding<V>, formatter: Formatter, prompt: Text? = nil) {
+        self.init(text: Self.formatterBinding(value, formatter), title: Text(title), prompt: prompt)
+    }
+
+    static func formatterBinding<V>(_ value: Binding<V>, _ formatter: Formatter) -> Binding<String> {
+        Binding(get: { formatter.string(for: value.wrappedValue) ?? "" }, set: { string in
+            var object: AnyObject?
+            if formatter.getObjectValue(&object, for: string, errorDescription: nil), let typed = object as? V { value.wrappedValue = typed }
+        })
     }
 }
 
 public struct SecureField<Label: View>: View {
     let text: Binding<String>
-    let prompt: String
+    var title: Text?
+    var labelView: AnyView?
+    var promptText: Text?
     @Environment(\.isInForm) private var isInForm
+    @Environment(\.labelsHidden) private var labelsHidden
+
+    init(text: Binding<String>, title: Text?, label: AnyView? = nil, prompt: Text?) {
+        self.text = text
+        self.title = title
+        self.labelView = label
+        self.promptText = prompt
+    }
+
+    var prompt: String { promptText?.plainString ?? title?.plainString ?? "" }
+
+    public init(text: Binding<String>, prompt: Text? = nil, @ViewBuilder label: () -> Label) {
+        self.init(text: text, title: nil, label: AnyView(label()), prompt: prompt)
+    }
 
     public var body: some View {
-        if isInForm {
-            HStack {
-                Text(prompt)
-                Spacer(minLength: 16)
-                _TextInput(text: text, prompt: "", kind: .secure)
+        if isInForm && !labelsHidden {
+            _FormLabeledRow {
+                if let labelView { labelView } else if let title { title }
+            } control: {
+                _TextInput(text: text, prompt: promptText?.plainString ?? "", kind: .secure)
                     .textFieldStyle(.plain)
-                    .frame(maxWidth: 240)
+                    .multilineTextAlignment(.trailing)
             }
         } else {
             _TextInput(text: text, prompt: prompt, kind: .secure)
@@ -841,14 +910,59 @@ public struct SecureField<Label: View>: View {
 }
 
 extension SecureField where Label == Text {
-    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, text: Binding<String>) {
-        self.text = text
-        self.prompt = String(title)
+    public init(_ titleKey: LocalizedStringKey, text: Binding<String>) {
+        self.init(text: text, title: Text(titleKey), prompt: nil)
     }
 
-    public init(_ titleKey: LocalizedStringKey, text: Binding<String>) {
-        self.text = text
-        self.prompt = titleKey.key
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, text: Binding<String>) {
+        self.init(text: text, title: Text(title), prompt: nil)
+    }
+
+    public init(_ titleKey: LocalizedStringKey, text: Binding<String>, prompt: Text?) {
+        self.init(text: text, title: Text(titleKey), prompt: prompt)
+    }
+
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, text: Binding<String>, prompt: Text?) {
+        self.init(text: text, title: Text(title), prompt: prompt)
+    }
+}
+
+/// A grouped form row (macOS 26): the label leading; the control trailing, offered at most 55%
+/// of the row's width (flexible controls such as sliders and fields take all of it).
+struct _FormLabeledRow<Label: View, Control: View>: View {
+    @ViewBuilder let label: Label
+    @ViewBuilder let control: Control
+
+    var body: some View {
+        _FormRowLayout {
+            label
+            control
+        }
+    }
+}
+
+struct _FormRowLayout: Layout {
+    static let controlFraction: CGFloat = 0.55
+    static let spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard subviews.count == 2 else { return .zero }
+        let width = proposal.width ?? (subviews[0].sizeThatFits(.unspecified).width + Self.spacing + subviews[1].sizeThatFits(.unspecified).width)
+        let (labelSize, controlSize) = sizes(width: width, subviews)
+        return CGSize(width: width, height: max(labelSize.height, controlSize.height))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard subviews.count == 2 else { return }
+        let (labelSize, controlSize) = sizes(width: bounds.width, subviews)
+        subviews[0].place(at: CGPoint(x: bounds.minX, y: bounds.midY), anchor: .leading, proposal: ProposedViewSize(labelSize))
+        subviews[1].place(at: CGPoint(x: bounds.maxX, y: bounds.midY), anchor: .trailing, proposal: ProposedViewSize(controlSize))
+    }
+
+    private func sizes(width: CGFloat, _ subviews: Subviews) -> (CGSize, CGSize) {
+        let control = subviews[1].sizeThatFits(ProposedViewSize(width: (width * Self.controlFraction).rounded(), height: nil))
+        let label = subviews[0].sizeThatFits(ProposedViewSize(width: max(0, width - control.width - Self.spacing), height: nil))
+        return (label, control)
     }
 }
 
@@ -870,12 +984,24 @@ public struct Slider<Label: View>: View {
     var onEditingChanged: (Bool) -> Void = { _ in }
     @Environment(\.labelsHidden) private var labelsHidden
 
+    @Environment(\.isInForm) private var isInForm
+
     public var body: some View {
-        HStack(spacing: 6) {
-            if let label, !labelsHidden { label }
-            if let minimumLabel { minimumLabel }
-            _SliderControl(value: value, range: range, step: step, onEditingChanged: onEditingChanged)
-            if let maximumLabel { maximumLabel }
+        if isInForm, let label, !labelsHidden {
+            _FormLabeledRow { label } control: {
+                HStack(spacing: 6) {
+                    if let minimumLabel { minimumLabel }
+                    _SliderControl(value: value, range: range, step: step, onEditingChanged: onEditingChanged)
+                    if let maximumLabel { maximumLabel }
+                }
+            }
+        } else {
+            HStack(spacing: 6) {
+                if let label, !labelsHidden { label }
+                if let minimumLabel { minimumLabel }
+                _SliderControl(value: value, range: range, step: step, onEditingChanged: onEditingChanged)
+                if let maximumLabel { maximumLabel }
+            }
         }
     }
 }
@@ -927,7 +1053,9 @@ struct _SliderControl: View {
         let environment = inputs.environment
         let content = makeObservedAttribute(inputs.subgraph, of: RenderContent.self, isEqual: { $0 == $1 }) {
             let slider = view.attribute.value
-            return .slider(ResolvedSlider(value: slider.value.wrappedValue, range: slider.range, isEnabled: environment.value.isEnabled))
+            var resolved = ResolvedSlider(value: slider.value.wrappedValue, range: slider.range, isEnabled: environment.value.isEnabled)
+            resolved.controlSize = environment.value.controlSize
+            return .slider(resolved)
         }
         let viewAttribute = view.attribute
         var actions = RenderActions()
@@ -951,7 +1079,14 @@ struct _SliderControl: View {
         let tracer = inputs.tracer
         let path = inputs.path
         return _ViewOutputs(layout: inputs.makeLayoutAttribute {
-            ControlLayoutComputer(metrics: services.controlMetrics(.slider), path: path, tracer: tracer)
+            var metrics = services.controlMetrics(.slider)
+            // SwiftUI's slider heights: small 16, mini 12; 19 in grouped form rows.
+            switch environment.value.controlSize {
+            case .small: metrics.minSize.height = 16
+            case .mini: metrics.minSize.height = 12
+            default: if environment.value.isInForm { metrics.minSize.height = 19 }
+            }
+            return ControlLayoutComputer(metrics: metrics, path: path, tracer: tracer)
         })
     }
 }

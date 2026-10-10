@@ -601,6 +601,7 @@ final class ToggleNodeView: FlippedView, PlatformNodeView {
             addSubview(control)
         }
         style = toggle.style
+        toggleSwitch.controlSize = toggle.controlSize == .mini ? .mini : toggle.controlSize == .small ? .small : .regular
         checkbox.allowsMixedState = toggle.isMixed
         checkbox.state = toggle.isMixed ? .mixed : toggle.isOn ? .on : .off
         isMixed = toggle.isMixed
@@ -695,6 +696,11 @@ final class TextFieldNodeView: FlippedView, PlatformNodeView, NSTextFieldDelegat
                 field.cell?.wraps = model.wraps
                 field.cell?.isScrollable = !model.wraps
                 field.lineBreakMode = model.wraps ? .byWordWrapping : .byClipping
+            }
+            switch model.alignment {
+            case .leading: field.alignment = .natural
+            case .center: field.alignment = .center
+            case .trailing: field.alignment = .right
             }
             switch model.style {
             case .plain:
@@ -846,6 +852,7 @@ final class SliderNodeView: FlippedView, PlatformNodeView {
         slider.maxValue = model.range.upperBound
         slider.doubleValue = model.value
         slider.isEnabled = model.isEnabled
+        slider.controlSize = model.controlSize == .mini ? .mini : model.controlSize == .small ? .small : .regular
         slider.frame = bounds
         slider.editingChanged = { [weak self] editing in self?.node?.actions.editingChanged?(editing) }
     }
