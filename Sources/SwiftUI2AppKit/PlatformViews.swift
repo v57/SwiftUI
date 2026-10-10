@@ -584,7 +584,7 @@ final class ButtonNodeView: FlippedView, PlatformNodeView {
         case .automatic: break
         }
         switch info.style {
-        case .automatic, .bordered where modern:
+        case .automatic where modern, .bordered where modern:
             let path = NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius)
             let fill = info.tint.map { NSColor($0).withAlphaComponent(0.2) } ?? Self.bezelColor
             (isPressed ? fill.blended(withFraction: 0.12, of: .black)! : fill).setFill()

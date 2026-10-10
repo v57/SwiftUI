@@ -181,6 +181,7 @@ public struct NavigationLink<Label: View, Destination: View>: View {
     let value: AnyHashable?
     let destination: Destination?
     @Environment(\.navigationContext) private var context
+    @Environment(\.listContext) private var listContext
 
     public init(@ViewBuilder destination: () -> Destination, @ViewBuilder label: () -> Label) {
         self.label = label()
@@ -194,18 +195,25 @@ public struct NavigationLink<Label: View, Destination: View>: View {
         self.value = nil
     }
 
+    private func activate() {
+        if let value { context?.push(value) } else if let destination { _ = context?.pushView(AnyView(destination)) }
+    }
+
     public var body: some View {
-        Button {
-            if let value { context?.push(value) } else if let destination { _ = context?.pushView(AnyView(destination)) }
-        } label: {
-            // macOS list rows show no disclosure chevron.
-            HStack {
-                label
-                Spacer(minLength: 0)
+        if listContext != nil {
+            // A list row (macOS list rows show no disclosure chevron).
+            Button { activate() } label: {
+                HStack {
+                    label
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+        } else {
+            // Outside lists, a navigation link is a regular button.
+            Button { activate() } label: { label }
         }
-        .buttonStyle(.plain)
     }
 }
 
@@ -311,7 +319,7 @@ public struct NavigationSplitView<Sidebar: View, Content: View, Detail: View>: V
     let detail: Detail
     let columnVisibility: Binding<NavigationSplitViewVisibility>?
     @State private var sidebarWidth: CGFloat = 144  // SwiftUI's default sidebar column width on macOS
-    @State private var contentWidth: CGFloat = 260
+    @State private var contentWidth: CGFloat = 200  // SwiftUI's default content column width
     @State private var internalVisibility = NavigationSplitViewVisibility.automatic
 
     public init(@ViewBuilder sidebar: () -> Sidebar, @ViewBuilder content: () -> Content, @ViewBuilder detail: () -> Detail) {
@@ -338,7 +346,7 @@ public struct NavigationSplitView<Sidebar: View, Content: View, Detail: View>: V
                 sidebar
                     .environment(\.isSidebarColumn, true)
                     .frame(width: sidebarWidth)
-                    .frame(maxHeight: .infinity, alignment: .top)
+                    .frame(maxHeight: .infinity)
                     .background(Color.sidebarBackground)
                     .onPreferenceChange(ColumnWidthKey.self) { if let width = $0 { sidebarWidth = width } }
                     // The sidebar's title is not the window's; its toolbar items sit over the sidebar.
@@ -350,15 +358,17 @@ public struct NavigationSplitView<Sidebar: View, Content: View, Detail: View>: V
                 _SplitDivider()
             }
             if let content {
+                // Like SwiftUI, column content is centered in its column.
+                // With three columns, the window title is the content column's (else the scene's).
                 content
                     .frame(width: contentWidth)
-                    .frame(maxHeight: .infinity, alignment: .top)
+                    .frame(maxHeight: .infinity)
                     .onPreferenceChange(ColumnWidthKey.self) { if let width = $0 { contentWidth = width } }
-                    .transformPreference(NavigationTitleKey.self) { $0 = nil }
                 _SplitDivider()
             }
             detail
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .transformPreference(NavigationTitleKey.self) { if content != nil { $0 = nil } }
         }
         .transformPreference(NavigationChromeKey.self) { chrome in
             chrome.hasSidebar = true
