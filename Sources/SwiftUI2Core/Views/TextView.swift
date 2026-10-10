@@ -61,7 +61,8 @@ final class TextLayoutComputer: LayoutComputer {
         let lineHeight = services.measureText(line, proposal: ProposedViewSize(width: proposal.width, height: nil)).height
         guard lineHeight > 0 else { return size }
         var limited = text
-        limited.lineLimit = max(1, Int(((height + 0.01) / lineHeight).rounded(.down)))
+        // Reserved lines (`reservesSpace`, line limit ranges) are kept even when squeezed.
+        limited.lineLimit = max(text.minimumLines ?? 1, 1, Int(((height + 0.01) / lineHeight).rounded(.down)))
         return services.measureText(limited, proposal: proposal)
     }
 

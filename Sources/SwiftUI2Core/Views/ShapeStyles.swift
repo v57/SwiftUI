@@ -5,15 +5,15 @@ import CoreGraphics
 
 // MARK: - Gradients
 
-public struct ResolvedGradient: Equatable, Sendable {
-    public enum Kind: Equatable, Sendable {
+public struct ResolvedGradient: Hashable, Sendable {
+    public enum Kind: Hashable, Sendable {
         case linear(start: UnitPoint, end: UnitPoint)
         case radial(center: UnitPoint, startRadius: CGFloat, endRadius: CGFloat)
         case angular(center: UnitPoint, startAngle: Double, endAngle: Double)
         case elliptical(center: UnitPoint, startFraction: CGFloat, endFraction: CGFloat)
     }
 
-    public struct Stop: Equatable, Sendable {
+    public struct Stop: Hashable, Sendable {
         public var color: Color.Resolved
         public var location: CGFloat
     }

@@ -143,7 +143,7 @@ public final class HeadlessBackend: RenderBackend {
         let lineHeight = (text.font.size * 1.2).rounded(.up)
         let lines = layoutLines(text.string, charWidth: charWidth, maxWidth: proposal.width, lineLimit: text.lineLimit)
         let width = lines.map { CGFloat($0.count) * charWidth }.max() ?? 0
-        let count = CGFloat(max(lines.count, 1))
+        let count = CGFloat(max(lines.count, 1, text.minimumLines ?? 0))
         return CGSize(width: min(width, proposal.width ?? .infinity).rounded(.up), height: count * lineHeight + (count - 1) * text.lineSpacing)
     }
 

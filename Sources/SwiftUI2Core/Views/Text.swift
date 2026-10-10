@@ -244,6 +244,17 @@ public struct ResolvedText: Hashable, Sendable {
     public var allowsTightening = false
     /// Drawn as placeholder shapes (`redacted(reason:)`).
     public var isRedacted = false
+    /// Text filled with a gradient (`foregroundStyle` gradients).
+    public var gradient: ResolvedGradient? = nil
+    public var strikethroughStyle: LineStyle? = nil
+    public var underlineStyle: LineStyle? = nil
+    /// Lines reserved even when the text is shorter (`lineLimit(_:reservesSpace:)`, ranges).
+    public var minimumLines: Int? = nil
+
+    public struct LineStyle: Hashable, Sendable {
+        public var pattern: Text.LineStyle.Pattern
+        public var color: Color.Resolved?
+    }
     public var contentTransition = ContentTransition.interpolate
 
     /// The text with all fonts scaled (used for `minimumScaleFactor`).
@@ -272,11 +283,14 @@ public struct ResolvedText: Hashable, Sendable {
         /// An inline image drawn in place of the run's text (U+FFFC).
         public var image: ResolvedImage? = nil
         public var link: URL? = nil
+        public var gradient: ResolvedGradient? = nil
+        public var strikethroughStyle: LineStyle? = nil
+        public var underlineStyle: LineStyle? = nil
     }
 
     /// The runs to draw (a single run for uniform text).
     public var effectiveRuns: [Run] {
-        runs.isEmpty ? [Run(string: string, font: font, color: color, strikethrough: strikethrough, underline: underline, tracking: tracking, baselineOffset: baselineOffset, background: background, link: link)] : runs
+        runs.isEmpty ? [Run(string: string, font: font, color: color, strikethrough: strikethrough, underline: underline, tracking: tracking, baselineOffset: baselineOffset, background: background, link: link, gradient: gradient, strikethroughStyle: strikethroughStyle, underlineStyle: underlineStyle)] : runs
     }
 
     /// The part of the text that affects measurement.
@@ -318,8 +332,8 @@ public struct Text: Equatable {
         case style(AnyShapeStyle)
         case weight(Font.Weight?)
         case italic
-        case strikethrough(Bool)
-        case underline(Bool)
+        case strikethrough(Text.LineStyle?)
+        case underline(Text.LineStyle?)
         case monospacedDigit
         case tracking(CGFloat)
         case baselineOffset(CGFloat)
@@ -380,7 +394,7 @@ public struct Text: Equatable {
             return formatter.string(from: date)
         case .relative, .offset:
             let formatter = DateComponentsFormatter()
-            formatter.unitsStyle = .full
+            formatter.unitsStyle = style == .relative ? .short : .full
             formatter.allowedUnits = [.year, .month, .day, .hour, .minute, .second]
             formatter.maximumUnitCount = style == .relative ? 2 : 1
             let interval = date.timeIntervalSince(now)
@@ -457,8 +471,12 @@ public struct Text: Equatable {
     public func bold() -> Text { adding(.weight(.bold)) }
     public func italic(_ isActive: Bool = true) -> Text { isActive ? adding(.italic) : self }
     public func italic() -> Text { adding(.italic) }
-    public func strikethrough(_ isActive: Bool = true) -> Text { adding(.strikethrough(isActive)) }
-    public func underline(_ isActive: Bool = true) -> Text { adding(.underline(isActive)) }
+    public func strikethrough(_ isActive: Bool = true, pattern: LineStyle.Pattern = .solid, color: Color? = nil) -> Text {
+        adding(.strikethrough(isActive ? LineStyle(pattern: pattern, color: color) : nil))
+    }
+    public func underline(_ isActive: Bool = true, pattern: LineStyle.Pattern = .solid, color: Color? = nil) -> Text {
+        adding(.underline(isActive ? LineStyle(pattern: pattern, color: color) : nil))
+    }
     public func monospacedDigit() -> Text { adding(.monospacedDigit) }
 
     public static func + (lhs: Text, rhs: Text) -> Text {
@@ -519,8 +537,9 @@ public struct Text: Equatable {
     private func resolveStyle(in environment: EnvironmentValues, modifiers: [Modifier]) -> ResolvedText {
         var font = environment.font ?? .defaultFont
         var color: Color.Resolved? = nil
-        var strikethrough = environment.textStrikethrough
-        var underline = environment.textUnderline
+        var strikethroughStyle = environment.textStrikethrough
+        var underlineStyle = environment.textUnderline
+        var gradient: ResolvedGradient?
         var tracking: CGFloat = environment._textTracking ?? 0
         var baselineOffset: CGFloat = environment._textBaselineOffset ?? 0
         var background: Color.Resolved?
@@ -529,11 +548,13 @@ public struct Text: Equatable {
             switch modifier {
             case .font(let value): font = value ?? .defaultFont
             case .color(let value): color = value?.resolve(in: environment)
-            case .style(let style): color = style._resolveColor(in: environment)
+            case .style(let style):
+                color = style._resolveColor(in: environment)
+                if case .gradient(let g) = style._resolvePaint(in: environment) { gradient = g } else { gradient = nil }
             case .weight(let weight): font = font.weight(weight ?? .regular)
             case .italic: font = font.italic()
-            case .strikethrough(let value): strikethrough = value
-            case .underline(let value): underline = value
+            case .strikethrough(let value): strikethroughStyle = value
+            case .underline(let value): underlineStyle = value
             case .monospacedDigit: font = font.monospacedDigit()
             case .tracking(let value): tracking = value
             case .baselineOffset(let value): baselineOffset = value
@@ -545,6 +566,11 @@ public struct Text: Equatable {
                 color = Color.accentColor.resolve(in: environment)
             }
         }
+        if color == nil, gradient == nil, let style = environment.foregroundStyle, case .gradient(let g) = style._resolvePaint(in: environment) {
+            gradient = g
+        }
+        let strikethrough = strikethroughStyle != nil
+        let underline = underlineStyle != nil
         var resolvedColor = color ?? ForegroundStyle()._resolveColor(in: environment)
         if !environment.isEnabled { resolvedColor.opacity *= 0.5 }
         var string = plainString
@@ -572,6 +598,10 @@ public struct Text: Equatable {
         resolved.allowsTightening = environment.allowsTightening
         resolved.isRedacted = environment._isRedacted
         resolved.contentTransition = environment.contentTransition
+        resolved.gradient = gradient
+        resolved.strikethroughStyle = strikethroughStyle.map { ResolvedText.LineStyle(pattern: $0.pattern, color: $0.color?.resolve(in: environment)) }
+        resolved.underlineStyle = underlineStyle.map { ResolvedText.LineStyle(pattern: $0.pattern, color: $0.color?.resolve(in: environment)) }
+        resolved.minimumLines = environment.minimumLineLimit
         return resolved
     }
 }
@@ -607,8 +637,8 @@ public enum TextAttributes {
 
         var modifier: Text.Modifier {
             switch self {
-            case .underline: .underline(true)
-            case .strikethrough: .strikethrough(true)
+            case .underline: .underline(Text.LineStyle())
+            case .strikethrough: .strikethrough(Text.LineStyle())
             case .tracking(let value): .tracking(value)
             case .baselineOffset(let value): .baselineOffset(value)
             }

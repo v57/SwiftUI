@@ -904,10 +904,33 @@ public struct ContentUnavailableView<Label: View, Description: View, Actions: Vi
                 actions.padding(.top, 17)
             }
         }
-        .padding(.horizontal, 20)
         .padding(.top, 20)
         .padding(.bottom, hasActions ? 18 : hasDescription ? 40 : 27)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Like SwiftUI's: it can shrink to nothing vertically (and to its horizontal padding);
+        // centered when it fits, else showing its top.
+        .modifier(_UnavailableFrame())
+        .clipped()
+        .padding(.horizontal, 20)
+    }
+}
+
+struct _UnavailableFrame: ViewModifier {
+    func body(content: Content) -> some View { _UnavailableLayout { content } }
+}
+
+/// Takes the proposed size (any size down to zero); the content is centered when it fits and
+/// top-aligned when it doesn't.
+struct _UnavailableLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
+        let ideal = subviews.first?.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil)) ?? .zero
+        return CGSize(width: proposal.width ?? ideal.width, height: proposal.height ?? ideal.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
+        guard let child = subviews.first else { return }
+        let ideal = child.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil))
+        let y = ideal.height <= bounds.height ? bounds.midY - ideal.height / 2 : bounds.minY
+        child.place(at: CGPoint(x: bounds.minX, y: y), proposal: ProposedViewSize(width: bounds.width, height: ideal.height))
     }
 }
 

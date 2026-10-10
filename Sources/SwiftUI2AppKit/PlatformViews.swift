@@ -236,8 +236,39 @@ final class TextNodeView: FlippedView, PlatformNodeView {
             string = AppKitText.attributedString(resolved.scaled(by: AppKitText.fittingScale(resolved, width: bounds.width)), placeholders: true)
         }
         if let resolved, resolved.isRedacted { return drawPlaceholders(resolved) }
+        if let gradient = resolved?.gradient { return drawGradientText(gradient) }
         string.draw(with: bounds, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         drawInlineImages()
+    }
+
+    /// Text filled with a gradient: the glyphs mask the gradient.
+    private func drawGradientText(_ gradient: ResolvedGradient) {
+        guard let context = NSGraphicsContext.current?.cgContext, bounds.width > 0, bounds.height > 0 else { return }
+        let mask = NSImage(size: bounds.size, flipped: true) { rect in
+            self.string.draw(with: rect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+            return true
+        }
+        var rect = bounds
+        guard let maskImage = mask.cgImage(forProposedRect: &rect, context: NSGraphicsContext.current, hints: nil) else { return }
+        let colors = AppKitGradients.colors(gradient.stops) as CFArray
+        guard let cgGradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: colors, locations: gradient.stops.map(\.location)) else { return }
+        context.saveGState()
+        // The mask image is drawn upright in this flipped view.
+        context.translateBy(x: 0, y: bounds.height)
+        context.scaleBy(x: 1, y: -1)
+        context.clip(to: bounds, mask: maskImage)
+        context.scaleBy(x: 1, y: -1)
+        context.translateBy(x: 0, y: -bounds.height)
+        func point(_ unit: UnitPoint) -> CGPoint { CGPoint(x: bounds.minX + unit.x * bounds.width, y: bounds.minY + unit.y * bounds.height) }
+        switch gradient.kind {
+        case let .linear(start, end):
+            context.drawLinearGradient(cgGradient, start: point(start), end: point(end), options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+        case let .radial(center, startRadius, endRadius):
+            context.drawRadialGradient(cgGradient, startCenter: point(center), startRadius: startRadius, endCenter: point(center), endRadius: endRadius, options: [.drawsAfterEndLocation])
+        default:
+            context.drawLinearGradient(cgGradient, start: point(.leading), end: point(.trailing), options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+        }
+        context.restoreGState()
     }
 
     /// Redacted text: a rounded bar per line, in the text color (faded).

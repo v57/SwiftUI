@@ -100,6 +100,9 @@ public final class AppKitBackend: RenderBackend {
         let string = AppKitText.attributedString(text, placeholders: true)
         // Like SwiftUI: line height without the font's leading, sizes rounded up to device pixels.
         var rect = string.boundingRect(with: CGSize(width: max(width, 1), height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin])
+        if let minimumLines = text.minimumLines, minimumLines > 1 {
+            rect.size.height = max(rect.height, CGFloat(minimumLines) * AppKitText.lineHeight(text))
+        }
         var usedWidth = min(rect.width, width)
         if let limit = text.lineLimit {
             let lineHeight = AppKitText.lineHeight(text)
@@ -358,7 +361,7 @@ enum AppKitText {
         if font.italic {
             result = NSFontManager.shared.convert(result, toHaveTrait: .italicFontMask)
         }
-        if font.monospacedDigit {
+        if font.monospacedDigit, font.design != .monospaced {
             result = .monospacedDigitSystemFont(ofSize: font.size, weight: weight)
         }
         return adjusted(result, font)
@@ -408,8 +411,14 @@ enum AppKitText {
                 .foregroundColor: NSColor(run.color),
                 .paragraphStyle: paragraph,
             ]
-            if run.strikethrough { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
-            if run.underline { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
+            if run.strikethrough {
+                attributes[.strikethroughStyle] = lineStyle(run.strikethroughStyle?.pattern).rawValue
+                if let color = run.strikethroughStyle?.color { attributes[.strikethroughColor] = NSColor(color) }
+            }
+            if run.underline {
+                attributes[.underlineStyle] = lineStyle(run.underlineStyle?.pattern).rawValue
+                if let color = run.underlineStyle?.color { attributes[.underlineColor] = NSColor(color) }
+            }
             if run.tracking != 0 { attributes[.kern] = run.tracking }
             if run.baselineOffset != 0 { attributes[.baselineOffset] = run.baselineOffset }
             if let background = run.background { attributes[.backgroundColor] = NSColor(background) }
@@ -437,6 +446,16 @@ enum AppKitText {
     }
 
     static let inlineImageKey = NSAttributedString.Key("SwiftUI2InlineImage")
+
+    static func lineStyle(_ pattern: Text.LineStyle.Pattern?) -> NSUnderlineStyle {
+        switch pattern ?? .solid {
+        case .solid: return .single
+        case .dot: return [.single, .patternDot]
+        case .dash: return [.single, .patternDash]
+        case .dashDot: return [.single, .patternDashDot]
+        case .dashDotDot: return [.single, .patternDashDotDot]
+        }
+    }
 
     /// `minimumScaleFactor`: the largest font scale (down to the factor) at which single-line
     /// text fits `width`.

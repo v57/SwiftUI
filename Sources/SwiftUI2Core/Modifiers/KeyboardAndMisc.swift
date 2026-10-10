@@ -506,15 +506,16 @@ extension View {
 
 // MARK: - Text decoration for all contained text
 
-struct TextStrikethroughKey: EnvironmentKey { static let defaultValue = false }
-struct TextUnderlineKey: EnvironmentKey { static let defaultValue = false }
+struct TextStrikethroughKey: EnvironmentKey { static let defaultValue: Text.LineStyle? = nil }
+struct TextUnderlineKey: EnvironmentKey { static let defaultValue: Text.LineStyle? = nil }
 
 extension EnvironmentValues {
-    var textStrikethrough: Bool {
+    /// Line style for all contained text (nil: none).
+    var textStrikethrough: Text.LineStyle? {
         get { self[TextStrikethroughKey.self] }
         set { self[TextStrikethroughKey.self] = newValue }
     }
-    var textUnderline: Bool {
+    var textUnderline: Text.LineStyle? {
         get { self[TextUnderlineKey.self] }
         set { self[TextUnderlineKey.self] = newValue }
     }
@@ -522,10 +523,10 @@ extension EnvironmentValues {
 
 extension View {
     public func strikethrough(_ isActive: Bool = true, pattern: Text.LineStyle.Pattern = .solid, color: Color? = nil) -> some View {
-        environment(\.textStrikethrough, isActive)
+        environment(\.textStrikethrough, isActive ? Text.LineStyle(pattern: pattern, color: color) : nil)
     }
 
     public func underline(_ isActive: Bool = true, pattern: Text.LineStyle.Pattern = .solid, color: Color? = nil) -> some View {
-        environment(\.textUnderline, isActive)
+        environment(\.textUnderline, isActive ? Text.LineStyle(pattern: pattern, color: color) : nil)
     }
 }
