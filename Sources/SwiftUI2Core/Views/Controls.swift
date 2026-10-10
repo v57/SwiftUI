@@ -251,7 +251,7 @@ public struct _PlatformButton<Label: View>: View {
             // In inactive windows, accent-colored prominent buttons draw as plain bordered ones.
             var drawnStyle = style.value
             if drawnStyle == .borderedProminent, tint == nil, !env.appearsActive { drawnStyle = .bordered }
-            return .button(ResolvedButton(style: drawnStyle, isEnabled: env.isEnabled && env.allowsHitTesting, tint: tint, repeats: env._buttonRepeats))
+            return .button(ResolvedButton(style: drawnStyle, isEnabled: env.isEnabled && env.allowsHitTesting, tint: tint, repeats: env._buttonRepeats, borderShape: env.buttonBorderShape))
         }
         var actions = RenderActions()
         let viewAttribute = view.attribute
@@ -293,8 +293,13 @@ public struct _PlatformButton<Label: View>: View {
         let path = inputs.path
         let controlSize = Attribute<ControlSize>(inputs.subgraph, isEqual: { $0 == $1 }) { environment.value.controlSize }
         let inForm = Attribute<Bool>(inputs.subgraph, isEqual: { $0 == $1 }) { environment.value.isInForm }
+        let shapeAndSizing = Attribute<(Bool, Bool)>(inputs.subgraph, isEqual: { $0 == $1 }) {
+            (environment.value.buttonBorderShape == .circle, environment.value._buttonSizing == .flexible)
+        }
         let layout = inputs.makeLayoutAttribute {
-            ButtonComputer(metrics: services.controlMetrics(.button(style.value)).scaled(for: controlSize.value, inForm: inForm.value), child: labelLayout.value, path: path, tracer: tracer)
+            let computer = ButtonComputer(metrics: services.controlMetrics(.button(style.value)).scaled(for: controlSize.value, inForm: inForm.value), child: labelLayout.value, path: path, tracer: tracer)
+            (computer.isCircle, computer.isFlexible) = shapeAndSizing.value
+            return computer
         }
         labelGeometry.setRule {
             (layout.value as! ButtonComputer).placeChild(in: geometry.value, child: labelLayout.value)
@@ -349,6 +354,9 @@ extension Font {
 
 final class ButtonComputer: UnaryLayoutComputer {
     let metrics: ControlMetrics
+    /// Circular bezels are square; flexible buttons take the proposed width.
+    var isCircle = false
+    var isFlexible = false
 
     init(metrics: ControlMetrics, child: LayoutComputer, path: ViewPath, tracer: UpdateTracer) {
         self.metrics = metrics
@@ -362,10 +370,16 @@ final class ButtonComputer: UnaryLayoutComputer {
             height: proposal.height.map { max(0, $0 - insets.vertical) }
         )
         let label = child.sizeThatFits(inner)
-        return CGSize(
+        var size = CGSize(
             width: max(metrics.minSize.width, label.width + insets.horizontal),
             height: max(metrics.minSize.height, label.height + insets.vertical)
         )
+        if isCircle, metrics.minSize.height > 0 {
+            let side = max(size.height, label.width + insets.vertical)
+            size = CGSize(width: side, height: side)
+        }
+        if isFlexible, let width = proposal.width, width.isFinite { size.width = max(size.width, width) }
+        return size
     }
 
     /// Bezel-less buttons (no metrics) space like their label; bordered ones like controls.

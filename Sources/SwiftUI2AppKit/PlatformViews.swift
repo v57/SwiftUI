@@ -576,7 +576,13 @@ final class ButtonNodeView: FlippedView, PlatformNodeView {
         // Modern bezels: filled, no border; 5pt corners, capsules from 28pt (large) up.
         // Classic bezels: control color with a hairline border, 5pt corners.
         let modern = AppKitBackend.controlDesign == .modern
-        let radius = modern && bounds.height >= 28 ? bounds.height / 2 : min(5, bounds.height / 2)
+        var radius = modern && bounds.height >= 28 ? bounds.height / 2 : min(5, bounds.height / 2)
+        switch info.borderShape._kind {
+        case .capsule, .circle: radius = min(bounds.width, bounds.height) / 2
+        case .roundedRectangle(let value?): radius = min(value, bounds.height / 2)
+        case .roundedRectangle(nil): radius = min(modern ? 8 : 5, bounds.height / 2)
+        case .automatic: break
+        }
         switch info.style {
         case .automatic, .bordered where modern:
             let path = NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius)

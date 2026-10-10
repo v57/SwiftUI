@@ -286,4 +286,17 @@ struct OverloadBatchTests {
         #expect(host.texts.contains("Name") && !host.texts.contains("Your name"))
         #expect(host.texts.contains("25%"))
     }
+
+    @Test func buttonShapesAndSizing() {
+        let host = TestHost(VStack {
+            Button("Wide") {}.buttonSizing(.flexible).frame(width: 200)
+            Button("O") {}.buttonBorderShape(.circle)
+            Button("Cap") {}.buttonBorderShape(.capsule)
+        })
+        let buttons: [(ResolvedButton, CGRect)] = host.allViews.compactMap { if case .button(let b) = $0.content { return (b, $0.frame) } else { return nil } }
+        #expect(buttons.count == 3)
+        #expect(buttons[0].1.width == 200)
+        #expect(buttons[1].1.width == buttons[1].1.height && buttons[1].0.borderShape == .circle)
+        #expect(buttons[2].0.borderShape == .capsule)
+    }
 }

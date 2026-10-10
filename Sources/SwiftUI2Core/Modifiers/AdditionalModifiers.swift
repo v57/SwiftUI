@@ -12,9 +12,37 @@ public enum SymbolColorRenderingMode: Sendable { case flat, gradient }
 public enum ContentMarginPlacement: Sendable { case automatic, scrollContent, scrollIndicators }
 public enum HoverEffect: Sendable { case automatic, highlight, lift }
 public enum BadgeProminence: Sendable { case standard, increased, decreased }
-public enum ButtonBorderShape: Sendable {
-    case automatic, capsule, circle, roundedRectangle
-    public static func roundedRectangle(radius: CGFloat) -> ButtonBorderShape { .roundedRectangle }
+/// The shape of bordered buttons' bezels.
+public struct ButtonBorderShape: Hashable, Sendable {
+    public enum _Kind: Hashable, Sendable { case automatic, capsule, circle, roundedRectangle(CGFloat?) }
+    public let _kind: _Kind
+    public static let automatic = ButtonBorderShape(_kind: .automatic)
+    public static let capsule = ButtonBorderShape(_kind: .capsule)
+    public static let circle = ButtonBorderShape(_kind: .circle)
+    public static let roundedRectangle = ButtonBorderShape(_kind: .roundedRectangle(nil))
+    public static func roundedRectangle(radius: CGFloat) -> ButtonBorderShape { ButtonBorderShape(_kind: .roundedRectangle(radius)) }
+}
+
+/// How buttons size themselves (`.flexible` fills the proposed width).
+public struct ButtonSizing: Hashable, Sendable {
+    let value: Int
+    public static let automatic = ButtonSizing(value: 0)
+    public static let flexible = ButtonSizing(value: 1)
+    public static let fitted = ButtonSizing(value: 2)
+}
+
+struct ButtonBorderShapeKey: EnvironmentKey { static let defaultValue = ButtonBorderShape.automatic }
+struct ButtonSizingKey: EnvironmentKey { static let defaultValue = ButtonSizing.automatic }
+
+extension EnvironmentValues {
+    public var buttonBorderShape: ButtonBorderShape {
+        get { self[ButtonBorderShapeKey.self] }
+        set { self[ButtonBorderShapeKey.self] = newValue }
+    }
+    var _buttonSizing: ButtonSizing {
+        get { self[ButtonSizingKey.self] }
+        set { self[ButtonSizingKey.self] = newValue }
+    }
 }
 public enum ButtonRepeatBehavior: Sendable { case automatic, enabled, disabled }
 public enum SpringLoadingBehavior: Sendable { case automatic, enabled, disabled }
@@ -35,7 +63,8 @@ extension View {
     public func hoverEffect(_ effect: HoverEffect = .automatic, isEnabled: Bool = true) -> some View { self }
     public func hoverEffectDisabled(_ disabled: Bool = true) -> some View { self }
     public func indexViewStyle<S>(_ style: S) -> some View { self }
-    public func buttonBorderShape(_ shape: ButtonBorderShape) -> some View { self }
+    public func buttonBorderShape(_ shape: ButtonBorderShape) -> some View { environment(\.buttonBorderShape, shape) }
+    public func buttonSizing(_ sizing: ButtonSizing) -> some View { environment(\._buttonSizing, sizing) }
     /// Held buttons repeat their action (`.enabled`).
     public func buttonRepeatBehavior(_ behavior: ButtonRepeatBehavior) -> some View {
         environment(\._buttonRepeats, behavior == .enabled)

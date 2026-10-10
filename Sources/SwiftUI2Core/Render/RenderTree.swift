@@ -58,6 +58,7 @@ public struct ResolvedButton: Equatable, Sendable {
     public var tint: Color.Resolved?
     /// The action repeats while the button is held (`buttonRepeatBehavior(.enabled)`).
     public var repeats = false
+    public var borderShape = ButtonBorderShape.automatic
 }
 
 public struct ResolvedToggle: Equatable, Sendable {
