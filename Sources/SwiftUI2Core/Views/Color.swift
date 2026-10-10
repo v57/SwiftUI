@@ -99,7 +99,10 @@ public struct Color: Hashable, Sendable, CustomStringConvertible {
         switch storage {
         case .resolved(let resolved): return resolved
         case let .dynamic(light, dark): return environment.colorScheme == .dark ? dark : light
-        case .accent: return (environment.tint ?? .blue).resolve(in: environment)
+        case .accent:
+            // The system accent is gray in inactive windows (explicit tints keep their color).
+            if environment.tint == nil, !environment.appearsActive { return inactiveAccent.resolve(in: environment) }
+            return (environment.tint ?? .blue).resolve(in: environment)
         case let .opacity(base, opacity):
             var resolved = resolve(base, environment)
             resolved.opacity *= Float(opacity)
@@ -148,6 +151,10 @@ public struct Color: Hashable, Sendable, CustomStringConvertible {
     static let formCard = dynamic(rgb(1, 1, 1, 0.6), rgb(0.169, 0.169, 0.169))
     static let formCardBorder = dynamic(rgb(0, 0, 0, 0.08), rgb(0.271, 0.271, 0.271))
     static let formSeparator = dynamic(rgb(0, 0, 0, 0.06), rgb(0.208, 0.208, 0.208))
+    /// Link text (link buttons, `Link`) — not the accent: it stays blue in inactive windows.
+    public static let link = dynamic(rgb(0.169, 0.4, 0.827), rgb(0.255, 0.584, 1))
+    /// The accent color of controls in inactive windows.
+    static let inactiveAccent = dynamic(rgb(0.667, 0.667, 0.667), rgb(0.45, 0.45, 0.45))
     static let separator = dynamic(rgb(0, 0, 0, 0.1), rgb(1, 1, 1, 0.1))
     static let controlBackground = dynamic(rgb(1, 1, 1), rgb(0.118, 0.118, 0.118))
     /// Split view sidebar column (the window background on macOS 26+).

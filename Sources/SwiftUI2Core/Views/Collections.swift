@@ -693,6 +693,7 @@ public struct Section<Parent: View, Content: View, Footer: View>: View {
     let footer: Footer?
     @Environment(\.listContext) private var listContext
     @Environment(\.formUsesColumns) private var formUsesColumns
+    @Environment(\._controlDesign) private var design
 
     public init(@ViewBuilder content: () -> Content, @ViewBuilder header: () -> Parent, @ViewBuilder footer: () -> Footer) {
         self.header = header()
@@ -759,9 +760,16 @@ public struct Section<Parent: View, Content: View, Footer: View>: View {
                             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.formCardBorder, lineWidth: 0.5))
                     }
                 if let footer {
-                    footer.font(.system(size: 13))
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .padding(.horizontal, 10)
+                    // Classic: trailing 13pt primary; modern: leading 11pt secondary.
+                    if design == .modern {
+                        footer.font(.system(size: 11)).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 10)
+                    } else {
+                        footer.font(.system(size: 13))
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .padding(.horizontal, 10)
+                    }
                 }
             }
         } else {
@@ -909,6 +917,8 @@ public struct Picker<Label: View, SelectionValue: Hashable, Content: View>: View
     @Environment(\.pickerStyle) private var style
     @Environment(\.labelsHidden) private var labelsHidden
     @Environment(\.isInForm) private var isInForm
+    @Environment(\._horizontalRadioGroup) private var horizontalRadioGroup
+    @Environment(\._controlDesign) private var design
     @State private var menuPresented = false
 
     public init(selection: Binding<SelectionValue>, @ViewBuilder content: () -> Content, @ViewBuilder label: () -> Label) {
@@ -960,13 +970,20 @@ public struct Picker<Label: View, SelectionValue: Hashable, Content: View>: View
                             return _RadioModifier(isSelected: context.isSelected(tag), select: { context.select(tag) })
                         }
                     }
-                }, layout: isInForm ? AnyLayout(_HStackLayout(spacing: 12)) : AnyLayout(_VStackLayout(alignment: .leading, spacing: 4)))
+                }, layout: isInForm || horizontalRadioGroup ? AnyLayout(_HStackLayout(spacing: 12)) : AnyLayout(_VStackLayout(alignment: .leading, spacing: 4)))
             default:
                 Button { menuPresented = true } label: {
-                    HStack(spacing: 7.5) {
+                    // Modern pop-ups: 15pt between the title and the arrows (7.5 classic / borderless);
+                    // classic ones stretch across the available width (arrows trailing).
+                    HStack(spacing: 0) {
                         _ListTransformView(content: content, transform: { list, inputs in
                             list.filtered(in: inputs.subgraph) { AnyHashable(selection.wrappedValue) }
                         }, layout: AnyLayout(_ZStackLayout(alignment: .leading)))
+                        if design == .classic && !isInForm {
+                            Spacer(minLength: 7.5)
+                        } else {
+                            Color.clear.frame(width: isInForm || design == .classic ? 7.5 : 15, height: 0)
+                        }
                         Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .semibold))
                     }
                 }
@@ -989,9 +1006,10 @@ public struct Picker<Label: View, SelectionValue: Hashable, Content: View>: View
 /// Pop-up pickers are bordered, except in grouped forms (a borderless 16pt pop-up).
 struct _PickerButtonStyle: ViewModifier {
     let borderless: Bool
+    @Environment(\._controlDesign) private var design
     func body(content: Content) -> some View {
         if borderless {
-            content.buttonStyle(.plain).frame(height: 16)
+            content.buttonStyle(.plain).frame(height: design == .modern ? 17.25 : 16)
         } else {
             content.buttonStyle(.bordered)
         }
@@ -1011,12 +1029,13 @@ extension Picker where Label == Text {
 struct _SegmentModifier: ViewModifier {
     let isSelected: Bool
     let select: @MainActor () -> Void
+    @Environment(\._controlDesign) private var design
     func body(content: Content) -> some View {
         // macOS segmented control: 22pt tall segments, the selected one filled.
         content
             .padding(.horizontal, 7.25)
             .frame(maxWidth: .infinity)
-            .frame(height: 22)
+            .frame(height: design == .modern ? 24 : 22)
             .background(RoundedRectangle(cornerRadius: 6).fill(isSelected ? Color.segmentedSelection : Color.clear))
             .contentShape(Rectangle())
             .onTapGesture(perform: select)

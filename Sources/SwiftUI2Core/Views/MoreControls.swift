@@ -416,6 +416,8 @@ public struct Stepper<Label: View>: View {
     /// `format:` steppers show the value in an editable field.
     var valueField: AnyView?
     var onEditingChanged: (Bool) -> Void = { _ in }
+    @Environment(\._controlDesign) private var design
+    @Environment(\.controlSize) private var controlSize
     @Environment(\.labelsHidden) private var labelsHidden
     @Environment(\.isInForm) private var isInForm
 
@@ -451,19 +453,26 @@ public struct Stepper<Label: View>: View {
 
     public var body: some View {
         if isInForm, !labelsHidden {
-            // Grouped form row: a mini stepper (13 × 16) trailing.
+            // Grouped form row: a mini (classic) or small (modern) stepper trailing.
             _FormLabeledRow { label } control: {
                 HStack(spacing: 6) {
                     if let valueField { valueField }
-                    arrows(width: 13, height: 8, symbolSize: 6)
+                    if design == .modern { arrows(width: 17, height: 10.25, symbolSize: 7) } else { arrows(width: 13, height: 8, symbolSize: 6) }
                 }
             }
         } else {
-            HStack(spacing: 6) {
+            HStack(spacing: design == .modern ? 8 : 6) {
                 if !labelsHidden { label }
                 if isInForm { Spacer(minLength: 8) }
                 if let valueField { valueField }
-                arrows(width: 15, height: 10, symbolSize: 8)
+                // Stepper arrows by control size (mini 13 × 16, small 17 × 20; regular modern
+                // 20 × 24, classic 15 × 20).
+                switch controlSize {
+                case .mini: arrows(width: 13, height: 8, symbolSize: 6)
+                case .small: arrows(width: 17, height: 10, symbolSize: 7)
+                default:
+                    if design == .modern { arrows(width: 20, height: 12, symbolSize: 8) } else { arrows(width: 15, height: 10, symbolSize: 8) }
+                }
             }
         }
     }
@@ -521,6 +530,8 @@ public struct ProgressView<Label: View, CurrentValueLabel: View>: View {
     let fraction: Double?
     let label: Label?
     let currentValueLabel: CurrentValueLabel?
+    /// `ProgressView(timerInterval:)`: the fraction follows the clock.
+    var timer: (interval: ClosedRange<Date>, countsDown: Bool)?
 
     init(fraction: Double?, label: Label?, currentValueLabel: CurrentValueLabel?) {
         self.fraction = fraction
@@ -529,11 +540,28 @@ public struct ProgressView<Label: View, CurrentValueLabel: View>: View {
     }
 
     public var body: some View {
+        if let timer {
+            TimelineView(.periodic(from: timer.interval.lowerBound, by: 0.5)) { context in
+                styled(fraction: Self.timerFraction(timer.interval, countsDown: timer.countsDown, now: context.date))
+            }
+        } else {
+            styled(fraction: fraction)
+        }
+    }
+
+    private func styled(fraction: Double?) -> some View {
         _StyledView(configuration: ProgressViewStyleConfiguration(
             fractionCompleted: fraction,
             label: label.map { _StyleContent($0) },
             currentValueLabel: currentValueLabel.map { _StyleContent($0) }
         )) { AnyView(DefaultProgressViewStyle().makeBody(configuration: $0)) }
+    }
+
+    static func timerFraction(_ interval: ClosedRange<Date>, countsDown: Bool, now: Date) -> Double {
+        let total = interval.upperBound.timeIntervalSince(interval.lowerBound)
+        let elapsed = now.timeIntervalSince(interval.lowerBound)
+        let fraction = total > 0 ? min(1, max(0, elapsed / total)) : 1
+        return countsDown ? 1 - fraction : fraction
     }
 }
 
@@ -873,7 +901,9 @@ struct _ColorWell: View {
         inputs.makePlatformNode(content: content, actions: actions)
         let tracer = inputs.tracer
         let path = inputs.path
-        return _ViewOutputs(layout: inputs.makeLayoutAttribute { FixedLayoutComputer(size: CGSize(width: 44, height: 23), path: path, tracer: tracer) })
+        return _ViewOutputs(layout: inputs.makeLayoutAttribute {
+            FixedLayoutComputer(size: environment.value._controlDesign == ControlDesign.modern ? CGSize(width: 48, height: 24) : CGSize(width: 44, height: 23), path: path, tracer: tracer)
+        })
     }
 }
 

@@ -38,7 +38,7 @@ struct AppKitBackendTests {
         let texts = views.compactMap { $0 as? TextNodeView }
         let button = try #require(views.first { $0 is ButtonNodeView })
         #expect(texts.count == 2)
-        #expect(button.frame.height == 20)  // SwiftUI bordered buttons are 20pt tall on macOS
+        #expect(button.frame.height == (AppKitBackend.controlDesign == .modern ? 24 : 20))  // SwiftUI bordered buttons: 24pt modern, 20pt classic
         #expect(button.subviews.first is TextNodeView) // label is a child of the bezel view
 
         click(button, in: window)
@@ -171,7 +171,7 @@ struct AppKitBackendTests {
         #expect(abs(gap("c1", "t3") - 4.74) < 0.01)
         #expect(gap("t3", "t4") == 1)
         #expect(abs(gap("t4", "b1") - 8.15) < 0.01)
-        #expect(frames["b1"]!.height == 20)
+        #expect(frames["b1"]!.height == (AppKitBackend.controlDesign == .modern ? 24 : 20))
     }
 }
 

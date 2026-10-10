@@ -343,3 +343,13 @@ extension View {
         environment(\.colorScheme, colorScheme)
     }
 }
+
+/// Whether controls draw active (key window) or inactive.
+public enum ControlActiveState: Hashable, Sendable { case key, active, inactive }
+
+extension EnvironmentValues {
+    public var controlActiveState: ControlActiveState {
+        get { appearsActive ? .key : .inactive }
+        set { appearsActive = newValue != .inactive }
+    }
+}

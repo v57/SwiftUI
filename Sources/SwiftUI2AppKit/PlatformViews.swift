@@ -559,6 +559,11 @@ final class ButtonNodeView: FlippedView, PlatformNodeView {
     private var info: ResolvedButton?
     private var isPressed = false { didSet { needsDisplay = true } }
 
+    /// Bordered button fill (gray 235 in light mode, as SwiftUI draws it on macOS 26).
+    static let bezelColor = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 1, alpha: 0.16) : NSColor(white: 0, alpha: 0.078)
+    }
+
     func apply(_ content: RenderContent, backend: AppKitBackend) {
         guard case .button(let button) = content else { return }
         info = button
@@ -568,7 +573,16 @@ final class ButtonNodeView: FlippedView, PlatformNodeView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let info else { return }
+        // Modern bezels: filled, no border; 5pt corners, capsules from 28pt (large) up.
+        // Classic bezels: control color with a hairline border, 5pt corners.
+        let modern = AppKitBackend.controlDesign == .modern
+        let radius = modern && bounds.height >= 28 ? bounds.height / 2 : min(5, bounds.height / 2)
         switch info.style {
+        case .automatic, .bordered where modern:
+            let path = NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius)
+            let fill = info.tint.map { NSColor($0).withAlphaComponent(0.2) } ?? Self.bezelColor
+            (isPressed ? fill.blended(withFraction: 0.12, of: .black)! : fill).setFill()
+            path.fill()
         case .automatic, .bordered:
             let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 5, yRadius: 5)
             (isPressed ? NSColor.controlColor.blended(withFraction: 0.15, of: .black)! : NSColor.controlColor).setFill()
@@ -576,7 +590,7 @@ final class ButtonNodeView: FlippedView, PlatformNodeView {
             NSColor.separatorColor.setStroke()
             path.stroke()
         case .borderedProminent:
-            let path = NSBezierPath(roundedRect: bounds, xRadius: 5, yRadius: 5)
+            let path = NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius)
             let tint = info.tint.map { NSColor($0) } ?? .controlAccentColor
             (isPressed ? tint.blended(withFraction: 0.2, of: .black)! : tint).setFill()
             path.fill()

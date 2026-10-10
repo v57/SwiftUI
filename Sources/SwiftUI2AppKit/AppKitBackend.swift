@@ -1,5 +1,6 @@
 #if canImport(AppKit)
 import AppKit
+import MachO
 import UniformTypeIdentifiers
 @_exported import SwiftUI2Core
 
@@ -300,23 +301,72 @@ public final class AppKitBackend: RenderBackend {
         }
     }
 
+    /// Modern controls when the app targets macOS 26 or later (like SwiftUI); override with
+    /// SWIFTUI2_CONTROL_DESIGN=classic|modern.
+    public static let controlDesign: ControlDesign = {
+        switch ProcessInfo.processInfo.environment["SWIFTUI2_CONTROL_DESIGN"] {
+        case "modern"?: return .modern
+        case "classic"?: return .classic
+        default: return (mainExecutableMinimumOSMajor() ?? 0) >= 26 ? .modern : .classic
+        }
+    }()
+
+    /// The deployment target (major macOS version) of the main executable.
+    static func mainExecutableMinimumOSMajor() -> Int? {
+        // The main executable's image (index 0 is not guaranteed, e.g. with inserted libraries).
+        let executable = Bundle.main.executablePath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
+        var index: UInt32 = 0
+        for candidate in 0..<_dyld_image_count() {
+            guard let name = _dyld_get_image_name(candidate) else { continue }
+            if URL(fileURLWithPath: String(cString: name)).resolvingSymlinksInPath().path == executable { index = candidate; break }
+        }
+        guard let header = _dyld_get_image_header(index) else { return nil }
+        var command = UnsafeRawPointer(header).advanced(by: MemoryLayout<mach_header_64>.size)
+        for _ in 0..<header.pointee.ncmds {
+            let load = command.assumingMemoryBound(to: load_command.self).pointee
+            if load.cmd == UInt32(LC_BUILD_VERSION) {
+                let build = command.assumingMemoryBound(to: build_version_command.self).pointee
+                return Int(build.minos >> 16)
+            }
+            if load.cmd == UInt32(LC_VERSION_MIN_MACOSX) {
+                let version = command.assumingMemoryBound(to: version_min_command.self).pointee
+                return Int(version.version >> 16)
+            }
+            command = command.advanced(by: Int(load.cmdsize))
+        }
+        return nil
+    }
+
     public func controlMetrics(_ control: ControlKind) -> ControlMetrics {
+        var metrics = classicOrModernMetrics(control)
+        metrics.design = Self.controlDesign
+        return metrics
+    }
+
+    private func classicOrModernMetrics(_ control: ControlKind) -> ControlMetrics {
+        let modern = Self.controlDesign == .modern
         switch control {
         case .button(let style):
             switch style {
             case .plain, .borderless, .link: return ControlMetrics()
-            // SwiftUI's bordered button frame is the 20pt bezel itself (8pt horizontal insets).
-            default: return ControlMetrics(contentInsets: EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8), minSize: CGSize(width: 0, height: 20))
+            // SwiftUI's bordered button frame is the bezel itself: modern 24pt (12pt horizontal
+            // insets), classic 20pt (8pt).
+            default:
+                return modern
+                    ? ControlMetrics(contentInsets: EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12), minSize: CGSize(width: 0, height: 24))
+                    : ControlMetrics(contentInsets: EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8), minSize: CGSize(width: 0, height: 20))
             }
-        case .checkbox: return ControlMetrics(minSize: CGSize(width: 14, height: 16))
-        case .switch: return ControlMetrics(minSize: CGSize(width: 38, height: 22))
+        case .checkbox: return ControlMetrics(minSize: CGSize(width: modern ? 16 : 14, height: 16))
+        case .switch: return ControlMetrics(minSize: modern ? CGSize(width: 54, height: 24) : CGSize(width: 38, height: 22))
         case .textField(let style):
             // Measured on macOS SwiftUI: plain fields are their text line (2pt side insets),
             // bezeled ones add 2.5pt above and below, rounded borders are 22pt tall.
             switch style {
             case .plain: return ControlMetrics(contentInsets: EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 2), idealWidth: 96)
-            case .roundedBorder: return ControlMetrics(contentInsets: EdgeInsets(top: 0, leading: 11, bottom: 0, trailing: 11), idealWidth: 96, fixedHeight: 22)
-            case .automatic, .squareBorder: return ControlMetrics(contentInsets: EdgeInsets(top: 2.5, leading: 4.25, bottom: 2.5, trailing: 4.25), idealWidth: 96)
+            case .roundedBorder: return ControlMetrics(contentInsets: EdgeInsets(top: 0, leading: 11, bottom: 0, trailing: 11), idealWidth: 96, fixedHeight: modern ? 24 : 22)
+            case .automatic, .squareBorder:
+                let vertical: CGFloat = modern ? 4 : 2.5
+                return ControlMetrics(contentInsets: EdgeInsets(top: vertical, leading: 4.25, bottom: vertical, trailing: 4.25), idealWidth: 96)
             }
         case .slider: return ControlMetrics(minSize: CGSize(width: 0, height: 20), idealWidth: 0)
         case let .datePicker(date, time, style):
@@ -329,7 +379,7 @@ public final class AppKitBackend: RenderBackend {
             if time { elements.insert(.hourMinute) }
             picker.datePickerElements = elements
             let size = picker.intrinsicContentSize
-            return ControlMetrics(minSize: CGSize(width: size.width, height: style == .graphical ? size.height : 24))
+            return ControlMetrics(minSize: CGSize(width: size.width, height: style == .graphical ? size.height : modern ? 20 : 24))
         }
     }
 }

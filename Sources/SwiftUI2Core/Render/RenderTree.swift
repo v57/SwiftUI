@@ -257,7 +257,13 @@ public enum ControlKind: Hashable, Sendable {
     case datePicker(date: Bool, time: Bool, style: DatePickerStyleKind)
 }
 
+/// The control design SwiftUI uses: apps targeting macOS 26 or later get the taller, rounder
+/// controls; earlier deployment targets keep the classic ones (as Apple's SwiftUI decides).
+public enum ControlDesign: Hashable, Sendable { case classic, modern }
+
 public struct ControlMetrics: Hashable, Sendable {
+    /// The design these metrics are for (control sizes scale differently).
+    public var design: ControlDesign = .classic
     /// Insets around a container control's label.
     public var contentInsets: EdgeInsets
     /// Fixed or minimum size of the control chrome.
@@ -366,5 +372,15 @@ public struct FileDialogRequest: Equatable, Sendable {
         self.allowsMultipleSelection = allowsMultipleSelection
         self.canChooseDirectories = canChooseDirectories
         self.defaultFilename = defaultFilename
+    }
+}
+
+struct ControlDesignKey: EnvironmentKey { static let defaultValue = ControlDesign.classic }
+
+extension EnvironmentValues {
+    /// Set by the backend from the app's deployment target.
+    public var _controlDesign: ControlDesign {
+        get { self[ControlDesignKey.self] }
+        set { self[ControlDesignKey.self] = newValue }
     }
 }

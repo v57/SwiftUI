@@ -64,10 +64,8 @@ extension ProgressView where Label == EmptyView, CurrentValueLabel == DefaultDat
 
 extension ProgressView where CurrentValueLabel == DefaultDateProgressLabel {
     public init(timerInterval: ClosedRange<Date>, countsDown: Bool = true, @ViewBuilder label: () -> Label) {
-        let total = timerInterval.upperBound.timeIntervalSince(timerInterval.lowerBound)
-        let elapsed = Date().timeIntervalSince(timerInterval.lowerBound)
-        let fraction = total > 0 ? min(1, max(0, elapsed / total)) : 1
-        self.init(fraction: countsDown ? 1 - fraction : fraction, label: label(), currentValueLabel: DefaultDateProgressLabel(interval: timerInterval, countsDown: countsDown))
+        self.init(fraction: Self.timerFraction(timerInterval, countsDown: countsDown, now: Date()), label: label(), currentValueLabel: DefaultDateProgressLabel(interval: timerInterval, countsDown: countsDown))
+        self.timer = (timerInterval, countsDown)
     }
 }
 

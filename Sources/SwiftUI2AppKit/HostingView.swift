@@ -17,6 +17,8 @@ open class GraphHostingView: NSView {
         wantsLayer = true
         backend = AppKitBackend(rootView: self)
         graph = makeGraph(backend)
+        // Controls follow the design SwiftUI picks for the app's deployment target.
+        graph.setEnvironment { $0._controlDesign = AppKitBackend.controlDesign }
         graph.onNeedsUpdate = { [weak self] in self?.scheduleUpdate() }
         graph.onNeedsAnimationFrame = { [weak self] in self?.startDisplayLink() }
         graph.clock = { CACurrentMediaTime() }

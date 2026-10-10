@@ -248,7 +248,10 @@ public struct _PlatformButton<Label: View>: View {
             let env = environment.value
             let isDestructive = view.attribute.value.role == .destructive
             let tint = isDestructive ? Color.red.resolve(in: env) : env.tint?.resolve(in: env)
-            return .button(ResolvedButton(style: style.value, isEnabled: env.isEnabled && env.allowsHitTesting, tint: tint))
+            // In inactive windows, accent-colored prominent buttons draw as plain bordered ones.
+            var drawnStyle = style.value
+            if drawnStyle == .borderedProminent, tint == nil, !env.appearsActive { drawnStyle = .bordered }
+            return .button(ResolvedButton(style: drawnStyle, isEnabled: env.isEnabled && env.allowsHitTesting, tint: tint))
         }
         var actions = RenderActions()
         let viewAttribute = view.attribute
@@ -272,8 +275,9 @@ public struct _PlatformButton<Label: View>: View {
             var env = environment.value
             let role = viewAttribute.value.role
             switch env.buttonStyle {
-            case .borderedProminent: env.foregroundStyle = AnyShapeStyle(Color.white)
-            case .link: env.foregroundStyle = AnyShapeStyle(env.tint ?? .accentColor)
+            case .borderedProminent:
+                if env.appearsActive || env.tint != nil || role == .destructive { env.foregroundStyle = AnyShapeStyle(Color.white) }
+            case .link: env.foregroundStyle = AnyShapeStyle(env.tint ?? .link)
             case .borderless:
                 if env.foregroundStyle == nil, role != .destructive { env.foregroundStyle = AnyShapeStyle(env.tint ?? .accentColor) }
             default: break
@@ -288,8 +292,9 @@ public struct _PlatformButton<Label: View>: View {
         let labelLayout = label.layout
         let path = inputs.path
         let controlSize = Attribute<ControlSize>(inputs.subgraph, isEqual: { $0 == $1 }) { environment.value.controlSize }
+        let inForm = Attribute<Bool>(inputs.subgraph, isEqual: { $0 == $1 }) { environment.value.isInForm }
         let layout = inputs.makeLayoutAttribute {
-            ButtonComputer(metrics: services.controlMetrics(.button(style.value)).scaled(for: controlSize.value), child: labelLayout.value, path: path, tracer: tracer)
+            ButtonComputer(metrics: services.controlMetrics(.button(style.value)).scaled(for: controlSize.value, inForm: inForm.value), child: labelLayout.value, path: path, tracer: tracer)
         }
         labelGeometry.setRule {
             (layout.value as! ButtonComputer).placeChild(in: geometry.value, child: labelLayout.value)
@@ -299,23 +304,33 @@ public struct _PlatformButton<Label: View>: View {
 }
 
 extension ControlMetrics {
-    /// Bordered controls at a control size (measured on macOS SwiftUI: mini 13pt tall with 5pt
-    /// insets, small 16/6, regular 20/8, large 28/8; extra large is drawn like regular).
-    func scaled(for size: ControlSize) -> ControlMetrics {
+    /// Bordered controls at a control size, measured on macOS SwiftUI.
+    /// Modern design: mini 13pt tall with 8pt insets, small 20/10, regular 24/12, large 28/14,
+    /// extra large 36/18. Classic: mini 13/5, small 16/6, regular 20/8, large 28/8 (extra large
+    /// like regular). Grouped form rows use 20/8 buttons in both.
+    func scaled(for size: ControlSize, inForm: Bool = false) -> ControlMetrics {
         guard minSize.height > 0 else { return self }
         var copy = self
-        switch size {
-        case .mini:
-            copy.minSize.height = 13
-            copy.contentInsets = EdgeInsets(top: 1, leading: 5, bottom: 1, trailing: 5)
-        case .small:
-            copy.minSize.height = 16
-            copy.contentInsets = EdgeInsets(top: 1, leading: 6, bottom: 1, trailing: 6)
-        case .large:
-            copy.minSize.height = 28
-            copy.contentInsets = EdgeInsets(top: 6, leading: contentInsets.leading, bottom: 6, trailing: contentInsets.trailing)
-        case .regular, .extraLarge:
-            break
+        func set(_ height: CGFloat, _ inset: CGFloat) {
+            copy.minSize.height = height
+            let vertical = max(0, (height - 16) / 2)
+            copy.contentInsets = EdgeInsets(top: vertical, leading: inset, bottom: vertical, trailing: inset)
+        }
+        if design == .modern {
+            switch size {
+            case .mini: set(13, 8)
+            case .small: set(20, 10)
+            case .regular: break
+            case .large: set(28, 14)
+            case .extraLarge: set(36, 18)
+            }
+        } else {
+            switch size {
+            case .mini: copy.minSize.height = 13; copy.contentInsets = EdgeInsets(top: 1, leading: 5, bottom: 1, trailing: 5)
+            case .small: copy.minSize.height = 16; copy.contentInsets = EdgeInsets(top: 1, leading: 6, bottom: 1, trailing: 6)
+            case .large: copy.minSize.height = 28; copy.contentInsets = EdgeInsets(top: 6, leading: contentInsets.leading, bottom: 6, trailing: contentInsets.trailing)
+            case .regular, .extraLarge: break
+            }
         }
         return copy
     }
@@ -573,7 +588,7 @@ public struct _ToggleControl: View {
                 size = CGSize(width: max(0, size.width - 2), height: max(0, size.height - 2))
             }
             // Mini switches (grouped forms) are 26 × 16, as SwiftUI draws them.
-            if kind == .switch, env.controlSize == .mini { size = CGSize(width: 26, height: 16) }
+            if kind == .switch, env.controlSize == .mini { size = CGSize(width: 26, height: env._controlDesign == .modern ? 16.5 : 16) }
             return FixedLayoutComputer(size: size, path: path, tracer: tracer)
         }
         return _ViewOutputs(layout: layout)
@@ -1080,11 +1095,13 @@ struct _SliderControl: View {
         let path = inputs.path
         return _ViewOutputs(layout: inputs.makeLayoutAttribute {
             var metrics = services.controlMetrics(.slider)
-            // SwiftUI's slider heights: small 16, mini 12; 19 in grouped form rows.
+            // SwiftUI's slider heights — classic: regular 20, small 16, mini 12, 19 in grouped
+            // form rows; modern: regular 16, small 14, mini 12.
+            let modern = environment.value._controlDesign == .modern
             switch environment.value.controlSize {
-            case .small: metrics.minSize.height = 16
+            case .small: metrics.minSize.height = modern ? 14 : 16
             case .mini: metrics.minSize.height = 12
-            default: if environment.value.isInForm { metrics.minSize.height = 19 }
+            default: metrics.minSize.height = modern ? 16 : environment.value.isInForm ? 19 : 20
             }
             return ControlLayoutComputer(metrics: metrics, path: path, tracer: tracer)
         })

@@ -39,7 +39,8 @@ extension View {
     public func buttonRepeatBehavior(_ behavior: ButtonRepeatBehavior) -> some View { self }
     public func springLoadingBehavior(_ behavior: SpringLoadingBehavior) -> some View { self }
     public func textScale(_ scale: TextScale, isEnabled: Bool = true) -> some View { self }
-    public func horizontalRadioGroupLayout() -> some View { self }
+    /// Radio-group pickers lay their options out in a row.
+    public func horizontalRadioGroupLayout() -> some View { environment(\._horizontalRadioGroup, true) }
     public func scrollEdgeEffectStyle(_ style: ScrollEdgeEffectStyle?, for edges: Edge.Set) -> some View { self }
     public func backgroundExtensionEffect() -> some View { self }
     public func flipsForRightToLeftLayoutDirection(_ enabled: Bool) -> some View { self }
@@ -130,5 +131,14 @@ extension AppRuntime {
         guard !urlHandlers.isEmpty else { return false }
         for url in urls { for handler in urlHandlers { handler.action?(url) } }
         return true
+    }
+}
+
+struct HorizontalRadioGroupKey: EnvironmentKey { static let defaultValue = false }
+
+extension EnvironmentValues {
+    var _horizontalRadioGroup: Bool {
+        get { self[HorizontalRadioGroupKey.self] }
+        set { self[HorizontalRadioGroupKey.self] = newValue }
     }
 }
