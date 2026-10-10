@@ -113,7 +113,7 @@ struct ScrollFeatureTests {
             size: CGSize(width: 100, height: 100)
         )
         let transforms = host.allViews.compactMap { view -> CGSize? in
-            if case .effect(.transform(let offset, _, _)) = view.content { return offset } else { return nil }
+            if case .effect(.transform(let offset, _, _, _)) = view.content { return offset } else { return nil }
         }
         #expect(transforms == [CGSize(width: 0, height: 40)])
     }

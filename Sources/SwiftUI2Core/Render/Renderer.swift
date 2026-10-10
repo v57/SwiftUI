@@ -560,11 +560,12 @@ extension RenderContent {
             switch (x, y) {
             case let (.opacity(o0), .opacity(o1)):
                 return .effect(.opacity(o0 + (o1 - o0) * t))
-            case let (.transform(off0, sc0, r0), .transform(off1, sc1, r1)):
+            case let (.transform(off0, sc0, r0, a0), .transform(off1, sc1, r1, a1)):
                 return .effect(.transform(
                     offset: CGSize(width: lerp(off0.width, off1.width, t), height: lerp(off0.height, off1.height, t)),
                     scale: CGSize(width: lerp(sc0.width, sc1.width, t), height: lerp(sc0.height, sc1.height, t)),
-                    rotationDegrees: r0 + (r1 - r0) * t))
+                    rotationDegrees: r0 + (r1 - r0) * t,
+                    anchor: UnitPoint(x: lerp(a0.x, a1.x, t), y: lerp(a0.y, a1.y, t))))
             case let (.clip(p0), .clip(p1)):
                 return .effect(.clip(.interpolate(p0, p1, t)))
             case let (.shadow(s0), .shadow(s1)):

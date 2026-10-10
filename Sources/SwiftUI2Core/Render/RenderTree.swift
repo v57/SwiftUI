@@ -120,7 +120,10 @@ public enum DisplayEffect: Equatable, Sendable {
     case opacity(Double)
     case clip(Path)
     case tapTarget
-    case transform(offset: CGSize, scale: CGSize, rotationDegrees: Double)
+    /// Scale and rotation about `anchor` (unit point of the view), then the offset.
+    case transform(offset: CGSize, scale: CGSize, rotationDegrees: Double, anchor: UnitPoint)
+    /// A projective transform in the view's coordinates (`GeometryEffect`, 3D rotation).
+    case projection(ProjectionTransform)
     case shadow(ResolvedShadow)
     /// The container is masked by its last child, a `.maskSource` node (`.mask { ... }`).
     case mask

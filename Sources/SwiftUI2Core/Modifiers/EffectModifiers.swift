@@ -45,8 +45,9 @@ public struct _TransformEffect: PlatformEffectModifier, Equatable {
     let offset: CGSize
     let scale: CGSize
     let rotation: Double
+    var anchor = UnitPoint.center
     static var pathComponent: String { "transform" }
-    func effect(size: CGSize) -> DisplayEffect { .transform(offset: offset, scale: scale, rotationDegrees: rotation) }
+    func effect(size: CGSize) -> DisplayEffect { .transform(offset: offset, scale: scale, rotationDegrees: rotation, anchor: anchor) }
 }
 
 public struct _ShadowEffect: PlatformEffectModifier {
@@ -98,16 +99,20 @@ extension View {
         modifier(_ClipEffect(shape: RoundedRectangle(cornerRadius: radius)))
     }
 
-    public func scaleEffect(_ scale: CGFloat) -> some View {
-        modifier(_TransformEffect(offset: .zero, scale: CGSize(width: scale, height: scale), rotation: 0))
+    public func scaleEffect(_ scale: CGFloat, anchor: UnitPoint = .center) -> some View {
+        modifier(_TransformEffect(offset: .zero, scale: CGSize(width: scale, height: scale), rotation: 0, anchor: anchor))
     }
 
-    public func scaleEffect(x: CGFloat = 1, y: CGFloat = 1) -> some View {
-        modifier(_TransformEffect(offset: .zero, scale: CGSize(width: x, height: y), rotation: 0))
+    public func scaleEffect(_ scale: CGSize, anchor: UnitPoint = .center) -> some View {
+        modifier(_TransformEffect(offset: .zero, scale: scale, rotation: 0, anchor: anchor))
     }
 
-    public func rotationEffect(_ angle: Angle) -> some View {
-        modifier(_TransformEffect(offset: .zero, scale: CGSize(width: 1, height: 1), rotation: angle.degrees))
+    public func scaleEffect(x: CGFloat = 1, y: CGFloat = 1, anchor: UnitPoint = .center) -> some View {
+        modifier(_TransformEffect(offset: .zero, scale: CGSize(width: x, height: y), rotation: 0, anchor: anchor))
+    }
+
+    public func rotationEffect(_ angle: Angle, anchor: UnitPoint = .center) -> some View {
+        modifier(_TransformEffect(offset: .zero, scale: CGSize(width: 1, height: 1), rotation: angle.degrees, anchor: anchor))
     }
 
     public func onTapGesture(count: Int = 1, perform action: @escaping @MainActor () -> Void) -> some View {

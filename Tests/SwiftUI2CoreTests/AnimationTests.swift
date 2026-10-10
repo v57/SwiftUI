@@ -112,7 +112,9 @@ struct AnimationTests {
         host.flush()
         host.advance(by: 0.5)
         guard case .color(let color) = host.allViews[0].content else { Issue.record("no color"); return }
-        #expect(color.blue > 0.4 && color.blue < 0.6)
+        // Halfway from red to (0, 0, 1).
+        #expect(color.red > 0.4 && color.red < 0.6)
+        #expect(color.blue > 0.5 && color.blue < 0.75)
     }
 
     @Test func insertionAndRemovalTransitions() {

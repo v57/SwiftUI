@@ -15,8 +15,16 @@ class FlippedView: NSView {
     override var isFlipped: Bool { true }
 
     var baseAlpha: CGFloat = 1 { didSet { updateAlpha() } }
-    var effectTransform: CGAffineTransform = .identity { didSet { updateTransform() } }
+    /// The view's own transform effect (`scaleEffect`, `rotationEffect`, `GeometryEffect`, ...).
+    var effectGeometry: EffectGeometry = .identity { didSet { if effectGeometry != oldValue { updateTransform() } } }
     private var presentation = RenderPresentation.identity
+
+    enum EffectGeometry: Equatable {
+        case identity
+        /// Scale and rotation about a unit anchor, then the offset (resolved against the bounds).
+        case anchored(offset: CGSize, scale: CGSize, rotationDegrees: Double, anchor: UnitPoint)
+        case projection(ProjectionTransform)
+    }
 
     func applyPresentation(_ presentation: RenderPresentation) {
         self.presentation = presentation
@@ -28,25 +36,68 @@ class FlippedView: NSView {
         alphaValue = baseAlpha * CGFloat(presentation.opacity)
     }
 
+    private static func anchored(offset: CGSize, scale: CGSize, rotationDegrees: Double, anchor: UnitPoint, size: CGSize) -> CGAffineTransform {
+        let ax = anchor.x * size.width, ay = anchor.y * size.height
+        var t = CGAffineTransform(translationX: offset.width + ax, y: offset.height + ay)
+        t = t.rotated(by: CGFloat(rotationDegrees * .pi / 180))
+        t = t.scaledBy(x: scale.width, y: scale.height)
+        return t.translatedBy(x: -ax, y: -ay)
+    }
+
+    /// Composes the effect and presentation transforms for the current bounds.
     private func updateTransform() {
         let size = bounds.size
-        var transform = effectTransform
-        if !presentation.isIdentity {
-            let ax = presentation.anchor.x * size.width
-            let ay = presentation.anchor.y * size.height
-            var p = CGAffineTransform(translationX: presentation.offset.width + ax, y: presentation.offset.height + ay)
-            p = p.rotated(by: CGFloat(presentation.rotationDegrees * .pi / 180))
-            p = p.scaledBy(x: presentation.scale.width, y: presentation.scale.height)
-            p = p.translatedBy(x: -ax, y: -ay)
-            transform = transform.concatenating(p)
+        var effect = CATransform3DIdentity
+        switch effectGeometry {
+        case .identity: break
+        case let .anchored(offset, scale, rotation, anchor):
+            effect = CATransform3DMakeAffineTransform(Self.anchored(offset: offset, scale: scale, rotationDegrees: rotation, anchor: anchor, size: size))
+        case let .projection(matrix):
+            effect = CATransform3D(matrix)
         }
-        layer?.setAffineTransform(transform)
+        var transform = effect
+        if !presentation.isIdentity {
+            let p = Self.anchored(offset: presentation.offset, scale: presentation.scale, rotationDegrees: presentation.rotationDegrees, anchor: presentation.anchor, size: size)
+            transform = CATransform3DConcat(effect, CATransform3DMakeAffineTransform(p))
+        }
+        appliedTransform = transform
+        layer?.transform = transform
+    }
+
+    /// AppKit owns a layer-backed view's layer geometry and resets the layer transform when it
+    /// syncs the frame (on frame changes and before drawing); these hooks put ours back.
+    private var appliedTransform = CATransform3DIdentity
+
+    private func reapplyTransform() {
+        guard let layer, !CATransform3DEqualToTransform(layer.transform, appliedTransform) else { return }
+        layer.transform = appliedTransform
     }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
         autoresizingMask = []
+    }
+
+    // Anchored transforms depend on the size.
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        if effectGeometry != .identity || !presentation.isIdentity { updateTransform() } else { reapplyTransform() }
+    }
+
+    override func setFrameOrigin(_ newOrigin: NSPoint) {
+        super.setFrameOrigin(newOrigin)
+        reapplyTransform()
+    }
+
+    override func layout() {
+        super.layout()
+        reapplyTransform()
+    }
+
+    override func viewWillDraw() {
+        super.viewWillDraw()
+        reapplyTransform()
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -823,7 +874,8 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
         layer?.mask = nil
         layer?.masksToBounds = false
         layer?.shadowOpacity = 0
-        effectTransform = .identity
+        var geometry = EffectGeometry.identity
+        defer { effectGeometry = geometry }
         isTapTarget = false
         isMaskContainer = false
         isFocusable = false
@@ -867,13 +919,10 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
         case let .pointer(style, hidden):
             pointerStyle = style
             hidesPointer = hidden
-        case let .transform(offset, scale, rotation):
-            let center = CGPoint(x: bounds.midX, y: bounds.midY)
-            var transform = CGAffineTransform(translationX: offset.width + center.x, y: offset.height + center.y)
-            transform = transform.rotated(by: CGFloat(rotation * .pi / 180))
-            transform = transform.scaledBy(x: scale.width, y: scale.height)
-            transform = transform.translatedBy(x: -center.x, y: -center.y)
-            effectTransform = transform
+        case let .projection(matrix):
+            geometry = .projection(matrix)
+        case let .transform(offset, scale, rotation, anchor):
+            geometry = .anchored(offset: offset, scale: scale, rotationDegrees: rotation, anchor: anchor)
         }
     }
 
@@ -1113,6 +1162,18 @@ final class CanvasNodeView: FlippedView, PlatformNodeView {
                 string.draw(at: CGPoint(x: point.x - size.width * anchor.x, y: point.y - size.height * anchor.y))
             }
         }
+    }
+}
+#endif
+
+#if canImport(AppKit)
+extension CATransform3D {
+    /// The z = 0 plane transform of a projection (z passes through unchanged).
+    init(_ m: ProjectionTransform) {
+        self = CATransform3DIdentity
+        m11 = m.m11; m12 = m.m12; m14 = m.m13
+        m21 = m.m21; m22 = m.m22; m24 = m.m23
+        m41 = m.m31; m42 = m.m32; m44 = m.m33
     }
 }
 #endif

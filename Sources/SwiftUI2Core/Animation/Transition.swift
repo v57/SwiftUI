@@ -55,6 +55,7 @@ extension ModifiedContent: _TransitionEffectSource {
         case let opacity as _OpacityEffect:
             effect.opacity *= opacity.opacity
         case let transform as _TransformEffect:
+            if transform.scale != CGSize(width: 1, height: 1) || transform.rotation != 0 { effect.scaleAnchor = transform.anchor }
             effect.scale.width *= transform.scale.width
             effect.scale.height *= transform.scale.height
             effect.rotationDegrees += transform.rotation

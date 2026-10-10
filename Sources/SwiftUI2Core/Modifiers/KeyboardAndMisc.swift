@@ -353,7 +353,6 @@ extension View {
 
     public func scrollTargetLayout(isEnabled: Bool = true) -> some View { self }
 
-    public func rotation3DEffect(_ angle: Angle, axis: (x: CGFloat, y: CGFloat, z: CGFloat), anchor: UnitPoint = .center, anchorZ: CGFloat = 0, perspective: CGFloat = 1) -> some View { self }
     public func matchedTransitionSource<ID: Hashable>(id: ID, in namespace: Namespace.ID) -> some View { self }
 }
 
