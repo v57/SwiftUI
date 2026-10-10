@@ -14,8 +14,9 @@
 #include <unistd.h>
 
 static JavaVM *vm;
-static jclass hostViewClass, textMeasureClass, pathsClass;
-static jmethodID applyMethod, requestFrameMethod, platformMethod, measureMethod, pathOpMethod;
+static jclass hostViewClass, textMeasureClass, pathsClass, imagesClass;
+static jmethodID applyMethod, requestFrameMethod, platformMethod, measureMethod, pathOpMethod, decodeMethod, releaseImageMethod;
+static jintArray imageSizeOut;
 static jfloatArray measureOut;
 
 static JNIEnv *env(void) {
@@ -86,6 +87,22 @@ void *sui_path_op(const void *paths, int32_t length, int32_t op, bool evenOdd, i
     (*e)->DeleteLocalRef(e, result);
     *resultLength = count;
     return bytes;
+}
+
+int32_t sui_decode_image(const void *bytes, int32_t length, int32_t *size) {
+    JNIEnv *e = env();
+    jobject buffer = (*e)->NewDirectByteBuffer(e, (void *)bytes, length);
+    jint id = (*e)->CallStaticIntMethod(e, imagesClass, decodeMethod, buffer, imageSizeOut);
+    check(e);
+    (*e)->DeleteLocalRef(e, buffer);
+    (*e)->GetIntArrayRegion(e, imageSizeOut, 0, 2, size);
+    return id;
+}
+
+void sui_release_image(int32_t id) {
+    JNIEnv *e = env();
+    (*e)->CallStaticVoidMethod(e, imagesClass, releaseImageMethod, id);
+    check(e);
 }
 
 void sui_delete_global_ref(sui_ref ref) {
@@ -242,6 +259,10 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *javaVM, void *reserved) {
     measureOut = (*e)->NewGlobalRef(e, (*e)->NewFloatArray(e, 4));
     pathsClass = (*e)->NewGlobalRef(e, (*e)->FindClass(e, "org/swiftui2/Paths"));
     pathOpMethod = (*e)->GetStaticMethodID(e, pathsClass, "op", "(Ljava/nio/ByteBuffer;IZ)[B");
+    imagesClass = (*e)->NewGlobalRef(e, (*e)->FindClass(e, "org/swiftui2/Images"));
+    decodeMethod = (*e)->GetStaticMethodID(e, imagesClass, "decode", "(Ljava/nio/ByteBuffer;[I)I");
+    releaseImageMethod = (*e)->GetStaticMethodID(e, imagesClass, "release", "(I)V");
+    imageSizeOut = (*e)->NewGlobalRef(e, (*e)->NewIntArray(e, 2));
     check(e);
     return JNI_VERSION_1_6;
 }

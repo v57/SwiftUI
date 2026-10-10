@@ -183,6 +183,23 @@ class ImageNode(host: HostView, id: Int) : NodeView(host, id, KIND_IMAGE) {
 /** Named images: drawables (res/drawable-*: name), then `assets/images/<name>.png|jpg|webp`. */
 object Images {
     val decoded = HashMap<Int, Bitmap>()
+    private var nextId = 1
+
+    /** Decodes image data for Swift's `decodeImage`; out = pixel size. Returns the id or -1. */
+    @JvmStatic
+    fun decode(data: java.nio.ByteBuffer, out: IntArray): Int {
+        val bytes = ByteArray(data.remaining())
+        data.get(bytes)
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return -1
+        val id = nextId++
+        decoded[id] = bitmap
+        out[0] = bitmap.width
+        out[1] = bitmap.height
+        return id
+    }
+
+    @JvmStatic
+    fun release(id: Int) { decoded.remove(id) }
     private val cache = HashMap<String, Any?>()
 
     fun load(context: Context, name: String): Any? {

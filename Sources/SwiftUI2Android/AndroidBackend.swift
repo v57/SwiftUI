@@ -43,10 +43,14 @@ final class ReleaseQueue: @unchecked Sendable {
     }
 }
 
-/// An image decoded by the host (`decodeImage`), referenced by id.
+/// An image decoded by the host (`decodeImage`), referenced by id; released with the handle.
 final class AndroidBitmap {
     let id: Int32
     init(id: Int32) { self.id = id }
+    deinit {
+        let id = self.id
+        DispatchQueue.main.async { sui_release_image(id) }
+    }
 }
 
 /// A native Android view embedded with a representable, referenced by id.
@@ -277,6 +281,19 @@ public final class AndroidBackend: RenderBackend {
             return nil
         }.joined(separator: "\n")
         _ = AndroidPlatform.call(hostView, .copy, text)
+    }
+
+    public func decodeImage(_ data: Data, scale: CGFloat) -> PlatformImage? {
+        var size: (Int32, Int32) = (0, 0)
+        let id = data.withUnsafeBytes { buffer in
+            withUnsafeMutablePointer(to: &size) { pointer in
+                pointer.withMemoryRebound(to: Int32.self, capacity: 2) { sui_decode_image(buffer.baseAddress, Int32(buffer.count), $0) }
+            }
+        }
+        guard id >= 0 else { return nil }
+        // Pixel size divided by the requested scale (like SwiftUI's AsyncImage).
+        let scale = max(scale, 0.01)
+        return PlatformImage(object: AndroidBitmap(id: id), size: CGSize(width: CGFloat(size.0) / scale, height: CGFloat(size.1) / scale))
     }
 
     public func readPasteboard() -> [NSItemProvider] {

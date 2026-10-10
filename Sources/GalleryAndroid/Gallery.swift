@@ -19,6 +19,7 @@ struct GalleryRoot: View {
                 NavigationLink("Presentations", value: "presentations")
                 NavigationLink("Timers & tasks", value: "timers")
                 NavigationLink("Text input", value: "text")
+                NavigationLink("Remote image", value: "image")
             }
             .navigationTitle("Gallery")
             .navigationDestination(for: String.self) { page in
@@ -27,6 +28,7 @@ struct GalleryRoot: View {
                 case "gestures": GesturesPage()
                 case "presentations": PresentationsPage()
                 case "timers": TimersPage()
+                case "image": RemoteImagePage()
                 default: TextInputPage()
                 }
             }
@@ -159,5 +161,19 @@ struct TextInputPage: View {
             Button("Focus number") { focused = true }
         }
         .navigationTitle("Text input")
+    }
+}
+
+/// AsyncImage over the network (decoded by the backend).
+struct RemoteImagePage: View {
+    var body: some View {
+        AsyncImage(url: URL(string: "https://github.com/apple.png")) { phase in
+            switch phase {
+            case .success(let image): image.resizable().scaledToFit().frame(width: 200)
+            case .failure(let error): Text("Failed: \(error.localizedDescription)")
+            default: ProgressView()
+            }
+        }
+        .navigationTitle("Remote image")
     }
 }
