@@ -20,6 +20,7 @@ public final class TestHost {
         graph = ViewGraph(rootView: root, backend: backend, proposedSize: ProposedViewSize(size))
         graph.clock = { clock.time }
         graph.onNeedsUpdate = { [weak self] in self?.needsFlush = true }
+        graph.onToolbarChange = { [weak self] in self?.showToolbar($0) }
         flush()
     }
 
@@ -31,7 +32,26 @@ public final class TestHost {
         graph.setProposedSize(ProposedViewSize(size))
         graph.clock = { clock.time }
         graph.onNeedsUpdate = { [weak self] in self?.needsFlush = true }
+        graph.onToolbarChange = { [weak self] in self?.showToolbar($0) }
         flush()
+    }
+
+    // MARK: Window toolbar
+
+    /// The window toolbar's items, hosted in their own graph like a window's toolbar views.
+    public let toolbarBackend = HeadlessBackend()
+    public private(set) var toolbarGraph: ViewGraph?
+
+    private func showToolbar(_ toolbar: WindowToolbar) {
+        let root = _HeadlessToolbar(entries: toolbar.items)
+        if let toolbarGraph {
+            toolbarGraph.setRootView(root)
+        } else {
+            let toolbarGraph = ViewGraph(rootView: root, backend: toolbarBackend, proposedSize: ProposedViewSize(CGSize(width: 800, height: 52)))
+            toolbarGraph.clock = graph.clock
+            toolbarGraph.onNeedsUpdate = { [weak self] in self?.needsFlush = true }
+            self.toolbarGraph = toolbarGraph
+        }
     }
 
     private let clock: ManualClock
@@ -41,12 +61,13 @@ public final class TestHost {
         clock.time += seconds
         time = clock.time
         graph.renderAnimationFrame()
+        toolbarGraph?.renderAnimationFrame()
     }
 
     /// Runs animation frames at 60 Hz until all animations finished (or `limit` seconds passed).
     public func finishAnimations(limit: Double = 10) {
         var elapsed = 0.0
-        while graph.hasActiveAnimations && elapsed < limit {
+        while (graph.hasActiveAnimations || toolbarGraph?.hasActiveAnimations == true) && elapsed < limit {
             advance(by: 1.0 / 60)
             elapsed += 1.0 / 60
         }
@@ -59,6 +80,13 @@ public final class TestHost {
     public func flush() {
         needsFlush = false
         graph.update()
+        // Toolbar edits feed back into the window's graph (bindings), and toolbar items change
+        // after window updates.
+        for _ in 0..<4 {
+            guard let toolbarGraph, toolbarGraph.needsUpdate || graph.needsUpdate else { break }
+            toolbarGraph.update()
+            graph.update()
+        }
     }
 
     public func resize(to size: CGSize) {
@@ -71,7 +99,8 @@ public final class TestHost {
 
     // MARK: Queries
 
-    public var allViews: [HeadlessView] { root.allDescendants }
+    /// Views of the window content followed by those of the toolbar.
+    public var allViews: [HeadlessView] { root.allDescendants + (toolbarGraph == nil ? [] : toolbarBackend.root.allDescendants) }
 
     public func views(withText text: String) -> [HeadlessView] { allViews.filter { $0.text == text } }
 
@@ -162,6 +191,18 @@ public final class TestHost {
         let fields = allViews.filter { if case .textField = $0.content { return true } else { return false } }
         fields[index].node?.actions.setText?(text)
         flush()
+    }
+}
+
+/// Toolbar items side by side, each with the environment of its `.toolbar` site.
+struct _HeadlessToolbar: View {
+    let entries: [ToolbarEntry]
+    var body: some View {
+        HStack {
+            ForEach(entries.indices, id: \.self) { index in
+                entries[index].content.environment(\.self, entries[index].environment)
+            }
+        }
     }
 }
 

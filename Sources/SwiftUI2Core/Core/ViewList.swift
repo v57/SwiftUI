@@ -259,7 +259,7 @@ final class ViewListContainer {
             @MainActor func role(_ i: Int) -> ListElementRole? {
                 items.indices.contains(i) ? items[i].traits.value(ListElementRoleKey.self) : nil
             }
-            return ListItemPosition(index: index, count: items.count, previous: role(index - 1), next: role(index + 1))
+            return ListItemPosition(index: index, count: items.count, previous: role(index - 1), next: role(index + 1), first: role(0))
         }
         let outputs = element.make(childInputs)
         let tracer = inputs.tracer
@@ -285,7 +285,11 @@ final class ViewListContainer {
 }
 
 /// A list element's kind (sections flatten into header / rows / footer).
-public enum ListElementRole: Hashable, Sendable { case row, header, footer, sectionGap }
+public enum ListElementRole: Hashable, Sendable {
+    case row, header, footer, sectionGap
+    /// A list-provided leading row (a sidebar list's search field).
+    case accessory
+}
 
 public enum ListElementRoleKey: _ViewTraitKey {
     public static var defaultValue: ListElementRole { .row }
@@ -297,6 +301,8 @@ struct ListItemPosition: Equatable {
     var count = 0
     var previous: ListElementRole?
     var next: ListElementRole?
+    /// The container's first element (list stripes count from a leading header).
+    var first: ListElementRole?
 }
 
 @MainActor

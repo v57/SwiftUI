@@ -176,6 +176,9 @@ public struct _ViewListInputs {
     var groupsSections = false
     /// With `flattensSections`: headers stay as written (Group(sections:)), not list-styled.
     var rawSectionHeaders = false
+    /// Inside a List's rows: the outline depth (disclosure groups and outline groups contribute
+    /// their label and children as separate rows, children one level deeper). Nil elsewhere.
+    var outlineLevel: Int?
 
     func with(path component: String) -> _ViewListInputs {
         var copy = self

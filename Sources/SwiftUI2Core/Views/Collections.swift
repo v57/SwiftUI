@@ -132,7 +132,8 @@ enum ResolvedListStyle: Equatable {
     var isSidebar: Bool { self == .sidebar || self == .sidebarColumn }
     /// Rows are at least this tall (content is centered).
     var minRowHeight: CGFloat { isSidebar ? 28 : 24 }
-    var showsSeparators: Bool { self == .automatic }
+    /// Separators below rows and section headers (not in sidebars or striped lists).
+    var showsSeparators: Bool { !isSidebar }
     /// Padding around the rows (inside the background / border).
     var contentInsets: EdgeInsets {
         switch self {
@@ -295,7 +296,16 @@ struct _ListRowModifier: ViewModifier {
     var rowSpacing: CGFloat?
     var sectionSpacing: CGFloat?
     var headerProminence = Prominence.standard
+    var hasOutline = false
+    var outlineLevel = 0
+    var disclosure: Binding<Bool>?
     @Environment(\.tableStripes) private var stripes
+
+    /// Row index for alternating backgrounds (headers count; a leading header shifts by one).
+    private var stripeIndex: Int { position.index + (position.first == .header ? 1 : 0) }
+
+    /// Striped lists draw no separators.
+    private var showsSeparators: Bool { style.showsSeparators && stripes != .enabled }
 
     func body(content: Content) -> some View {
         if isForm {
@@ -306,17 +316,33 @@ struct _ListRowModifier: ViewModifier {
                 .modifier(_RowContextMenu(swipeActions: swipeActions, delete: delete))
         } else if role == .header {
             header(content)
+        } else if role == .accessory {
+            // The hosted search field: a 28pt row reaching 8pt left of the rows' content and
+            // 8pt from the list's trailing edge.
+            let insets = contentInsets
+            content
+                .frame(maxWidth: .infinity)
+                .frame(height: style.minRowHeight)
+                .padding(.leading, insets.leading - 8)
+                .padding(.trailing, -2)
+                .padding(.top, position.index == 0 ? style.contentInsets.top : 0)
         } else if role == .sectionGap {
             // Between sections: 20pt; a leading gap stands in for the list's top inset.
             Color.clear.frame(height: position.index == 0 ? style.contentInsets.top : sectionSpacing ?? 20)
         } else {
-            let insets = partialInsets.applied(to: rowInsets ?? style.rowInsets)
+            let insets = contentInsets
+            // Every row but the last gets a separator (also before a section header).
             let showsBottomSeparator = separator.bottomVisibility == .visible
-                || (separator.bottomVisibility == .automatic && style.showsSeparators && role == .row && position.next == .row)
+                || (separator.bottomVisibility == .automatic && showsSeparators && role == .row && position.next != nil)
             content
                 .tint(itemTint)
                 .padding(insets)
                 .frame(maxWidth: .infinity, minHeight: style.minRowHeight, alignment: .leading)
+                .overlay(alignment: .leading) {
+                    if let disclosure {
+                        _OutlineDisclosureButton(isExpanded: disclosure).padding(.leading, insets.leading - (style == .plain ? 26 : 13))
+                    }
+                }
                 .overlay(alignment: .trailing) {
                     if let badge { _ListRowBadge(badge: badge, isSidebar: style.isSidebar).padding(.trailing, insets.trailing) }
                 }
@@ -325,19 +351,27 @@ struct _ListRowModifier: ViewModifier {
                         RoundedRectangle(cornerRadius: 5).fill(Color.listSelection)
                     } else if let background {
                         background
-                    } else if stripes == .enabled, role == .row, position.index % 2 == 1 {
-                        Color.alternatingRow
+                    } else if stripes == .enabled, role == .row, stripeIndex % 2 == 1 {
+                        RoundedRectangle(cornerRadius: 5).fill(Color.tableStripe)
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    // Like NSTableView, stripes continue below the last row.
+                    if stripes == .enabled, position.next == nil {
+                        _ListFillerStripes(startIndex: stripeIndex + 1, rowHeight: style.minRowHeight)
                     }
                 }
                 .overlay(alignment: .bottom) {
                     // Separators between consecutive rows (and below section headers).
                     if showsBottomSeparator {
-                        Rectangle().fill(separator.bottomTint ?? Color.separator).frame(height: 1).padding(.horizontal, insets.leading)
+                        Rectangle().fill(separator.bottomTint ?? Color.separator).frame(height: 1)
+                            .padding(.leading, insets.leading).padding(.trailing, style == .plain ? 0 : insets.trailing)
                     }
                 }
                 .overlay(alignment: .top) {
                     if separator.topVisibility == .visible {
-                        Rectangle().fill(separator.topTint ?? Color.separator).frame(height: 1).padding(.horizontal, insets.leading)
+                        Rectangle().fill(separator.topTint ?? Color.separator).frame(height: 1)
+                            .padding(.leading, insets.leading).padding(.trailing, style == .plain ? 0 : insets.trailing)
                     }
                 }
                 .padding(.top, position.index == 0 ? style.contentInsets.top : 0)
@@ -347,6 +381,14 @@ struct _ListRowModifier: ViewModifier {
                 .modifier(_OptionalReorder(reorder: reorder))
                 .modifier(_TypeSelectRow(text: typeSelect, tag: tag))
         }
+    }
+
+    private var contentInsets: EdgeInsets {
+        var insets = partialInsets.applied(to: rowInsets ?? style.rowInsets)
+        // Outline lists: rows start after the 13pt disclosure column (25pt from the list edge,
+        // 26 in plain lists), 13pt deeper per level.
+        if hasOutline { insets.leading += (style == .plain ? 18 : 9) + CGFloat(outlineLevel) * 13 }
+        return insets
     }
 
     /// Section headers (measured: 11pt semibold; inset lists add 20pt between sections and a
@@ -364,29 +406,82 @@ struct _ListRowModifier: ViewModifier {
     @ViewBuilder private func headerChrome(_ content: Content) -> some View {
         let isFirst = position.index == 0
         if style.isSidebar {
+            // 19pt group rows; 13pt above every group row but the first.
             content
                 .padding(.horizontal, 4)
-                .padding(.top, isFirst ? 10 : 15)
-                .padding(.bottom, 3)
+                .padding(.top, isFirst ? 12.5 : 15.5)
+                .padding(.bottom, 2.5)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
+            // Measured: the header text sits 7pt below the list top (inside a border) and 27pt
+            // below the previous row (7 in plain lists); 7pt below it. Inset lists add their 10pt
+            // top inset under a leading header, which is pinned with a full-width hairline.
+            let isPlain = style == .plain
+            let lines = showsSeparators && sectionSeparator.bottomVisibility != .hidden && position.next == .row
+            let separatorTint = sectionSeparator.bottomTint ?? Color.separator
             content
                 .padding(.horizontal, style.rowInsets.leading)
-                .padding(.top, isFirst ? 7 - style.contentInsets.top : 27)
+                .padding(.top, isFirst || isPlain ? 7 : 27)
                 .padding(.bottom, 7)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .overlay(alignment: .bottom) {
-                    if sectionSeparator.bottomVisibility == .hidden {
-                        EmptyView()
-                    } else if style.showsSeparators || sectionSeparator.bottomVisibility == .visible, !isFirst, position.next == .row {
-                        Rectangle().fill(sectionSeparator.bottomTint ?? Color.separator).frame(height: 1).padding(.horizontal, style.rowInsets.leading)
-                    } else if isFirst, style.hasBackground {
-                        Rectangle().fill(Color.separator).frame(height: 1).padding(.horizontal, -style.contentInsets.leading)
+                    if isFirst, style.hasBackground {
+                        VStack(spacing: 0) {
+                            if lines && !isPlain {
+                                Rectangle().fill(separatorTint).frame(height: 0.5)
+                                    .padding(.horizontal, style.rowInsets.leading)
+                            }
+                            Rectangle().fill(Color.pinnedHeaderLine).frame(height: isPlain ? 1 : 0.5)
+                                .padding(.horizontal, -style.contentInsets.leading)
+                        }
+                    } else if lines || sectionSeparator.bottomVisibility == .visible {
+                        Rectangle().fill(separatorTint).frame(height: 1)
+                            .padding(.horizontal, isPlain ? -style.contentInsets.leading : style.rowInsets.leading)
                     }
                 }
-                .padding(.top, isFirst ? style.contentInsets.top : 0)
-                .padding(.bottom, isFirst ? 10 : 0)
+                .padding(.top, isFirst && style == .bordered ? 1 : 0)
+                .padding(.bottom, isFirst && (style == .automatic || style == .inset) ? 10 : 0)
         }
+    }
+}
+
+/// Alternating stripes below a list's last row (zero height: drawn past the row's bottom).
+struct _ListFillerStripes: View {
+    let startIndex: Int
+    let rowHeight: CGFloat
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<80, id: \.self) { offset in
+                if (startIndex + offset) % 2 == 1 {
+                    RoundedRectangle(cornerRadius: 5).fill(Color.tableStripe).frame(height: rowHeight)
+                } else {
+                    Color.clear.frame(height: rowHeight)
+                }
+            }
+        }
+        .frame(height: 0, alignment: .top)
+        .allowsHitTesting(false)
+    }
+}
+
+/// The disclosure chevron of an outline row (13pt column left of the row's content).
+struct _OutlineDisclosureButton: View {
+    let isExpanded: Binding<Bool>
+    var body: some View {
+        let isExpanded = self.isExpanded
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) { isExpanded.wrappedValue.toggle() }
+        } label: {
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
+                .frame(width: 13, height: 13)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isExpanded.wrappedValue ? "Collapse" : "Expand")
     }
 }
 
@@ -422,7 +517,7 @@ struct _OptionalDeleteMenu: ViewModifier {
 extension ViewList {
     /// Applies list-row chrome using the environment's list context.
     @MainActor
-    func listRows(in subgraph: Subgraph, environment: Attribute<EnvironmentValues>) -> ViewList {
+    func listRows(in subgraph: Subgraph, environment: Attribute<EnvironmentValues>, hasOutline: Attribute<Bool>? = nil) -> ViewList {
         mapElements(in: subgraph) { element in
             var copy = element
             copy.make = { placement in
@@ -431,6 +526,9 @@ extension ViewList {
                     var row = makeListRowModifier(traits: element.traits, environment: environment.value)
                     row.role = element.traits.value(ListElementRoleKey.self)
                     row.position = position?.value ?? ListItemPosition()
+                    row.hasOutline = hasOutline?.value ?? false
+                    row.outlineLevel = element.traits.value(OutlineLevelTraitKey.self) ?? 0
+                    row.disclosure = element.traits.value(OutlineDisclosureTraitKey.self)
                     return row
                 }
                 return _ListRowModifier._makeView(modifier: _GraphValue(modifier), inputs: placement) { element.make($0) }
@@ -501,7 +599,17 @@ public struct List<SelectionValue: Hashable, Content: View>: View {
     }
 
     @Environment(\.scrollContentBackground) private var contentBackground
+    @Environment(\._controlDesign) private var design
+    @Environment(\.appearsActive) private var appearsActive
+    @Environment(\.sidebarSearchField) private var sidebarSearch
     @State private var typeSelect = TypeSelectRegistry()
+
+    private var background: Color {
+        guard contentBackground != .hidden else { return .clear }
+        if style.hasBackground { return .controlBackground }
+        // A classic sidebar list outside a split view draws the sidebar material.
+        return style == .sidebar && design == .classic ? .classicSidebar : .clear
+    }
 
     public var body: some View {
         let style = self.style
@@ -509,14 +617,29 @@ public struct List<SelectionValue: Hashable, Content: View>: View {
         let selection = self.selection
         let typeSelect = self.typeSelect
         // The first row/header carries the top inset (a leading section header is pinned there).
+        // A sidebar list shows a pending `.sidebar` search field as its first row.
+        let search = style.isSidebar ? sidebarSearch : nil
+        let background = self.background
         ScrollView {
-            _ListRows(content: content)
+            _ListRows(content: content, accessory: search?.field)
                 .padding(EdgeInsets(top: 0, leading: insets.leading, bottom: insets.bottom, trailing: insets.trailing))
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 // Sidebar rows use the body text style (stacked texts get its leading).
                 .transformEnvironment(\.font) { font in if style.isSidebar, font == nil { font = .body } }
+                // Sidebar rows dim in inactive windows (measured: secondary label color).
+                .transformEnvironment(\.foregroundStyle) { foreground in
+                    if style.isSidebar, !appearsActive, foreground == nil { foreground = AnyShapeStyle(HierarchicalShapeStyle.secondary) }
+                }
         }
-        .background(style.hasBackground && contentBackground != .hidden ? Color.controlBackground : Color.clear)
+        .background(background)
+        .environment(\.sidebarSearchField, nil)
+        .environment(\._onSidebarMaterial, background == .classicSidebar)
+        .transformPreference(ToolbarItemsKey.self) { items in
+            guard let search else { return }
+            var marker = ToolbarEntry(id: "search.hosted", placement: .automatic, content: AnyView(EmptyView()), environment: EnvironmentValues(), button: nil)
+            marker.hostedSearch = ObjectIdentifier(search.token)
+            items.append(marker)
+        }
         .overlay {
             if style == .bordered { Rectangle().strokeBorder(Color.listBorder, lineWidth: 1) }
         }
@@ -534,16 +657,36 @@ public struct List<SelectionValue: Hashable, Content: View>: View {
 /// Rows of a list (top-level rows get row chrome; sections apply their own).
 struct _ListRows<Content: View>: View {
     let content: Content
+    /// A leading row supplied by the list itself (the hosted sidebar search field).
+    var accessory: AnyView?
     var body: Never { primitiveBody(Self.self) }
 
     static func _makeView(view: _GraphValue<Self>, inputs: _ViewInputs) -> _ViewOutputs {
         var listInputs = inputs.listInputs
+        let accessory = AnyView?._makeViewList(view: view.project(inputs) { $0.accessory }, inputs: listInputs).list
+        let accessoryRole = Attribute(inputs.subgraph, value: ListElementRole.accessory)
         listInputs.flattensSections = true
-        let list = Content._makeViewList(view: view.project(inputs) { $0.content }, inputs: listInputs).list
-        let rows = list.listRows(in: inputs.subgraph, environment: inputs.environment)
+        listInputs.outlineLevel = 0
+        let rows = Content._makeViewList(view: view.project(inputs) { $0.content }, inputs: listInputs).list
+        let list = ViewList(nodes: [
+            .nested(.index(0), accessory.mapElements(in: inputs.subgraph) { element in
+                var copy = element
+                copy.traits[ListElementRoleKey.self] = accessoryRole
+                return copy
+            }),
+            .nested(.index(1), rows),
+        ])
+        // Any disclosure row turns the list into an outline: every row leaves room for the
+        // disclosure column.
+        let hasOutline = Attribute<Bool>(inputs.subgraph, isEqual: { $0 == $1 }) {
+            var flat: [(ViewListID, ViewListElement)] = []
+            list.flatten(into: &flat)
+            return flat.contains { $0.1.traits[OutlineDisclosureTraitKey.self] != nil }
+        }
+        let chromed = list.listRows(in: inputs.subgraph, environment: inputs.environment, hasOutline: hasOutline)
         // Lists are lazy: only rows near the visible area are built.
         let leading = HorizontalAlignment.leading
-        return inputs.makeLazyStack(axis: .vertical, crossGuide: (leading.key, leading.id), spacing: 0, list: rows, eagerLayout: inputs.constant(_VStackLayout(alignment: .leading, spacing: 0)))
+        return inputs.makeLazyStack(axis: .vertical, crossGuide: (leading.key, leading.id), spacing: 0, list: chromed, eagerLayout: inputs.constant(_VStackLayout(alignment: .leading, spacing: 0)))
     }
 }
 
@@ -1710,7 +1853,7 @@ struct _ViewThatFitsLayout: Layout, Equatable {
 
 extension View {
     public func searchable(text: Binding<String>, placement: SearchFieldPlacement = .automatic, prompt: Text? = nil) -> some View {
-        _Searchable(content: self, text: text, isPresented: nil, prompt: prompt?.plainString ?? "Search")
+        _Searchable(content: self, text: text, isPresented: nil, prompt: prompt?.plainString ?? "Search", placement: placement)
     }
 
     @_disfavoredOverload public func searchable<S: StringProtocol>(text: Binding<String>, placement: SearchFieldPlacement = .automatic, prompt: S) -> some View {
@@ -1723,7 +1866,7 @@ extension View {
 
     /// `isPresented` follows (and drives) whether the search field is active.
     public func searchable(text: Binding<String>, isPresented: Binding<Bool>, placement: SearchFieldPlacement = .automatic, prompt: Text? = nil) -> some View {
-        _Searchable(content: self, text: text, isPresented: isPresented, prompt: prompt?.plainString ?? "Search")
+        _Searchable(content: self, text: text, isPresented: isPresented, prompt: prompt?.plainString ?? "Search", placement: placement)
     }
 
     @_disfavoredOverload public func searchable<S: StringProtocol>(text: Binding<String>, isPresented: Binding<Bool>, placement: SearchFieldPlacement = .automatic, prompt: S) -> some View {
@@ -1732,10 +1875,16 @@ extension View {
 
 }
 
-public struct SearchFieldPlacement: Sendable {
-    public static let automatic = SearchFieldPlacement()
-    public static let toolbar = SearchFieldPlacement()
-    public static let sidebar = SearchFieldPlacement()
+public struct SearchFieldPlacement: Hashable, Sendable {
+    enum Kind: Hashable, Sendable { case automatic, toolbar, toolbarPrincipal, sidebar, navigationBarDrawer }
+    let kind: Kind
+    public static let automatic = SearchFieldPlacement(kind: .automatic)
+    public static let toolbar = SearchFieldPlacement(kind: .toolbar)
+    public static let toolbarPrincipal = SearchFieldPlacement(kind: .toolbarPrincipal)
+    public static let sidebar = SearchFieldPlacement(kind: .sidebar)
+    public static let navigationBarDrawer = SearchFieldPlacement(kind: .navigationBarDrawer)
+    public enum NavigationBarDrawerDisplayMode: Sendable { case automatic, always }
+    public static func navigationBarDrawer(displayMode: NavigationBarDrawerDisplayMode) -> SearchFieldPlacement { .navigationBarDrawer }
 }
 
 @MainActor

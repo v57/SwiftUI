@@ -160,8 +160,15 @@ public struct Color: Hashable, Sendable, CustomStringConvertible {
     /// Split view sidebar column (the window background on macOS 26+).
     static let sidebarBackground = dynamic(rgb(0, 0, 0, 0), rgb(1, 1, 1, 0))
     static let listSelection = dynamic(rgb(0, 0, 0, 0.1), rgb(1, 1, 1, 0.12))
-    static let listBorder = dynamic(rgb(0, 0, 0, 0.15), rgb(1, 1, 1, 0.3))
+    static let listBorder = dynamic(rgb(0, 0, 0, 0.25), rgb(1, 1, 1, 0.3))
+    /// The hairline under a list's pinned leading section header.
+    static let pinnedHeaderLine = dynamic(rgb(0, 0, 0, 0.2), rgb(1, 1, 1, 0.2))
+    /// A sidebar-style list outside a split view (classic design, inactive window).
+    static let classicSidebar = dynamic(rgb(0.941, 0.941, 0.941), rgb(0.176, 0.176, 0.176))
     static let searchFieldFill = dynamic(rgb(0, 0, 0, 0.06), rgb(1, 1, 1, 0.1))
+    /// Classic search field over the sidebar material / its border elsewhere.
+    static let sidebarSearchFill = dynamic(rgb(0, 0, 0, 0.1), rgb(1, 1, 1, 0.1))
+    static let searchFieldBorder = dynamic(rgb(0, 0, 0, 0.18), rgb(1, 1, 1, 0.2))
     static let splitDivider = dynamic(rgb(0, 0, 0, 0.12), rgb(0, 0, 0, 1))
     static let segmentedTrack = dynamic(rgb(0, 0, 0, 0.06), rgb(1, 1, 1, 0.065))
     static let segmentedSelection = dynamic(rgb(1, 1, 1), rgb(1, 1, 1, 0.33))

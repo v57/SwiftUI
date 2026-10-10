@@ -106,7 +106,13 @@ final class WindowToolbarController: NSObject, NSToolbarDelegate {
 
         var newEntries: [NSToolbarItem.Identifier: ToolbarEntry] = [:]
         var ids: [NSToolbarItem.Identifier] = []
-        let items = toolbar.items
+        // Like SwiftUI, a window shows one search field (the first).
+        var seenSearch = false
+        let items = toolbar.items.filter { entry in
+            guard entry.search != nil else { return true }
+            defer { seenSearch = true }
+            return !seenSearch
+        }
         func add(_ entry: ToolbarEntry) {
             let id = NSToolbarItem.Identifier("SwiftUI2.item.\(entry.id)")
             newEntries[id] = entry

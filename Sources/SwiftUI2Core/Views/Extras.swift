@@ -223,19 +223,18 @@ public struct OutlineGroup<Data: RandomAccessCollection, ID: Hashable, Leaf: Vie
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(data) { element in
-                if let nested = element[keyPath: children] {
-                    DisclosureGroup {
-                        OutlineGroup(nested, children: children, content: content)
-                    } label: {
-                        content(element)
-                    }
-                } else {
+        // In a List each element is a row (nested elements are disclosure groups).
+        _OutlineRowsOrStack(content: ForEach(data) { element in
+            if let nested = element[keyPath: children] {
+                DisclosureGroup {
+                    OutlineGroup(nested, children: children, content: content)
+                } label: {
                     content(element)
                 }
+            } else {
+                content(element)
             }
-        }
+        })
     }
 }
 

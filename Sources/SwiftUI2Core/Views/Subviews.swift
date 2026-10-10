@@ -222,7 +222,7 @@ func makeSections(_ list: ViewList) -> SectionCollection {
             sectionID = id
         case .footer:
             footer.append(subview)
-        case .row:
+        case .row, .accessory:
             if !footer.isEmpty { finish() }
             content.append(subview)
         }

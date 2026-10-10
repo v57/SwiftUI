@@ -41,6 +41,17 @@ public struct ToolbarEntry {
     public let button: ToolbarButton?
     /// Item of a split view's sidebar column.
     public var isSidebarItem = false
+    /// The window's search field (`searchable`); `content` renders it.
+    public var search: ToolbarSearchField?
+    /// Marks a sidebar-placed search field as hosted by a list (never reaches the window).
+    var hostedSearch: ObjectIdentifier?
+}
+
+/// A `searchable` field shown in the window toolbar.
+public struct ToolbarSearchField {
+    public var prompt: String
+    /// The current text (so the toolbar refreshes when it changes).
+    public var text: String
 }
 
 extension ToolbarEntry: Equatable {
@@ -50,6 +61,8 @@ extension ToolbarEntry: Equatable {
             && lhs.button?.title == rhs.button?.title && lhs.button?.systemImage == rhs.button?.systemImage
             && lhs.button?.isEnabled == rhs.button?.isEnabled && lhs.button?.help == rhs.button?.help
             && (lhs.button == nil) == (rhs.button == nil)
+            && lhs.search?.text == rhs.search?.text && lhs.search?.prompt == rhs.search?.prompt
+            && lhs.hostedSearch == rhs.hostedSearch
     }
 }
 

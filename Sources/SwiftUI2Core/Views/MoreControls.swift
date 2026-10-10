@@ -90,7 +90,8 @@ struct ControlSizeKey: EnvironmentKey { static let defaultValue = ControlSize.re
 struct LabelsHiddenKey: EnvironmentKey { static let defaultValue = false }
 struct TextFieldStyleKey: EnvironmentKey { static let defaultValue = TextFieldStyleKind.automatic }
 struct FocusRequestKey: EnvironmentKey { static let defaultValue: FocusRequest? = nil }
-struct SubmitActionKey: EnvironmentKey { static let defaultValue: (@MainActor () -> Void)? = nil }
+struct SubmitActionKey: EnvironmentKey { static let defaultValue: (@MainActor (SubmitTriggers) -> Void)? = nil }
+struct SubmitTriggerKey: EnvironmentKey { static let defaultValue = SubmitTriggers.text }
 struct OpenURLKey: EnvironmentKey { static let defaultValue = OpenURLAction { _ in } }
 struct DismissKey: EnvironmentKey { static let defaultValue = DismissAction {} }
 struct IsPresentedKey: EnvironmentKey { static let defaultValue = false }
@@ -122,9 +123,15 @@ extension EnvironmentValues {
         get { self[FocusRequestKey.self] }
         set { self[FocusRequestKey.self] = newValue }
     }
-    var submitAction: (@MainActor () -> Void)? {
+    /// `onSubmit` actions; each runs for the triggers it was registered with.
+    var submitAction: (@MainActor (SubmitTriggers) -> Void)? {
         get { self[SubmitActionKey.self] }
         set { self[SubmitActionKey.self] = newValue }
+    }
+    /// What submitting a text field inside this environment counts as (search fields: `.search`).
+    var submitTrigger: SubmitTriggers {
+        get { self[SubmitTriggerKey.self] }
+        set { self[SubmitTriggerKey.self] = newValue }
     }
     public var openURL: OpenURLAction {
         get { self[OpenURLKey.self] }
@@ -176,7 +183,10 @@ extension View {
     public func onSubmit(of triggers: SubmitTriggers = .text, _ action: @escaping @MainActor () -> Void) -> some View {
         transformEnvironment(\.submitAction) { existing in
             let previous = existing
-            existing = { previous?(); action() }
+            existing = { trigger in
+                previous?(trigger)
+                if triggers.contains(trigger) { action() }
+            }
         }
     }
 
@@ -1108,9 +1118,91 @@ public struct DisclosureGroup<Label: View, Content: View>: View {
     private var isExpanded: Binding<Bool> { isExpandedBinding ?? $localExpanded }
 
     public var body: some View {
+        _DisclosureGroupRows(label: label, content: content, isExpanded: isExpanded)
+    }
+}
+
+/// Outline row traits: the row's depth and, for a disclosure group's label, its expansion.
+enum OutlineLevelTraitKey: _ViewTraitKey {
+    static var defaultValue: Int? { nil }
+}
+
+enum OutlineDisclosureTraitKey: _ViewTraitKey {
+    static var defaultValue: Binding<Bool>? { nil }
+}
+
+/// A disclosure group: styled (chevron button and indented content) outside lists; inside a
+/// List's rows it contributes its label as an outline row followed, while expanded, by its
+/// content's rows one level deeper (like SwiftUI's NSOutlineView-backed lists).
+struct _DisclosureGroupRows<Label: View, Content: View>: View {
+    let label: Label
+    let content: Content
+    let isExpanded: Binding<Bool>
+
+    var body: Never { primitiveBody(Self.self) }
+
+    var styled: _StyledDisclosureGroup<Label, Content> { _StyledDisclosureGroup(label: label, content: content, isExpanded: isExpanded) }
+
+    static func _makeView(view: _GraphValue<Self>, inputs: _ViewInputs) -> _ViewOutputs {
+        _StyledDisclosureGroup<Label, Content>._makeView(view: view.project(inputs) { $0.styled }, inputs: inputs)
+    }
+
+    static func _makeViewList(view: _GraphValue<Self>, inputs: _ViewListInputs) -> _ViewListOutputs {
+        guard let level = inputs.outlineLevel else { return .unary(view: view, inputs: inputs) }
+        var traits = ViewTraits()
+        traits[OutlineLevelTraitKey.self] = Attribute<Int?>(inputs.subgraph, value: level)
+        traits[OutlineDisclosureTraitKey.self] = Attribute<Binding<Bool>?>(inputs.subgraph, isEqual: { $0?.location === $1?.location }) {
+            view.attribute.value.isExpanded
+        }
+        let labelElement = ViewListElement(traits: traits) { placement in
+            Label._makeView(view: view.project(inputs) { $0.label }, inputs: inputs.instantiate(placement))
+        }
+        let expanded = Attribute<Bool>(inputs.subgraph, isEqual: { $0 == $1 }) { view.attribute.value.isExpanded.wrappedValue }
+        var childInputs = inputs
+        childInputs.outlineLevel = level + 1
+        let children = makeKeyedList(inputs: childInputs, key: expanded, component: { _ in .branch(0) }) { isExpanded, inputs in
+            guard isExpanded else { return ViewList(nodes: []) }
+            let rows = Content._makeViewList(view: view.project(inputs) { $0.content }, inputs: inputs).list
+            // Plain child rows sit one level deeper (nested groups already set their own level).
+            let depth = Attribute<Int?>(inputs.subgraph, value: level + 1)
+            return rows.mapElements(in: inputs.subgraph) { element in
+                guard element.traits[OutlineLevelTraitKey.self] == nil else { return element }
+                var copy = element
+                copy.traits[OutlineLevelTraitKey.self] = depth
+                return copy
+            }
+        }
+        return _ViewListOutputs(list: ViewList(nodes: [.nested(.index(0), ViewList(element: labelElement)), .nested(.index(1), children)]))
+    }
+}
+
+struct _StyledDisclosureGroup<Label: View, Content: View>: View {
+    let label: Label
+    let content: Content
+    let isExpanded: Binding<Bool>
+
+    var body: some View {
         _StyledView(configuration: DisclosureGroupStyleConfiguration(label: _StyleContent(label), content: _StyleContent(content), isExpanded: isExpanded)) {
             AnyView(AutomaticDisclosureGroupStyle().makeBody(configuration: $0))
         }
+    }
+}
+
+/// Views that are transparent inside a List's rows (their children become rows) and a leading
+/// stack elsewhere (OutlineGroup).
+struct _OutlineRowsOrStack<Content: View>: View {
+    let content: Content
+    var body: Never { primitiveBody(Self.self) }
+
+    var stack: VStack<Content> { VStack(alignment: .leading, spacing: 4) { content } }
+
+    static func _makeView(view: _GraphValue<Self>, inputs: _ViewInputs) -> _ViewOutputs {
+        VStack<Content>._makeView(view: view.project(inputs) { $0.stack }, inputs: inputs)
+    }
+
+    static func _makeViewList(view: _GraphValue<Self>, inputs: _ViewListInputs) -> _ViewListOutputs {
+        guard inputs.outlineLevel != nil else { return .unary(view: view, inputs: inputs) }
+        return Content._makeViewList(view: view.project(inputs) { $0.content }, inputs: inputs)
     }
 }
 
@@ -1142,5 +1234,6 @@ struct _SearchFieldInput: View {
     var body: some View {
         TextField(prompt, text: text).textFieldStyle(.plain)
             .environment(\.focusRequest, focus)
+            .environment(\.submitTrigger, .search)
     }
 }

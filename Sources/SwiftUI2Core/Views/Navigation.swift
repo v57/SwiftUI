@@ -337,6 +337,7 @@ public struct NavigationSplitView<Sidebar: View, Content: View, Detail: View>: V
     }
 
     private var visibility: Binding<NavigationSplitViewVisibility> { columnVisibility ?? $internalVisibility }
+    @Environment(\._controlDesign) private var design
 
     public var body: some View {
         let visibility = self.visibility
@@ -347,7 +348,7 @@ public struct NavigationSplitView<Sidebar: View, Content: View, Detail: View>: V
                     .environment(\.isSidebarColumn, true)
                     .frame(width: sidebarWidth)
                     .frame(maxHeight: .infinity)
-                    .background(Color.sidebarBackground)
+                    .background(design == .classic ? Color.classicSidebar : Color.sidebarBackground)
                     .onPreferenceChange(ColumnWidthKey.self) { if let width = $0 { sidebarWidth = width } }
                     // The sidebar's title is not the window's; its toolbar items sit over the sidebar.
                     .transformPreference(NavigationTitleKey.self) { $0 = nil }

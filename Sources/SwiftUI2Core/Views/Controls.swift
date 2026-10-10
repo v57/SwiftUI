@@ -703,7 +703,10 @@ struct _TextInput: View {
             AnyAttribute.withoutDependencies { viewAttribute.value.text.wrappedValue = value }
         }
         actions.submit = {
-            AnyAttribute.withoutDependencies { environment.value.submitAction?() }
+            AnyAttribute.withoutDependencies {
+                let env = environment.value
+                env.submitAction?(env.submitTrigger)
+            }
         }
         actions.focusChanged = { focused in
             AnyAttribute.withoutDependencies { environment.value.focusRequest?.setFocused(focused) }

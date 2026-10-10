@@ -128,43 +128,58 @@ extension View {
 
 // MARK: - Searchable container
 
-/// The search field above the content, with scopes and a suggestions dropdown.
+/// Identifies one `searchable` so the list hosting its sidebar field can report that back.
+@MainActor
+final class SearchHostToken {}
+
+/// A sidebar-placed search field waiting for a sidebar list to host it as its first row.
+struct SidebarSearchField {
+    let token: SearchHostToken
+    let field: AnyView
+}
+
+struct SidebarSearchFieldKey: EnvironmentKey { static let defaultValue: SidebarSearchField? = nil }
+
+extension EnvironmentValues {
+    var sidebarSearchField: SidebarSearchField? {
+        get { self[SidebarSearchFieldKey.self] }
+        set { self[SidebarSearchFieldKey.self] = newValue }
+    }
+}
+
+/// Where SwiftUI puts a `searchable` field on macOS (measured): `.sidebar` fields become the first
+/// row of a sidebar-style list in the content; inside a split view's sidebar column the field
+/// sits above the column's content; everywhere else it is the window toolbar's search field.
 struct _Searchable<Content: View>: View {
     let content: Content
     let text: Binding<String>
     let isPresented: Binding<Bool>?
     let prompt: String
+    var placement: SearchFieldPlacement = .automatic
     @FocusState private var isFieldFocused: Bool
+    @State private var token = SearchHostToken()
     @Environment(\.searchSuggestions) private var suggestions
     @Environment(\.searchScopes) private var scopes
     @Environment(\.searchFocusRequest) private var externalFocus
+    @Environment(\.isSidebarColumn) private var isSidebarColumn
+    @Environment(\.self) private var environment
 
     var body: some View {
         let text = self.text
         let isActive = isFieldFocused || !text.wrappedValue.isEmpty || (isPresented?.wrappedValue ?? false)
         let focus = $isFieldFocused
         let isPresented = self.isPresented
-        VStack(spacing: 0) {
-            // macOS 26 search field: a 28pt capsule above the content (measured in a sidebar).
-            HStack(spacing: 5) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                _SearchFieldInput(prompt: prompt, text: text)
-                    .modifier(_OptionalFocus(binding: externalFocus == nil ? focus : nil))
-                if !text.wrappedValue.isEmpty {
-                    Button { text.wrappedValue = "" } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Clear")
-                }
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 28)
-            .background(Capsule().fill(Color.searchFieldFill))
-            .padding(.horizontal, 10)
-            .padding(.top, 9)
-            .padding(.bottom, 12)
+        let field = _SearchField(prompt: prompt, text: text)
+            .modifier(_OptionalFocus(binding: externalFocus == nil ? focus : nil))
             .modifier(_SuggestionsPopover(suggestions: suggestions, isEditing: isFieldFocused || !text.wrappedValue.isEmpty, text: text) { focus.wrappedValue = false })
+        VStack(spacing: 0) {
+            if isSidebarColumn {
+                // Measured (macOS 26, split view sidebar): 9pt above, 12pt below, 10pt sides.
+                field
+                    .padding(.horizontal, 10)
+                    .padding(.top, 9)
+                    .padding(.bottom, 12)
+            }
             if let scopes, isActive {
                 scopes.padding(.horizontal, 10).padding(.bottom, 8)
             }
@@ -175,6 +190,23 @@ struct _Searchable<Content: View>: View {
                     focus.wrappedValue = false
                     isPresented?.wrappedValue = false
                 })
+                .transformEnvironment(\.sidebarSearchField) { hosted in
+                    if !isSidebarColumn, placement == .sidebar { hosted = SidebarSearchField(token: token, field: AnyView(field)) }
+                }
+        }
+        .transformPreference(ToolbarItemsKey.self) { [token, environment] items in
+            guard !isSidebarColumn else { return }
+            if let index = items.firstIndex(where: { $0.hostedSearch == ObjectIdentifier(token) }) {
+                // A sidebar list shows the field.
+                items.remove(at: index)
+            } else {
+                var entry = ToolbarEntry(
+                    id: "search.\(ObjectIdentifier(token).hashValue)", placement: .primaryAction,
+                    content: AnyView(field.environment(\._searchFieldInToolbar, true).frame(width: 324)), environment: environment, button: nil
+                )
+                entry.search = ToolbarSearchField(prompt: prompt, text: text.wrappedValue)
+                items.append(entry)
+            }
         }
         .onChange(of: isFieldFocused) { _, focused in
             if focused { isPresented?.wrappedValue = true }
@@ -182,6 +214,67 @@ struct _Searchable<Content: View>: View {
         .onChange(of: isPresented?.wrappedValue ?? false) { _, presented in
             if presented != isFieldFocused { isFieldFocused = presented }
         }
+    }
+}
+
+/// The search field: magnifying glass, text, clear button. Classic design (macOS 15 and
+/// earlier): a 28pt rounded bezel, white or (on sidebar material) translucent; modern design:
+/// a filled capsule.
+struct _SearchField: View {
+    let prompt: String
+    let text: Binding<String>
+    @Environment(\._controlDesign) private var design
+    @Environment(\._onSidebarMaterial) private var onSidebarMaterial
+    @Environment(\._searchFieldInToolbar) private var inToolbar
+
+    var body: some View {
+        let text = self.text
+        let modern = design == .modern
+        // Classic fields draw their icons in the label color (measured), modern ones secondary.
+        let iconStyle = modern ? HierarchicalShapeStyle.secondary : .primary
+        HStack(spacing: modern ? 5 : 4) {
+            Image(systemName: "magnifyingglass").foregroundStyle(iconStyle)
+            _SearchFieldInput(prompt: prompt, text: text)
+            if !text.wrappedValue.isEmpty {
+                Button { text.wrappedValue = "" } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(iconStyle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear")
+            }
+        }
+        .padding(.leading, modern ? 10 : 7)
+        .padding(.trailing, modern ? 10 : 7.5)
+        .frame(height: 28)
+        .background {
+            if modern {
+                Capsule().fill(Color.searchFieldFill)
+            } else if inToolbar {
+                // Measured (classic, inactive window): a bezel over the toolbar background.
+                RoundedRectangle(cornerRadius: 6).strokeBorder(Color.searchFieldBorder, lineWidth: 1).padding(0.5)
+            } else if onSidebarMaterial {
+                RoundedRectangle(cornerRadius: 6).fill(Color.sidebarSearchFill).padding(0.5)
+            } else {
+                RoundedRectangle(cornerRadius: 6).fill(Color.controlBackground)
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.searchFieldBorder, lineWidth: 0.5))
+                    .padding(0.5)
+            }
+        }
+    }
+}
+
+struct OnSidebarMaterialKey: EnvironmentKey { static let defaultValue = false }
+struct SearchFieldInToolbarKey: EnvironmentKey { static let defaultValue = false }
+
+extension EnvironmentValues {
+    /// Content drawn over the sidebar material (classic sidebar lists).
+    var _onSidebarMaterial: Bool {
+        get { self[OnSidebarMaterialKey.self] }
+        set { self[OnSidebarMaterialKey.self] = newValue }
+    }
+    var _searchFieldInToolbar: Bool {
+        get { self[SearchFieldInToolbarKey.self] }
+        set { self[SearchFieldInToolbarKey.self] = newValue }
     }
 }
 
