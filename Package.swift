@@ -122,4 +122,7 @@ if !crossCompiling {
     // `main` (from `@main`) registers the app's scenes. Same sources as the macOS Demo.
     package.targets += [.target(name: "DemoAndroid", dependencies: ["SwiftUI2"])]
     package.products += [.library(name: "DemoAndroid", type: .dynamic, targets: ["DemoAndroid"])]
+    // Android smoke-test app (animations, gestures, presentations, timers, text input).
+    package.targets += [.target(name: "GalleryAndroid", dependencies: ["SwiftUI2"])]
+    package.products += [.library(name: "GalleryAndroid", type: .dynamic, targets: ["GalleryAndroid"])]
 }

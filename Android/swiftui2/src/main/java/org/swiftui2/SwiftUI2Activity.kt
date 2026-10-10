@@ -82,6 +82,23 @@ open class SwiftUI2Activity : Activity() {
         hostView.configurationChanged(newConfig)
     }
 
+    /** Debugging: `am broadcast -a org.swiftui2.DUMP -p <package>` logs the view tree. */
+    private val dumpReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: android.content.Intent) = hostView.dump()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val filter = android.content.IntentFilter("org.swiftui2.DUMP")
+        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(dumpReceiver, filter, RECEIVER_EXPORTED)
+        else registerReceiver(dumpReceiver, filter)
+    }
+
+    override fun onPause() {
+        unregisterReceiver(dumpReceiver)
+        super.onPause()
+    }
+
     override fun onDestroy() {
         if (android.os.Build.VERSION.SDK_INT >= 33) onBackInvokedDispatcher.unregisterOnBackInvokedCallback(backCallback)
         hostView.destroy()
