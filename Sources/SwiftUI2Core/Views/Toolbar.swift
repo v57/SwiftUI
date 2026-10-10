@@ -71,12 +71,15 @@ public struct NavigationChrome: Equatable {
     public var toggleSidebar: (@MainActor () -> Void)?
     /// Navigation containers use the unified window toolbar even without items.
     public var wantsToolbar = false
+    /// `toolbar(removing: .sidebarToggle)`.
+    public var removesSidebarToggle = false
 
     public init() {}
 
     public static func == (lhs: NavigationChrome, rhs: NavigationChrome) -> Bool {
         lhs.hasSidebar == rhs.hasSidebar && lhs.sidebarWidth == rhs.sidebarWidth && lhs.isSidebarVisible == rhs.isSidebarVisible
             && lhs.wantsToolbar == rhs.wantsToolbar && (lhs.toggleSidebar == nil) == (rhs.toggleSidebar == nil)
+            && lhs.removesSidebarToggle == rhs.removesSidebarToggle
     }
 }
 
@@ -91,6 +94,7 @@ public struct NavigationChromeKey: PreferenceKey {
             value.toggleSidebar = next.toggleSidebar
         }
         value.wantsToolbar = value.wantsToolbar || next.wantsToolbar
+        value.removesSidebarToggle = value.removesSidebarToggle || next.removesSidebarToggle
     }
 }
 

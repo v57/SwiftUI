@@ -114,6 +114,8 @@ public struct _ViewInputs {
     var stackAxis: Axis?
     var modifierContent: ModifierContentEntry?
     var animationScope: AnimationScope?
+    /// The scope outside `animation(_:body:)`, restored for its placeholder content.
+    var savedAnimationScope: _SavedAnimationScope?
     /// Preference keys some ancestor wants (only these are produced/combined).
     var preferenceKeys: [any AnyPreferenceKeyBox] = []
     var coordinateSpaces: CoordinateSpaces?

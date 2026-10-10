@@ -170,4 +170,24 @@ struct OverloadBatchTests {
         let text: ResolvedText? = host.allViews.lazy.compactMap { if case .text(let t) = $0.content { return t } else { return nil } }.first
         #expect(text?.contentTransition == .numericText(countsDown: true))
     }
+
+    @Test func scopedAnimationAnimatesOnlyTheBody() {
+        let model = SlideModel()
+        struct Screen: View {
+            let model: SlideModel
+            var body: some View {
+                Color.red
+                    .frame(width: 10 + model.amount, height: 10)
+                    .animation(.linear(duration: 1)) { $0.opacity(model.amount > 0 ? 0 : 1) }
+            }
+        }
+        let host = TestHost(Screen(model: model))
+        model.amount = 90
+        host.flush()
+        host.advance(by: 0.5)
+        let opacity: Double? = host.allViews.lazy.compactMap { if case .effect(.opacity(let o)) = $0.content { return o } else { return nil } }.first
+        #expect(opacity.map { $0 > 0.3 && $0 < 0.7 } == true)
+        let color = host.allViews.first { if case .color = $0.content { true } else { false } }
+        #expect(color?.frame.width == 100) // the content's frame change is not animated
+    }
 }

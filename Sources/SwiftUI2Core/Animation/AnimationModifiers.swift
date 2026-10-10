@@ -250,3 +250,46 @@ extension View {
 public struct BlurReplaceTransition: Sendable {
     public enum Configuration: Sendable { case downUp, upUp }
 }
+
+// MARK: - animation(_:body:)
+
+@MainActor
+final class _SavedAnimationScope {
+    let scope: AnimationScope?
+    init(_ scope: AnimationScope?) { self.scope = scope }
+}
+
+/// Animates changes of the modifiers in its body with `animation` (whatever the transaction).
+public struct _ScopedAnimationModifier: ViewModifier {
+    let animation: Animation?
+    public typealias Body = Never
+
+    public static func _makeView(modifier: _GraphValue<Self>, inputs: _ViewInputs, body: @escaping @MainActor (_ViewInputs) -> _ViewOutputs) -> _ViewOutputs {
+        let source = modifier.attribute
+        var childInputs = inputs
+        childInputs.savedAnimationScope = _SavedAnimationScope(inputs.animationScope)
+        childInputs.animationScope = AnimationScope(parent: inputs.animationScope, kind: .always { source.value.animation })
+        return body(childInputs)
+    }
+}
+
+/// The content of `animation(_:body:)`: not animated by the body's animation.
+struct _RestoreAnimationScope: ViewModifier {
+    typealias Body = Never
+
+    static func _makeView(modifier: _GraphValue<Self>, inputs: _ViewInputs, body: @escaping @MainActor (_ViewInputs) -> _ViewOutputs) -> _ViewOutputs {
+        var childInputs = inputs
+        if let saved = inputs.savedAnimationScope {
+            childInputs.animationScope = saved.scope
+            childInputs.savedAnimationScope = nil
+        }
+        return body(childInputs)
+    }
+}
+
+extension View {
+    /// Animates the modifiers applied in `body` with `animation`; the content itself is not.
+    public func animation<V: View>(_ animation: Animation?, @ViewBuilder body: (PlaceholderContentView<Self>) -> V) -> some View {
+        body(PlaceholderContentView(content: modifier(_RestoreAnimationScope()))).modifier(_ScopedAnimationModifier(animation: animation))
+    }
+}

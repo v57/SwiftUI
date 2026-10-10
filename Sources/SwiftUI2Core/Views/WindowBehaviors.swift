@@ -106,6 +106,13 @@ extension View {
 
     // Toolbars
 
+    /// Removes a toolbar item the system adds by default.
+    public func toolbar(removing defaultItemKind: ToolbarDefaultItemKind?) -> some View {
+        transformPreference(NavigationChromeKey.self) { chrome in
+            if defaultItemKind == .sidebarToggle { chrome.removesSidebarToggle = true }
+        }
+    }
+
     public func toolbar(_ visibility: Visibility, for bars: ToolbarPlacement...) -> some View {
         _windowConfiguration { if visibility != .automatic { $0.isToolbarHidden = visibility == .hidden } }
     }
@@ -203,4 +210,12 @@ extension View {
     /// The platform's default spacing around a scene's content (20pt on macOS).
     public func scenePadding(_ edges: Edge.Set = .all) -> some View { padding(edges, 20) }
     public func scenePadding(_ padding: ScenePadding, edges: Edge.Set = .all) -> some View { self.padding(edges, 20) }
+}
+
+/// Toolbar items the system provides (`toolbar(removing:)`).
+public struct ToolbarDefaultItemKind: Hashable, Sendable {
+    let value: Int
+    public static let sidebarToggle = ToolbarDefaultItemKind(value: 0)
+    public static let title = ToolbarDefaultItemKind(value: 1)
+    public static let search = ToolbarDefaultItemKind(value: 2)
 }

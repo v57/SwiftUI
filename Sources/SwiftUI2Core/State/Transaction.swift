@@ -55,7 +55,7 @@ public struct Animation: Hashable, Sendable, CustomStringConvertible {
     public static func smooth(duration: Double = 0.5, extraBounce: Double = 0) -> Animation { spring(duration: duration, bounce: extraBounce) }
     public static func snappy(duration: Double = 0.5, extraBounce: Double = 0) -> Animation { spring(duration: duration, bounce: 0.15 + extraBounce) }
 
-    public static func interpolatingSpring(stiffness: Double, damping: Double, mass: Double = 1, initialVelocity: Double = 0) -> Animation {
+    static func _interpolatingSpring(stiffness: Double, damping: Double, mass: Double = 1) -> Animation {
         let omega = (stiffness / mass).squareRoot()
         let response = 2 * .pi / max(omega, 0.001)
         let zeta = damping / (2 * (stiffness * mass).squareRoot())
@@ -63,8 +63,14 @@ public struct Animation: Hashable, Sendable, CustomStringConvertible {
     }
 
     public static func interpolatingSpring(mass: Double = 1, stiffness: Double, damping: Double, initialVelocity: Double = 0) -> Animation {
-        interpolatingSpring(stiffness: stiffness, damping: damping, mass: mass, initialVelocity: initialVelocity)
+        _interpolatingSpring(stiffness: stiffness, damping: damping, mass: mass)
     }
+
+    public static func interpolatingSpring(duration: Double = 0.5, bounce: Double = 0, initialVelocity: Double = 0) -> Animation {
+        spring(duration: duration, bounce: bounce)
+    }
+
+    public static var interpolatingSpring: Animation { interpolatingSpring() }
 
     public static func interactiveSpring(response: Double = 0.15, dampingFraction: Double = 0.86, blendDuration: Double = 0.25) -> Animation {
         spring(response: response, dampingFraction: dampingFraction)

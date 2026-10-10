@@ -113,7 +113,7 @@ final class WindowToolbarController: NSObject, NSToolbarDelegate {
             ids.append(id)
         }
         if toolbar.chrome.hasSidebar {
-            ids.append(Self.toggleSidebar)
+            if !toolbar.chrome.removesSidebarToggle { ids.append(Self.toggleSidebar) }
             items.filter(\.isSidebarItem).forEach(add)
             ids.append(Self.sidebarSpacer)
         }
