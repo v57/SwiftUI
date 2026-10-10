@@ -10,6 +10,7 @@ public struct Animation: Hashable, Sendable, CustomStringConvertible {
         case linear
         case bezier(Double, Double, Double, Double)
         case spring(response: Double, dampingFraction: Double)
+        case custom(_AnyCustomAnimation)
     }
 
     let curve: Curve
@@ -113,10 +114,19 @@ public struct Animation: Hashable, Sendable, CustomStringConvertible {
         return min(max(-log(0.001) / (zeta * omega), response), 10)
     }
 
+    /// An animation driven by a `CustomAnimation` (sampled as progress of a unit value).
+    public init<A: CustomAnimation>(_ base: A) {
+        self.init(curve: .custom(_AnyCustomAnimation(base)), duration: _AnyCustomAnimation(base).estimatedDuration)
+    }
+
     /// Progress (0…1, may overshoot for springs) at `elapsed` seconds after start.
     func sample(at elapsed: Double) -> (progress: Double, finished: Bool) {
         let time = (elapsed - delay) * speed
         if time <= 0 { return (0, false) }
+        if case .custom(let custom) = curve {
+            guard let progress = custom.progress(at: time) else { return (1, true) }
+            return (progress, false)
+        }
         guard duration > 0 else { return (1, true) }
         var iteration = (time / duration).rounded(.down)
         var local = time - iteration * duration
@@ -141,6 +151,8 @@ public struct Animation: Hashable, Sendable, CustomStringConvertible {
             return t
         case let .bezier(x1, y1, x2, y2):
             return Animation.cubicBezier(t, x1, y1, x2, y2)
+        case .custom(let custom):
+            return custom.progress(at: t * duration) ?? 1
         case let .spring(response, damping):
             let elapsed = t * duration
             let omega = 2 * .pi / response

@@ -51,6 +51,11 @@ extension Transition {
 extension ModifiedContent: _TransitionEffectSource {
     func _accumulate(into effect: inout AnyTransition.Effect) {
         (content as? _TransitionEffectSource)?._accumulate(into: &effect)
+        // Custom view modifiers contribute the effects in their bodies.
+        if let viewModifier = modifier as? any ViewModifier, let body = _modifierBody(viewModifier) as? _TransitionEffectSource {
+            body._accumulate(into: &effect)
+            return
+        }
         switch modifier {
         case let opacity as _OpacityEffect:
             effect.opacity *= opacity.opacity
@@ -93,5 +98,26 @@ extension AnyTransition {
 extension View {
     public func transition<T: Transition>(_ transition: T) -> some View {
         self.transition(AnyTransition(transition))
+    }
+}
+
+/// A custom modifier's body applied to placeholder content (nil for primitive modifiers).
+@MainActor
+func _modifierBody<M: ViewModifier>(_ modifier: M) -> Any? {
+    guard M.Body.self != Never.self else { return nil }
+    return modifier.body(content: _ViewModifier_Content<M>())
+}
+
+extension _ViewModifier_Content: _TransitionEffectSource {
+    func _accumulate(into effect: inout AnyTransition.Effect) {}
+}
+
+extension AnyTransition {
+    /// A transition from `active` (inserted/removed) to `identity` (presented); the modifiers'
+    /// opacity, scale, rotation and offset effects animate.
+    @MainActor public static func modifier<E: ViewModifier>(active: E, identity: E) -> AnyTransition {
+        var effect = Effect.identity
+        (EmptyView().modifier(active) as? _TransitionEffectSource)?._accumulate(into: &effect)
+        return AnyTransition(insertion: effect, removal: effect)
     }
 }

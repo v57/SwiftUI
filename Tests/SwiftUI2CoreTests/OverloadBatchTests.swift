@@ -213,4 +213,54 @@ struct OverloadBatchTests {
         let unavailable = TestHost(ContentUnavailableView.search(text: "kiwi"))
         #expect(unavailable.texts.contains("No Results"))
     }
+
+    struct HalfLinear: CustomAnimation {
+        func animate<V: VectorArithmetic>(value: V, time: TimeInterval, context: inout AnimationContext<V>) -> V? {
+            time >= 2 ? nil : value.scaled(by: time / 2)
+        }
+    }
+
+    struct Fade: ViewModifier {
+        let amount: Double
+        func body(content: Content) -> some View { content.opacity(amount).scaleEffect(amount) }
+    }
+
+    struct Order: LayoutValueKey { static let defaultValue = 0 }
+
+    struct OrderedRow: Layout {
+        func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize { CGSize(width: 100, height: 20) }
+        func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+            var x = bounds.minX
+            for subview in subviews.sorted(by: { $0[Order.self] < $1[Order.self] }) {
+                subview.place(at: CGPoint(x: x, y: bounds.minY), proposal: .unspecified)
+                x += 30
+            }
+        }
+    }
+
+    @Test func customAnimationsModifierTransitionsAndLayoutValues() {
+        let model = SlideModel()
+        struct Screen: View {
+            let model: SlideModel
+            var body: some View { Color.red.frame(width: 10 + model.amount, height: 10) }
+        }
+        let host = TestHost(Screen(model: model))
+        withAnimation(Animation(HalfLinear())) { model.amount = 100 }
+        host.flush()
+        host.advance(by: 1)
+        let width = host.allViews.first { if case .color = $0.content { true } else { false } }?.frame.width ?? 0
+        #expect(width > 50 && width < 70)
+        host.finishAnimations()
+
+        let transition = AnyTransition.modifier(active: Fade(amount: 0.5), identity: Fade(amount: 1))
+        #expect(transition.insertion.opacity == 0.5 && transition.insertion.scale == CGSize(width: 0.5, height: 0.5))
+
+        let layoutHost = TestHost(OrderedRow {
+            Text("B").layoutValue(key: Order.self, value: 2)
+            Text("A").layoutValue(key: Order.self, value: 1)
+        })
+        let a = layoutHost.view(withText: "A")!.absoluteFrame.minX
+        let b = layoutHost.view(withText: "B")!.absoluteFrame.minX
+        #expect(a < b)
+    }
 }

@@ -218,7 +218,7 @@ enum BottomAlignment: AlignmentID { static func defaultValue(in d: ViewDimension
 enum FirstTextBaselineAlignment: AlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d.height } }
 enum LastTextBaselineAlignment: AlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d.height } }
 
-public struct ViewDimensions: Equatable {
+public struct ViewDimensions: Equatable, @unchecked Sendable {
     public let width: CGFloat
     public let height: CGFloat
     let explicit: @MainActor (AlignmentKey) -> CGFloat?
@@ -230,20 +230,17 @@ public struct ViewDimensions: Equatable {
         self.explicit = explicit
     }
 
-    @MainActor
-    public subscript(guide: HorizontalAlignment) -> CGFloat {
-        explicit(guide.key) ?? guide.id.defaultValue(in: self)
+    // Nonisolated like SwiftUI's (alignment defaults are computed during layout, on the main thread).
+    public nonisolated subscript(guide: HorizontalAlignment) -> CGFloat {
+        _onMainActor { explicit(guide.key) ?? guide.id.defaultValue(in: self) }
     }
 
-    @MainActor
-    public subscript(guide: VerticalAlignment) -> CGFloat {
-        explicit(guide.key) ?? guide.id.defaultValue(in: self)
+    public nonisolated subscript(guide: VerticalAlignment) -> CGFloat {
+        _onMainActor { explicit(guide.key) ?? guide.id.defaultValue(in: self) }
     }
 
-    @MainActor
-    public subscript(explicit guide: HorizontalAlignment) -> CGFloat? { explicit(guide.key) }
-    @MainActor
-    public subscript(explicit guide: VerticalAlignment) -> CGFloat? { explicit(guide.key) }
+    public nonisolated subscript(explicit guide: HorizontalAlignment) -> CGFloat? { _onMainActor { explicit(guide.key) } }
+    public nonisolated subscript(explicit guide: VerticalAlignment) -> CGFloat? { _onMainActor { explicit(guide.key) } }
 
     @MainActor
     subscript(key: AlignmentKey, id: any AlignmentID.Type) -> CGFloat {

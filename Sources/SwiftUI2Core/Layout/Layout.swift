@@ -59,6 +59,13 @@ public protocol LayoutValueKey {
     static var defaultValue: Value { get }
 }
 
+/// Runs main-actor code from a nonisolated context known to be on the main thread (layout).
+nonisolated func _onMainActor<T>(_ body: @MainActor () -> T) -> T {
+    nonisolated(unsafe) var result: T?
+    MainActor.assumeIsolated { result = body() }
+    return result!
+}
+
 /// Records child placements while `placeSubviews` runs.
 @MainActor
 final class PlacementRecorder {
@@ -97,20 +104,27 @@ public struct LayoutSubview: Equatable {
         recorder.geometries[index] = ViewGeometry(origin: .zero, size: .zero, proposal: .zero)
     }
 
-    public func sizeThatFits(_ proposal: ProposedViewSize) -> CGSize { computer.sizeThatFits(proposal) }
-    public func dimensions(in proposal: ProposedViewSize) -> ViewDimensions { computer.dimensions(in: proposal) }
-    public var priority: Double { computer.layoutPriority }
-    public var spacing: ViewSpacing { computer.spacing }
+    // Like SwiftUI's, usable from nonisolated `Layout` methods (layout always runs on the main thread).
+    public nonisolated func sizeThatFits(_ proposal: ProposedViewSize) -> CGSize {
+        MainActor.assumeIsolated { computer.sizeThatFits(proposal) }
+    }
+    public nonisolated func dimensions(in proposal: ProposedViewSize) -> ViewDimensions {
+        _onMainActor { computer.dimensions(in: proposal) }
+    }
+    public nonisolated var priority: Double { MainActor.assumeIsolated { computer.layoutPriority } }
+    public nonisolated var spacing: ViewSpacing { MainActor.assumeIsolated { computer.spacing } }
 
-    public subscript<K: LayoutValueKey>(key: K.Type) -> K.Value {
-        (computer.layoutValue(ObjectIdentifier(key)) as? K.Value) ?? K.defaultValue
+    public nonisolated subscript<K: LayoutValueKey>(key: K.Type) -> K.Value {
+        _onMainActor { (computer.layoutValue(ObjectIdentifier(key)) as? K.Value) ?? K.defaultValue }
     }
 
-    public func place(at position: CGPoint, anchor: UnitPoint = .topLeading, proposal: ProposedViewSize) {
-        guard let recorder else { return }
-        let size = computer.sizeThatFits(proposal)
-        let origin = CGPoint(x: position.x - anchor.x * size.width, y: position.y - anchor.y * size.height)
-        recorder.geometries[index] = ViewGeometry(origin: origin, size: size, proposal: proposal)
+    public nonisolated func place(at position: CGPoint, anchor: UnitPoint = .topLeading, proposal: ProposedViewSize) {
+        MainActor.assumeIsolated {
+            guard let recorder else { return }
+            let size = computer.sizeThatFits(proposal)
+            let origin = CGPoint(x: position.x - anchor.x * size.width, y: position.y - anchor.y * size.height)
+            recorder.geometries[index] = ViewGeometry(origin: origin, size: size, proposal: proposal)
+        }
     }
 
     var isSpacer: Bool { computer.spacing.isSpacer }

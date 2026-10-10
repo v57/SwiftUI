@@ -193,10 +193,10 @@ public struct _PreferenceSecondaryModifier<Key: PreferenceKey, Secondary: View>:
 
 // MARK: - Anchors
 
-public struct Anchor<Value> {
+public struct Anchor<Value>: @unchecked Sendable {
     let value: Value
 
-    public struct Source {
+    public struct Source: @unchecked Sendable {
         let resolve: @MainActor (ViewGeometry) -> Value
     }
 }
