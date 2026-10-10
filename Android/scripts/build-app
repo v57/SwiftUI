@@ -1,0 +1,57 @@
+#!/bin/bash
+# Builds a SwiftUI2 app for Android and installs it on the connected device.
+# Usage: Android/scripts/build-app [-c release] [--module demo] [--product DemoAndroid] [--no-install]
+# 1. cross-compiles the Swift app library (lib<Product>.so),
+# 2. stages it with the Swift runtime it needs into <module>/src/main/jniLibs/arm64-v8a,
+# 3. builds the APK with Gradle and installs/launches it (adb, physical device only).
+set -e
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/Android/scripts/env.sh"
+CONFIG=debug; MODULE=demo; PRODUCT=DemoAndroid; INSTALL=1
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -c) CONFIG="$2"; shift ;;
+    --module) MODULE="$2"; shift ;;
+    --product) PRODUCT="$2"; shift ;;
+    --no-install) INSTALL=0 ;;
+  esac
+  shift
+done
+"$ROOT/Android/scripts/fetch-assets" >/dev/null
+"$ROOT/Android/scripts/swift-android" build --product "$PRODUCT" -c "$CONFIG" 2>&1 | grep -E "error|warning: unre|Compiling|Build" | grep -v "^\[" || true
+LIB="$ROOT/.build-android/$CONFIG/lib$PRODUCT.so"
+[ -f "$LIB" ] || { echo "Build failed: $LIB missing" >&2; exit 1; }
+
+JNI="$ROOT/Android/$MODULE/src/main/jniLibs/arm64-v8a"
+rm -rf "$JNI"; mkdir -p "$JNI"
+READELF="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-readelf"
+STRIP="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-strip"
+CXX_SHARED="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"
+# The app library and its non-system dependencies, transitively.
+queue=("$LIB"); seen=" "
+while [ ${#queue[@]} -gt 0 ]; do
+  lib="${queue[0]}"; queue=("${queue[@]:1}")
+  name="$(basename "$lib")"
+  case "$seen" in *" $name "*) continue ;; esac
+  seen="$seen$name "
+  if [ "$CONFIG" = release ]; then "$STRIP" --strip-unneeded -o "$JNI/$name" "$lib"; else cp "$lib" "$JNI/$name"; fi
+  for dep in $("$READELF" -d "$lib" | sed -n 's/.*Shared library: \[\(.*\)\]/\1/p'); do
+    if [ -f "$SWIFT_ANDROID_RUNTIME_LIBS/$dep" ]; then queue+=("$SWIFT_ANDROID_RUNTIME_LIBS/$dep")
+    elif [ "$dep" = libc++_shared.so ]; then queue+=("$CXX_SHARED")
+    fi
+  done
+done
+echo "Staged: $(ls "$JNI" | tr '\n' ' ')"
+
+cd "$ROOT/Android"
+TASK=assembleDebug; [ "$CONFIG" = release ] && TASK=assembleDebug
+gradle -q ":$MODULE:$TASK"
+APK="$ROOT/Android/$MODULE/build/outputs/apk/debug/$MODULE-debug.apk"
+ls -la "$APK"
+[ "$INSTALL" = 1 ] || exit 0
+SERIAL="${ANDROID_SERIAL:-$($ADB devices | awk 'NR>1 && $2=="device" && $1 !~ /^emulator-/ {print $1; exit}')}"
+[ -n "$SERIAL" ] || { echo "No physical Android device connected (adb devices)." >&2; exit 1; }
+$ADB -s "$SERIAL" install -r "$APK"
+PACKAGE="$("$ANDROID_HOME/build-tools/37.0.0/aapt2" dump packagename "$APK" 2>/dev/null || echo org.swiftui2.demo)"
+$ADB -s "$SERIAL" shell input keyevent KEYCODE_WAKEUP
+$ADB -s "$SERIAL" shell am start -S -n "$PACKAGE/org.swiftui2.SwiftUI2Activity"

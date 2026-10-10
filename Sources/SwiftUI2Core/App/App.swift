@@ -312,15 +312,26 @@ public enum AppRuntime {
     }
 
     public static func run<A: App>(_ type: A.Type) -> Never {
-        let app = A()
-        var windows: [WindowDescription] = []
-        app.body._collectWindows(into: &windows)
-        var collected: [any Commands] = []
-        app.body._collectCommands(into: &collected)
-        commands = collected
+        let windows = prepare(type)
         guard let runner else {
             fatalError("No SwiftUI2 backend registered for this platform")
         }
         runner(windows)
     }
+
+    /// Creates the app and collects its scenes and commands, for platforms whose main loop is
+    /// owned by the system (Android: `App.main()` returns and the activity creates windows).
+    public static func prepare<A: App>(_ type: A.Type) -> [WindowDescription] {
+        let app = A()
+        self.app = app
+        var windows: [WindowDescription] = []
+        app.body._collectWindows(into: &windows)
+        var collected: [any Commands] = []
+        app.body._collectCommands(into: &collected)
+        commands = collected
+        return windows
+    }
+
+    /// The running app (kept alive for platforms where `main` returns).
+    public private(set) static var app: (any App)?
 }

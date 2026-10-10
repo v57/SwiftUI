@@ -177,8 +177,13 @@ public struct Font: Hashable, Sendable {
         return copy
     }
 
-    /// macOS text style metrics (point size, default weight).
+    /// Text style metrics of the platform, set by backends whose platform's type scale differs
+    /// from macOS (Android's Material sizes). Set once at startup, before any view is built.
+    nonisolated(unsafe) public static var platformStyleMetrics: ((TextStyle) -> (size: CGFloat, weight: Weight))?
+
+    /// Text style metrics (point size, default weight): the platform's, else macOS's.
     static func metrics(_ style: TextStyle) -> (CGFloat, Weight) {
+        if let platform = platformStyleMetrics { return platform(style) }
         switch style {
         case .largeTitle: return (26, .regular)
         case .title: return (22, .regular)

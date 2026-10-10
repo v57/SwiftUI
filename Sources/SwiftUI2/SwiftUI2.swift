@@ -15,6 +15,9 @@
 @_exported import AppKit
 @_exported import SwiftUI2AppKit
 #endif
+#if os(Android)
+@_exported import SwiftUI2Android
+#endif
 #if canImport(SwiftData)
 @_exported import SwiftUI2SwiftData
 #endif
@@ -22,9 +25,14 @@
 extension App {
     @MainActor
     public static func main() {
+        #if os(Android)
+        // The activity owns the main loop: register the scenes and return to the host.
+        AndroidAppRunner.register(AppRuntime.prepare(Self.self))
+        #else
         #if canImport(AppKit)
         AppKitAppRunner.install()
         #endif
         AppRuntime.run(Self.self)
+        #endif
     }
 }

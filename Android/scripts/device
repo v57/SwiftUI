@@ -1,0 +1,8 @@
+#!/bin/bash
+# adb against the connected physical device (never an emulator): Android/scripts/device shell ...
+# Extra: `device shot <file.png>` saves a screenshot.
+. "$(dirname "$0")/env.sh"
+SERIAL="${ANDROID_SERIAL:-$($ADB devices | awk 'NR>1 && $2=="device" && $1 !~ /^emulator-/ {print $1; exit}')}"
+[ -n "$SERIAL" ] || { echo "No physical Android device connected." >&2; exit 1; }
+if [ "$1" = shot ]; then exec "$ADB" -s "$SERIAL" exec-out screencap -p > "$2"; fi
+exec "$ADB" -s "$SERIAL" "$@"

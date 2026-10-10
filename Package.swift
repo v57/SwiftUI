@@ -59,6 +59,12 @@ let package = Package(
         ),
         .target(name: "SwiftUI2Headless", dependencies: ["SwiftUI2Core"]),
         .target(name: "SwiftUI2AppKit", dependencies: ["SwiftUI2Core"]),
+        // Android backend: Swift renderer + JNI glue; the Kotlin host lives in Android/.
+        .target(
+            name: "CSwiftUI2Android",
+            linkerSettings: [.linkedLibrary("android", .when(platforms: [.android])), .linkedLibrary("log", .when(platforms: [.android]))]
+        ),
+        .target(name: "SwiftUI2Android", dependencies: ["SwiftUI2Core", "CSwiftUI2Android"]),
         // A Swift Charts subset (import SwiftUI2Charts instead of Charts).
         .target(name: "SwiftUI2Charts", dependencies: ["SwiftUI2Core"]),
         // SwiftData's SwiftUI integration (@Query, .modelContainer) on Apple platforms.
@@ -68,6 +74,7 @@ let package = Package(
             dependencies: [
                 "SwiftUI2Core",
                 .target(name: "SwiftUI2AppKit", condition: .when(platforms: [.macOS])),
+                .target(name: "SwiftUI2Android", condition: .when(platforms: [.android])),
                 .target(name: "SwiftUI2SwiftData", condition: .when(platforms: [.macOS, .iOS])),
             ]
         ),
@@ -108,4 +115,8 @@ if !crossCompiling {
     let appleOnly: Set<String> = ["ReferenceApp", "parity-recorder", "ParityScenariosSwiftUI"]
     package.targets.removeAll { appleOnly.contains($0.name) }
     package.products.removeAll { appleOnly.contains($0.name) }
+    // Android apps are shared libraries the Kotlin host loads (`lib<Name>.so`); the library's
+    // `main` (from `@main`) registers the app's scenes. Same sources as the macOS Demo.
+    package.targets += [.target(name: "DemoAndroid", dependencies: ["SwiftUI2"])]
+    package.products += [.library(name: "DemoAndroid", type: .dynamic, targets: ["DemoAndroid"])]
 }

@@ -1,0 +1,7 @@
+build/
+.gradle/
+local.properties
+*/build/
+demo/src/main/jniLibs/
+.kotlin/
+swiftui2/src/main/assets/MaterialSymbolsOutlined.ttf
