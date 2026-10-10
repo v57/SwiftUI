@@ -23,8 +23,18 @@ final class ScrollTargets {
 
     func register(_ id: AnyHashable, frame: @escaping () -> CGRect?) { frames[id] = frame }
     func unregister(_ id: AnyHashable) { frames[id] = nil }
-    func addResolver(_ owner: AnyObject, _ resolve: @escaping (AnyHashable) -> CGRect?) { resolvers[ObjectIdentifier(owner)] = resolve }
-    func removeResolver(_ owner: AnyObject) { resolvers[ObjectIdentifier(owner)] = nil }
+    private var enumerators: [ObjectIdentifier: () -> [AnyHashable]] = [:]
+    func addResolver(_ owner: AnyObject, enumerate: @escaping () -> [AnyHashable] = { [] }, _ resolve: @escaping (AnyHashable) -> CGRect?) {
+        resolvers[ObjectIdentifier(owner)] = resolve
+        enumerators[ObjectIdentifier(owner)] = enumerate
+    }
+    func removeResolver(_ owner: AnyObject) {
+        resolvers[ObjectIdentifier(owner)] = nil
+        enumerators[ObjectIdentifier(owner)] = nil
+    }
+
+    /// Identifiers of all registered targets (explicit ids of scroll content, including lazy rows).
+    var allIDs: [AnyHashable] { Array(frames.keys) + enumerators.values.flatMap { $0() } }
 
     func frame(for id: AnyHashable) -> CGRect? {
         if let frame = frames[id]?() { return frame }
@@ -84,7 +94,6 @@ public enum ScrollIndicatorVisibility: Sendable { case automatic, visible, hidde
 
 extension View {
     public func scrollDisabled(_ disabled: Bool) -> some View { environment(\.scrollDisabled, disabled) }
-    public func scrollIndicators(_ visibility: ScrollIndicatorVisibility, axes: Axis.Set = [.vertical, .horizontal]) -> some View { self }
     public func scrollDismissesKeyboard(_ mode: ScrollDismissesKeyboardMode) -> some View { self }
 }
 
@@ -291,7 +300,7 @@ extension _ViewInputs {
             return index < all.count ? all[index] : .zero
         }
         if let targets = scrollTargets {
-            targets.addResolver(state) { id in
+            targets.addResolver(state, enumerate: { state.ids.compactMap(\.lastExplicit) }) { id in
                 guard let index = state.ids.firstIndex(where: { $0.lastExplicit == id }) else { return nil }
                 let origin = geometry.peekValue?.origin ?? .zero
                 var frame = CGRect(origin: origin, size: geometry.peekValue?.size ?? .zero)
@@ -418,7 +427,6 @@ extension View {
         modifier(_ScrollGeometryChangeModifier(transform: transform, action: action))
     }
 
-    public func onScrollPhaseChange(_ action: @escaping @MainActor (ScrollPhase, ScrollPhase) -> Void) -> some View { self }
 }
 
 public enum ScrollPhase: Sendable { case idle, tracking, interacting, decelerating, animating }

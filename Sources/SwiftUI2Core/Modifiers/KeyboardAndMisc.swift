@@ -306,10 +306,6 @@ extension View {
     }
 
     public func scrollTargetLayout(isEnabled: Bool = true) -> some View { self }
-    public func scrollTargetBehavior<B: ScrollTargetBehavior>(_ behavior: B) -> some View { self }
-    public func scrollBounceBehavior(_ behavior: ScrollBounceBehavior, axes: Axis.Set = [.vertical]) -> some View { self }
-    public func defaultScrollAnchor(_ anchor: UnitPoint?) -> some View { self }
-    public func defaultScrollAnchor(_ anchor: UnitPoint?, for role: Int) -> some View { self }
 
     public func focusEffectDisabled(_ disabled: Bool = true) -> some View { self }
     public func defaultFocus<V: Hashable>(_ binding: FocusState<V>.Binding, _ value: V, priority: Int = 0) -> some View { self }

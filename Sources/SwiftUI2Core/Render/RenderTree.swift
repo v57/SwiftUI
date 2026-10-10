@@ -89,6 +89,15 @@ public struct ResolvedScrollView: Equatable, Sendable {
     public var requestedOffset: CGPoint? = nil
     public var scrollRequestID: Int = 0
     public var isScrollEnabled = true
+    public var verticalIndicator = ScrollIndicatorVisibility.automatic
+    public var horizontalIndicator = ScrollIndicatorVisibility.automatic
+    public var verticalBounce = ScrollBounceBehavior.automatic
+    public var horizontalBounce = ScrollBounceBehavior.automatic
+    public var clipsContent = true
+    /// Where the content starts (`defaultScrollAnchor`), applied once the content has a size.
+    public var initialAnchor: UnitPoint?
+    /// Incremented to flash the scroll indicators.
+    public var flashCount = 0
 }
 
 public enum DisplayEffect: Equatable, Sendable {
@@ -135,6 +144,11 @@ public struct RenderActions {
     public var secondaryClick: (@MainActor () -> Void)?
     /// Scroll views report their content offset.
     public var scrolled: (@MainActor (CGPoint) -> Void)?
+    /// Scroll views: the user's scroll phase changed (backends report tracking/interacting/idle).
+    public var scrollPhase: (@MainActor (ScrollPhase) -> Void)?
+    /// Scroll views: where a user scroll that ended at the given offset should settle (paging,
+    /// view-aligned targets); nil keeps the offset.
+    public var scrollSnapTarget: (@MainActor (CGPoint) -> CGPoint?)?
     /// Drop destination: accepted type identifiers (UTType identifiers on Apple platforms).
     public var dropTypes: [String] = []
     /// Drag enters (`true`) / leaves (`false`) the node.

@@ -32,18 +32,66 @@ public struct ScrollView<Content: View>: View {
         let content = Attribute<RenderContent>(inputs.subgraph, isEqual: { $0 == $1 }) {
             let placed = contentGeometry.value
             let currentRequest = request.value
+            let env = environment.value
+            let configuration = env.scrollConfiguration
+            let margins = configuration.contentMargins
             return .scrollView(ResolvedScrollView(
                 axes: axes.value,
-                contentSize: placed.size,
+                contentSize: CGSize(width: placed.size.width + margins.trailing, height: placed.size.height + margins.bottom),
                 contentOrigin: placed.origin,
                 showsIndicators: view.attribute.value.showsIndicators,
                 requestedOffset: currentRequest.offset,
                 scrollRequestID: currentRequest.id,
-                isScrollEnabled: !environment.value.scrollDisabled
+                isScrollEnabled: !env.scrollDisabled,
+                verticalIndicator: configuration.verticalIndicator,
+                horizontalIndicator: configuration.horizontalIndicator,
+                verticalBounce: configuration.verticalBounce,
+                horizontalBounce: configuration.horizontalBounce,
+                clipsContent: !configuration.clipDisabled,
+                initialAnchor: configuration.defaultAnchor,
+                flashCount: configuration.flashCount
             ))
         }
         var actions = RenderActions()
         actions.scrolled = { point in offset.setValue(point) }
+        actions.scrollPhase = { phase in
+            let (observers, scrollGeometry) = AnyAttribute.withoutDependencies {
+                (environment.value.scrollPhaseObservers,
+                 ScrollGeometry(contentOffset: offset.value, contentSize: contentGeometry.value.size, contentInsets: environment.value.scrollConfiguration.contentMargins, containerSize: geometry.value.size))
+            }
+            for observer in observers where observer.phase != phase {
+                let old = observer.phase
+                observer.phase = phase
+                observer.action?(old, phase, ScrollPhaseChangeContext(geometry: scrollGeometry))
+            }
+        }
+        let targetsRef = _ScrollTargetsRef()
+        actions.scrollSnapTarget = { point in
+            AnyAttribute.withoutDependencies {
+                let viewport = geometry.value.size
+                let contentSize = contentGeometry.value.size
+                let scrollAxes = axes.value
+                let maxOffset = CGPoint(x: max(0, contentSize.width - viewport.width), y: max(0, contentSize.height - viewport.height))
+                switch environment.value.scrollConfiguration.targetBehavior {
+                case .none:
+                    return nil
+                case .paging:
+                    func page(_ value: CGFloat, _ length: CGFloat, _ limit: CGFloat) -> CGFloat {
+                        length > 0 ? min(limit, (value / length).rounded() * length) : value
+                    }
+                    return CGPoint(x: scrollAxes.contains(.horizontal) ? page(point.x, viewport.width, maxOffset.x) : point.x,
+                                   y: scrollAxes.contains(.vertical) ? page(point.y, viewport.height, maxOffset.y) : point.y)
+                case .viewAligned:
+                    // The target whose leading edge is nearest to the resting offset.
+                    guard let targets = targetsRef.targets else { return nil }
+                    let vertical = scrollAxes.contains(.vertical)
+                    let edges = targets.allIDs.compactMap { targets.frame(for: $0) }.map { vertical ? $0.minY : $0.minX }
+                    let current = vertical ? point.y : point.x
+                    guard let nearest = edges.min(by: { abs($0 - current) < abs($1 - current) }) else { return nil }
+                    return vertical ? CGPoint(x: point.x, y: min(max(0, nearest), maxOffset.y)) : CGPoint(x: min(max(0, nearest), maxOffset.x), y: point.y)
+                }
+            }
+        }
         let render = inputs.makePlatformNode(content: content, actions: actions, childOrigin: zero)
         var contentInputs = inputs.child(geometry: contentGeometry, render: render)
         contentInputs.stackAxis = nil
@@ -74,6 +122,7 @@ public struct ScrollView<Content: View>: View {
                 offset.setValue(point)
             }
         }
+        targetsRef.targets = targets
         if let box = AnyAttribute.withoutDependencies({ environment.value.scrollProxyBox }) {
             box.targets = targets
         }
@@ -88,61 +137,84 @@ public struct ScrollView<Content: View>: View {
         contentGeometry.setRule {
             let viewport = geometry.value.size
             let scrollAxes = axes.value
+            let margins = environment.value.scrollConfiguration.contentMargins
             let proposal = ProposedViewSize(
-                width: scrollAxes.contains(.horizontal) ? nil : viewport.width,
-                height: scrollAxes.contains(.vertical) ? nil : viewport.height
+                width: scrollAxes.contains(.horizontal) ? nil : max(0, viewport.width - margins.horizontal),
+                height: scrollAxes.contains(.vertical) ? nil : max(0, viewport.height - margins.vertical)
             )
             let size = contentLayout.value.sizeThatFits(proposal)
             tracer.record(.placement, path)
             // Content smaller than the viewport is centered along non-scrolling axes.
-            let x = scrollAxes.contains(.horizontal) ? 0 : (viewport.width - size.width) / 2
-            let y = scrollAxes.contains(.vertical) ? 0 : (viewport.height - size.height) / 2
+            let x = scrollAxes.contains(.horizontal) ? margins.leading : margins.leading + (viewport.width - margins.horizontal - size.width) / 2
+            let y = scrollAxes.contains(.vertical) ? margins.top : margins.top + (viewport.height - margins.vertical - size.height) / 2
             return ViewGeometry(origin: CGPoint(x: x, y: y), size: size, proposal: proposal)
         }
         let layout = inputs.makeLayoutAttribute {
-            ScrollViewComputer(axes: axes.value, path: path, tracer: tracer, content: contentLayout.value)
+            ScrollViewComputer(axes: axes.value, margins: environment.value.scrollConfiguration.contentMargins, path: path, tracer: tracer, content: contentLayout.value)
         }
         // onScrollGeometryChange: observers get the live geometry after each update.
         let host = inputs.host
         let geometryReporter = Attribute<ScrollGeometry>(inputs.subgraph, isEqual: { $0 == $1 }) {
             ScrollGeometry(contentOffset: offset.value, contentSize: contentGeometry.value.size, contentInsets: EdgeInsets(), containerSize: geometry.value.size)
         }
-        geometryReporter.onChange = { scrollGeometry in
-            let observers = AnyAttribute.withoutDependencies { environment.value.scrollGeometryObservers }
-            guard !observers.isEmpty else { return }
-            host.enqueueAfterUpdate { for observer in observers { observer.update(scrollGeometry) } }
+        geometryReporter.onChange = { [weak targets] scrollGeometry in
+            let (observers, visibilityObservers) = AnyAttribute.withoutDependencies {
+                (environment.value.scrollGeometryObservers, environment.value.scrollTargetVisibilityObservers)
+            }
+            if !observers.isEmpty {
+                host.enqueueAfterUpdate { for observer in observers { observer.update(scrollGeometry) } }
+            }
+            if !visibilityObservers.isEmpty, let targets {
+                host.enqueueAfterUpdate {
+                    let viewport = scrollGeometry.visibleRect
+                    let frames = targets.allIDs.compactMap { id in targets.frame(for: id).map { (id, $0) } }
+                        .sorted { ($0.1.minY, $0.1.minX) < ($1.1.minY, $1.1.minX) }
+                    for observer in visibilityObservers {
+                        let visible = frames.filter { visibleFraction(of: $0.1, in: viewport) >= observer.threshold }.map(\.0)
+                        guard visible != observer.last else { continue }
+                        observer.last = visible
+                        observer.update?(visible)
+                    }
+                }
+            }
         }
-        geometryReporter.isEager = AnyAttribute.withoutDependencies { !environment.value.scrollGeometryObservers.isEmpty }
+        geometryReporter.isEager = AnyAttribute.withoutDependencies {
+            !environment.value.scrollGeometryObservers.isEmpty || !environment.value.scrollTargetVisibilityObservers.isEmpty
+        }
         return _ViewOutputs(layout: layout, preferences: contentOutputs.preferences)
     }
 }
+
+@MainActor final class _ScrollTargetsRef { weak var targets: ScrollTargets? }
 
 /// Scroll views are flexible along their scrolling axes and take their content's size on the
 /// other axis (measured on macOS SwiftUI). Content changes affect the parent only when they change
 /// an answer the parent already got, so growth along the scrolling axis stays isolated.
 final class ScrollViewComputer: LayoutComputer {
     let axes: Axis.Set
+    let margins: EdgeInsets
     private(set) var content: LayoutComputer
 
-    init(axes: Axis.Set, path: ViewPath, tracer: UpdateTracer, content: LayoutComputer) {
+    init(axes: Axis.Set, margins: EdgeInsets = EdgeInsets(), path: ViewPath, tracer: UpdateTracer, content: LayoutComputer) {
         self.axes = axes
+        self.margins = margins
         self.content = content
         super.init(path: path, tracer: tracer)
     }
 
     override func computeSize(_ proposal: ProposedViewSize) -> CGSize {
         let fitted = content.sizeThatFits(ProposedViewSize(
-            width: axes.contains(.horizontal) ? nil : proposal.width,
-            height: axes.contains(.vertical) ? nil : proposal.height
+            width: axes.contains(.horizontal) ? nil : proposal.width.map { max(0, $0 - margins.horizontal) },
+            height: axes.contains(.vertical) ? nil : proposal.height.map { max(0, $0 - margins.vertical) }
         ))
         return CGSize(
-            width: axes.contains(.horizontal) ? proposal.width ?? fitted.width : fitted.width,
-            height: axes.contains(.vertical) ? proposal.height ?? fitted.height : fitted.height
+            width: axes.contains(.horizontal) ? proposal.width ?? fitted.width + margins.horizontal : fitted.width + margins.horizontal,
+            height: axes.contains(.vertical) ? proposal.height ?? fitted.height + margins.vertical : fitted.height + margins.vertical
         )
     }
 
     override func isEquivalent(to other: LayoutComputer) -> Bool {
-        guard let other = other as? ScrollViewComputer, other.axes == axes else { return false }
+        guard let other = other as? ScrollViewComputer, other.axes == axes, other.margins == margins else { return false }
         for (proposal, size) in other.answeredSizes where sizeThatFits(proposal) != size { return false }
         // The previous computer stays in place; let it measure the current content from now on.
         other.content = content

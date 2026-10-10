@@ -477,6 +477,8 @@ final class ScrollNodeView: FlippedView, PlatformNodeView {
     let documentContainer = FlippedView()
     private var lastRequestID = 0
     private var reportedOffset = CGPoint.zero
+    private var appliedInitialAnchor = false
+    private var lastFlashCount = 0
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -485,7 +487,10 @@ final class ScrollNodeView: FlippedView, PlatformNodeView {
         scrollView.documentView = documentContainer
         scrollView.contentView.postsBoundsChangedNotifications = true
         addSubview(scrollView)
-        NotificationCenter.default.addObserver(self, selector: #selector(boundsChanged), name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
+        let center = NotificationCenter.default
+        center.addObserver(self, selector: #selector(boundsChanged), name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
+        center.addObserver(self, selector: #selector(liveScrollStarted), name: NSScrollView.willStartLiveScrollNotification, object: scrollView)
+        center.addObserver(self, selector: #selector(liveScrollEnded), name: NSScrollView.didEndLiveScrollNotification, object: scrollView)
     }
 
     @objc private func boundsChanged() {
@@ -495,23 +500,75 @@ final class ScrollNodeView: FlippedView, PlatformNodeView {
         node?.actions.scrolled?(offset)
     }
 
+    @objc private func liveScrollStarted() {
+        node?.actions.scrollPhase?(.interacting)
+    }
+
+    @objc private func liveScrollEnded() {
+        let offset = scrollView.contentView.bounds.origin
+        guard let target = node?.actions.scrollSnapTarget?(offset), target != offset else {
+            node?.actions.scrollPhase?(.idle)
+            return
+        }
+        // Settle on the snap target (paging / view-aligned), like SwiftUI's target behaviors.
+        node?.actions.scrollPhase?(.animating)
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.25
+            context.allowsImplicitAnimation = true
+            scrollView.contentView.animator().setBoundsOrigin(target)
+        }, completionHandler: { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.scrollView.reflectScrolledClipView(self.scrollView.contentView)
+                self.node?.actions.scrollPhase?(.idle)
+            }
+        })
+    }
+
     required init?(coder: NSCoder) { fatalError() }
+
+    private static func elasticity(_ behavior: ScrollBounceBehavior, contentLength: CGFloat, viewport: CGFloat) -> NSScrollView.Elasticity {
+        switch behavior {
+        case .automatic: return .automatic
+        case .always: return .allowed
+        case .basedOnSize: return contentLength > viewport + 0.5 ? .allowed : .none
+        }
+    }
 
     func apply(_ content: RenderContent, backend: AppKitBackend) {
         guard case .scrollView(let model) = content else { return }
-        scrollView.hasVerticalScroller = model.axes.contains(.vertical) && model.showsIndicators
-        scrollView.hasHorizontalScroller = model.axes.contains(.horizontal) && model.showsIndicators
+        let hidden: Set<ScrollIndicatorVisibility> = [.hidden, .never]
+        scrollView.hasVerticalScroller = model.axes.contains(.vertical) && model.showsIndicators && !hidden.contains(model.verticalIndicator)
+        scrollView.hasHorizontalScroller = model.axes.contains(.horizontal) && model.showsIndicators && !hidden.contains(model.horizontalIndicator)
+        scrollView.autohidesScrollers = model.verticalIndicator != .visible && model.horizontalIndicator != .visible
         scrollView.frame = bounds
-        documentContainer.frame = CGRect(
-            origin: .zero,
-            size: CGSize(width: max(model.contentSize.width + model.contentOrigin.x, model.axes.contains(.horizontal) ? 0 : bounds.width),
-                         height: max(model.contentSize.height + model.contentOrigin.y, model.axes.contains(.vertical) ? 0 : bounds.height))
-        )
+        let documentSize = CGSize(width: max(model.contentSize.width + model.contentOrigin.x, model.axes.contains(.horizontal) ? 0 : bounds.width),
+                                  height: max(model.contentSize.height + model.contentOrigin.y, model.axes.contains(.vertical) ? 0 : bounds.height))
+        documentContainer.frame = CGRect(origin: .zero, size: documentSize)
+        scrollView.verticalScrollElasticity = model.axes.contains(.vertical)
+            ? Self.elasticity(model.verticalBounce, contentLength: documentSize.height, viewport: bounds.height) : .none
+        scrollView.horizontalScrollElasticity = model.axes.contains(.horizontal)
+            ? Self.elasticity(model.horizontalBounce, contentLength: documentSize.width, viewport: bounds.width) : .none
+        clipsToBounds = model.clipsContent
+        scrollView.clipsToBounds = model.clipsContent
+        scrollView.contentView.clipsToBounds = model.clipsContent
         if model.scrollRequestID != lastRequestID, let target = model.requestedOffset {
             lastRequestID = model.scrollRequestID
             reportedOffset = target
             scrollView.contentView.scroll(to: target)
             scrollView.reflectScrolledClipView(scrollView.contentView)
+        } else if !appliedInitialAnchor, let anchor = model.initialAnchor, bounds.width > 0, bounds.height > 0,
+                  documentSize.width > 0, documentSize.height > 0 {
+            // defaultScrollAnchor: start at the anchor once the content has a size.
+            appliedInitialAnchor = true
+            let target = CGPoint(x: max(0, (documentSize.width - bounds.width) * anchor.x),
+                                 y: max(0, (documentSize.height - bounds.height) * anchor.y))
+            scrollView.contentView.scroll(to: target)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
+        if model.flashCount != lastFlashCount {
+            lastFlashCount = model.flashCount
+            if model.flashCount > 0 { scrollView.flashScrollers() }
         }
     }
 

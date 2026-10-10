@@ -188,6 +188,64 @@ struct AnimationTests {
         #expect(host.view(withText: "hello")?.presentation.isIdentity == true)
     }
 
+    @Test func keyframeTimelineEvaluatesTracks() {
+        struct Values { var scale = 1.0; var offset = 0.0 }
+        let timeline = KeyframeTimeline(initialValue: Values()) {
+            KeyframeTrack(\.scale) {
+                LinearKeyframe(2.0, duration: 1)
+                MoveKeyframe(5.0)
+                LinearKeyframe(1.0, duration: 1)
+            }
+            KeyframeTrack(\.offset) {
+                SpringKeyframe(10.0, duration: 0.5, spring: .smooth)
+            }
+        }
+        #expect(timeline.duration == 2)
+        #expect(timeline.value(time: 0).scale == 1)
+        #expect(timeline.value(time: 0.5).scale == 1.5)
+        #expect(timeline.value(time: 1).scale == 5)       // move jumps
+        #expect(timeline.value(time: 1.5).scale == 3)
+        #expect(timeline.value(time: 3).scale == 1)       // holds the last keyframe
+        #expect(timeline.value(time: 0.25).offset > 0 && timeline.value(time: 0.25).offset < 10)
+        #expect(timeline.value(time: 1).offset == 10)
+        #expect(timeline.value(progress: 0.25).scale == 1.5)
+    }
+
+    @Test func keyframeAnimatorRunsOnTrigger() {
+        struct Screen: View {
+            let model: AnimModel
+            var body: some View {
+                KeyframeAnimator(initialValue: 0.0, trigger: model.other) { value in
+                    Text("v \(Int(value))")
+                } keyframes: { _ in
+                    LinearKeyframe(100.0, duration: 1)
+                }
+            }
+        }
+        let model = AnimModel()
+        let host = TestHost(Screen(model: model))
+        #expect(host.texts == ["v 0"])
+        model.other = 1
+        host.flush()
+        host.advance(by: 0.5)
+        #expect(host.texts == ["v 50"])
+        host.finishAnimations()
+        #expect(host.texts == ["v 0"])  // back at rest once the keyframes finish
+        #expect(!host.graph.hasActiveAnimations)
+    }
+
+    @Test func phaseAnimatorViewCyclesPhasesOnTrigger() {
+        struct Screen: View {
+            let model: AnimModel
+            var body: some View {
+                PhaseAnimator([0, 1, 2], trigger: model.other) { phase in Text("phase \(phase)") }
+            }
+        }
+        let model = AnimModel()
+        let host = TestHost(Screen(model: model))
+        #expect(host.texts == ["phase 0"])
+    }
+
     @Test func animatableViewBodyRunsPerFrame() {
         struct Screen: View {
             let model: AnimModel

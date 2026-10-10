@@ -56,10 +56,6 @@ extension View {
     public func sensoryFeedback<T: Equatable>(_ feedback: SensoryFeedback, trigger: T) -> some View { self }
     public func listRowSpacing(_ spacing: CGFloat?) -> some View { self }
     public func listSectionSpacing(_ spacing: CGFloat) -> some View { self }
-    public func contentMargins(_ edges: Edge.Set = .all, _ length: CGFloat?, for placement: ContentMarginPlacement = .automatic) -> some View { self }
-    public func contentMargins(_ length: CGFloat, for placement: ContentMarginPlacement = .automatic) -> some View { self }
-    public func contentMargins(_ edges: Edge.Set = .all, _ insets: EdgeInsets, for placement: ContentMarginPlacement = .automatic) -> some View { self }
-    public func scrollClipDisabled(_ disabled: Bool = true) -> some View { self }
     public func typesettingLanguage(_ language: Locale.Language, isEnabled: Bool = true) -> some View { self }
     public func accessibilityValue<S: StringProtocol>(_ value: S) -> some View { self }
     public func accessibilityValue(_ value: Text) -> some View { self }
@@ -110,8 +106,6 @@ extension View {
     public func selectionDisabled(_ isDisabled: Bool = true) -> some View { self }
     public func horizontalRadioGroupLayout() -> some View { self }
     public func navigationDocument(_ url: URL) -> some View { self }
-    public func scrollIndicatorsFlash(onAppear: Bool) -> some View { self }
-    public func scrollIndicatorsFlash<V: Equatable>(trigger value: V) -> some View { self }
     public func scrollEdgeEffectStyle(_ style: ScrollEdgeEffectStyle?, for edges: Edge.Set) -> some View { self }
     public func backgroundExtensionEffect() -> some View { self }
     public func flipsForRightToLeftLayoutDirection(_ enabled: Bool) -> some View { self }
