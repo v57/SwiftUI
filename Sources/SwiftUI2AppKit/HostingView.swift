@@ -398,7 +398,8 @@ public enum AppKitAppRunner {
         toolbarControllers.append(toolbarController)
         host.graph.onToolbarChange = { [weak toolbarController] toolbar in toolbarController?.update(toolbar) }
         // Like SwiftUI: the content's minimum size bounds the window, and the default frame is
-        // `defaultSize` or the content's ideal size (at least 900x450, title bar included).
+        // `defaultSize`, else 900x450 (title bar included) grown to the minimum size; the ideal
+        // size is not used (a tall scroll view opens in a 900x450 window).
         let minimum = host.sizeThatFits(ProposedViewSize(width: 0, height: 0))
         window.contentMinSize = minimum
         if description.resizability == .contentSize {
@@ -416,8 +417,7 @@ public enum AppKitAppRunner {
             let ideal = host.sizeThatFits(.unspecified)
             frameSize = CGSize(width: ideal.width, height: ideal.height + titleBar)
         } else {
-            let ideal = host.sizeThatFits(.unspecified)
-            frameSize = CGSize(width: max(ideal.width, 900), height: max(ideal.height + titleBar, 450))
+            frameSize = CGSize(width: max(minimum.width, 900), height: max(minimum.height + titleBar, 450))
         }
         // Centered in the screen's visible frame (NSWindow.center() places windows higher);
         // further windows cascade.
