@@ -16,8 +16,24 @@ import PackageDescription
 
 let nonApple: [Platform] = [.android, .linux, .windows]
 
-/// Set by `Android/scripts/swift-android`: the AppKit tests can't be cross-compiled, so they are left out.
+/// Set when cross-compiling from macOS (`Android/scripts/swift-android` does): a manifest can't see the
+/// destination platform, and the stand-ins below must exist then. The AppKit tests are left out.
 let crossCompiling = Context.environment["SWIFTUI_CROSS_COMPILE"] != nil
+
+/// Stand-ins for Apple-only modules (UniformTypeIdentifiers, CoreTransferable, Combine), so unchanged
+/// `import Combine` / `import UniformTypeIdentifiers` code compiles on Linux, Windows and Android. They
+/// only exist when building for those platforms: built for macOS, a module named like an SDK one shadows
+/// it for every module of the build (SwiftPM searches its own modules first).
+#if os(Linux) || os(Windows)
+let standIns = true
+#else
+let standIns = crossCompiling
+#endif
+
+/// Dependencies on the stand-ins (none when they don't exist).
+func standIns(_ names: String...) -> [Target.Dependency] {
+    standIns ? names.map { .target(name: $0, condition: .when(platforms: nonApple)) } : []
+}
 
 let package = Package(
     name: "SwiftUI",
@@ -33,8 +49,6 @@ let package = Package(
     dependencies: [
         // Macros (@Entry, #Preview).
         .package(url: "https://github.com/swiftlang/swift-syntax", "600.0.0"..<"700.0.0"),
-        // Stand-ins for Apple-only modules (UniformTypeIdentifiers, ...) on other platforms.
-        .package(path: "Compat"),
     ],
     targets: [
         .target(name: "SwiftUIGraph"),
@@ -46,18 +60,13 @@ let package = Package(
             ]
         ),
         // Foundation/CoreGraphics types missing from swift-corelibs-foundation (empty on Apple).
-        .target(name: "SwiftUIPortability", dependencies: [
-            .product(name: "CoreTransferable", package: "Compat", condition: .when(platforms: nonApple)),
-            .product(name: "UniformTypeIdentifiers", package: "Compat", condition: .when(platforms: nonApple)),
-        ]),
+        .target(name: "SwiftUIPortability", dependencies: standIns("CoreTransferable", "UniformTypeIdentifiers")),
         .target(
             name: "_SwiftUICore",
             dependencies: [
                 "SwiftUIGraph", "SwiftUIMacros",
                 .target(name: "SwiftUIPortability", condition: .when(platforms: nonApple)),
-                .product(name: "UniformTypeIdentifiers", package: "Compat", condition: .when(platforms: nonApple)),
-                .product(name: "Combine", package: "Compat", condition: .when(platforms: nonApple)),
-            ]
+            ] + standIns("UniformTypeIdentifiers", "Combine")
         ),
         .target(name: "SwiftUIHeadless", dependencies: ["_SwiftUICore"]),
         // MemberImportVisibility keeps Apple's SwiftUICore extensions (which leak in through AppKit) out of
@@ -75,9 +84,8 @@ let package = Package(
         // Windows backend: Swift renderer + C exports; the C# WinUI 3 host lives in Windows/.
         .target(name: "CSwiftUIWinUI"),
         .target(name: "SwiftUIWinUI", dependencies: ["_SwiftUICore", "CSwiftUIWinUI"]),
-        // GTK 3 backend (Linux): `apt install libgtk-3-dev`.
-        .systemLibrary(name: "CGtk3", pkgConfig: "gtk+-3.0", providers: [.apt(["libgtk-3-dev"])]),
-        .target(name: "SwiftUIGtk", dependencies: ["_SwiftUICore", .target(name: "CGtk3", condition: .when(platforms: [.linux]))]),
+        // GTK 3 backend (Linux). Its sources are Linux-only; CGtk3 is added below when building on Linux.
+        .target(name: "SwiftUIGtk", dependencies: ["_SwiftUICore"]),
         // A Swift Charts subset (import SwiftUICharts instead of Charts).
         .target(name: "SwiftUICharts", dependencies: ["_SwiftUICore"]),
         // SwiftData's SwiftUI integration (@Query, .modelContainer) on Apple platforms.
@@ -117,50 +125,62 @@ let package = Package(
     ]
 )
 
+if standIns {
+    package.targets += [
+        .target(name: "UniformTypeIdentifiers"),
+        // CoreTransferable: Transferable and its representations.
+        .target(name: "CoreTransferable", dependencies: ["UniformTypeIdentifiers"]),
+        // Combine: OpenCombine 0.14.0 (MIT, Sources/Combine/LICENSE-OpenCombine.txt) vendored as
+        // one module named Combine, with its Apple spellings always on (DispatchQueue/RunLoop as
+        // schedulers, Timer.publish, NotificationCenter.publisher, URLSession publishers).
+        // No `Darwin` stand-in: a module with that name flips `canImport(Darwin)` for every
+        // package in the build (swift-crypto, NIO, ...) and breaks their platform checks.
+        .target(name: "COpenCombineHelpers"),
+        .target(name: "Combine", dependencies: ["COpenCombineHelpers"], exclude: ["LICENSE-OpenCombine.txt"],
+                swiftSettings: [.swiftLanguageMode(.v5)]),
+        .testTarget(name: "CompatTests", dependencies: ["UniformTypeIdentifiers", "Combine"]),
+    ]
+}
+
 #if os(Linux)
-let buildingOnLinux = true
+// Native Linux build (GTK backend): the other platforms' backends are left out.
+let excluded: Set<String> = ["SwiftUIAppKit", "SwiftUISwiftData", "CSwiftUIAndroid", "SwiftUIAndroid"]
+package.targets.removeAll { excluded.contains($0.name) }
+package.products.removeAll { excluded.contains($0.name) }
+for target in package.targets where target.name == "SwiftUI" {
+    target.dependencies = ["_SwiftUICore", "SwiftUIGtk"]
+}
+// GTK 3 headers and libraries (`apt install libgtk-3-dev`). Declared only here: elsewhere SwiftPM would
+// look for gtk+-3.0 with pkg-config and warn in every package that depends on SwiftUI.
+package.targets += [.systemLibrary(name: "CGtk3", pkgConfig: "gtk+-3.0", providers: [.apt(["libgtk-3-dev"])])]
+for target in package.targets where target.name == "SwiftUIGtk" {
+    target.dependencies += ["CGtk3"]
+}
+// GTK smoke-test app (the Android Gallery's sources).
+package.targets += [.executableTarget(name: "GalleryGtk", dependencies: ["SwiftUI"])]
+package.products += [.executable(name: "GalleryGtk", targets: ["GalleryGtk"])]
+#elseif os(Windows)
+// Native Windows build (WinUI backend): executables and the other platforms' backends are left out.
+let excluded: Set<String> = ["ReferenceApp2", "Demo", "SwiftUIAppKit", "SwiftUISwiftData", "CSwiftUIAndroid", "SwiftUIAndroid",
+                             "SwiftUIGtk"]
+package.targets.removeAll { excluded.contains($0.name) }
+package.products.removeAll { excluded.contains($0.name) }
+for target in package.targets where target.name == "SwiftUI" {
+    target.dependencies = ["_SwiftUICore", "SwiftUIWinUI"]
+}
+// Windows apps are DLLs the C# host loads (Windows/scripts/build-app.ps1); the DLL's `main`
+// (from `@main`) registers the app's scenes. Same sources as the Android apps.
+package.targets += [.target(name: "DemoWinUI", dependencies: ["SwiftUI"], path: "Sources/DemoAndroid")]
+package.products += [.library(name: "DemoWinUI", type: .dynamic, targets: ["DemoWinUI"])]
+package.targets += [.target(name: "GalleryWinUI", dependencies: ["SwiftUI"], path: "Sources/GalleryAndroid")]
+package.products += [.library(name: "GalleryWinUI", type: .dynamic, targets: ["GalleryWinUI"])]
+// Desktop/drawing feature tour (commands, shortcuts, file dialogs, effects) and the reference app.
+package.targets += [.target(name: "FeatureTourWinUI", dependencies: ["SwiftUI"], path: "Sources/FeatureTour")]
+package.products += [.library(name: "FeatureTourWinUI", type: .dynamic, targets: ["FeatureTourWinUI"])]
+package.targets += [.target(name: "ReferenceAppWinUI", dependencies: ["SwiftUI"], path: "Sources/ReferenceApp")]
+package.products += [.library(name: "ReferenceAppWinUI", type: .dynamic, targets: ["ReferenceAppWinUI"])]
 #else
-let buildingOnLinux = false
-#endif
-
-#if os(Windows)
-let buildingOnWindows = true
-#else
-let buildingOnWindows = false
-#endif
-
-if buildingOnLinux {
-    // Native Linux build (GTK backend): the other platforms' backends are left out.
-    let excluded: Set<String> = ["SwiftUIAppKit", "SwiftUISwiftData", "CSwiftUIAndroid", "SwiftUIAndroid"]
-    package.targets.removeAll { excluded.contains($0.name) }
-    package.products.removeAll { excluded.contains($0.name) }
-    for target in package.targets where target.name == "SwiftUI" {
-        target.dependencies = ["_SwiftUICore", "SwiftUIGtk"]
-    }
-    // GTK smoke-test app (the Android Gallery's sources).
-    package.targets += [.executableTarget(name: "GalleryGtk", dependencies: ["SwiftUI"])]
-    package.products += [.executable(name: "GalleryGtk", targets: ["GalleryGtk"])]
-} else if buildingOnWindows {
-    // Native Windows build (WinUI backend): executables and the other platforms' backends are left out.
-    let excluded: Set<String> = ["ReferenceApp2", "Demo", "SwiftUIAppKit", "SwiftUISwiftData", "CSwiftUIAndroid", "SwiftUIAndroid",
-                                 "CGtk3", "SwiftUIGtk"]
-    package.targets.removeAll { excluded.contains($0.name) }
-    package.products.removeAll { excluded.contains($0.name) }
-    for target in package.targets where target.name == "SwiftUI" {
-        target.dependencies = ["_SwiftUICore", "SwiftUIWinUI"]
-    }
-    // Windows apps are DLLs the C# host loads (Windows/scripts/build-app.ps1); the DLL's `main`
-    // (from `@main`) registers the app's scenes. Same sources as the Android apps.
-    package.targets += [.target(name: "DemoWinUI", dependencies: ["SwiftUI"], path: "Sources/DemoAndroid")]
-    package.products += [.library(name: "DemoWinUI", type: .dynamic, targets: ["DemoWinUI"])]
-    package.targets += [.target(name: "GalleryWinUI", dependencies: ["SwiftUI"], path: "Sources/GalleryAndroid")]
-    package.products += [.library(name: "GalleryWinUI", type: .dynamic, targets: ["GalleryWinUI"])]
-    // Desktop/drawing feature tour (commands, shortcuts, file dialogs, effects) and the reference app.
-    package.targets += [.target(name: "FeatureTourWinUI", dependencies: ["SwiftUI"], path: "Sources/FeatureTour")]
-    package.products += [.library(name: "FeatureTourWinUI", type: .dynamic, targets: ["FeatureTourWinUI"])]
-    package.targets += [.target(name: "ReferenceAppWinUI", dependencies: ["SwiftUI"], path: "Sources/ReferenceApp")]
-    package.products += [.library(name: "ReferenceAppWinUI", type: .dynamic, targets: ["ReferenceAppWinUI"])]
-} else if !crossCompiling {
+if !crossCompiling {
     package.targets += [
         .testTarget(name: "SwiftUIAppKitTests", dependencies: ["SwiftUI"]),
     ]
@@ -173,3 +193,4 @@ if buildingOnLinux {
     package.targets += [.target(name: "GalleryAndroid", dependencies: ["SwiftUI"])]
     package.products += [.library(name: "GalleryAndroid", type: .dynamic, targets: ["GalleryAndroid"])]
 }
+#endif
