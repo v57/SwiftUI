@@ -1,7 +1,7 @@
 // A smoke-test app for the Android backend: animations, gestures, presentations, navigation,
 // timers, async work and text input. Plain SwiftUI; built with
 // Android/scripts/build-app --product GalleryAndroid.
-import SwiftUI2
+import SwiftUI
 
 @main
 struct GalleryApp: App {

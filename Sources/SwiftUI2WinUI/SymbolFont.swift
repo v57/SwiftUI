@@ -1,1 +1,0 @@
-../SwiftUI2Android/SymbolFont.swift

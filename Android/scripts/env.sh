@@ -1,4 +1,4 @@
-# Environment for cross-compiling SwiftUI2 to Android. Source it: `. Android/scripts/env.sh`.
+# Environment for cross-compiling SwiftUI to Android. Source it: `. Android/scripts/env.sh`.
 # The Swift Android SDK is 6.3.3, so the host compiler must be the matching open-source
 # toolchain; it can't parse Xcode 27's macOS SDK (used for manifests and macros), hence the
 # Command Line Tools' 26.5 SDK.

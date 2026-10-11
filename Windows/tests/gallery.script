@@ -1,4 +1,4 @@
-# Smoke test for GalleryWinUI (SwiftUI2Host.exe --script <this file>): visits every page, saves a
+# Smoke test for GalleryWinUI (SwiftUIHost.exe --script <this file>): visits every page, saves a
 # screenshot and the node tree of each to C:\dev\shots. Taps fire the tap target's action.
 wait 2500
 screenshot C:\dev\shots\01-root.png

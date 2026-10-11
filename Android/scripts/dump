@@ -1,9 +1,9 @@
 #!/bin/bash
-# Logs the current view tree of a running SwiftUI2 app into a file (needs a debuggable or
+# Logs the current view tree of a running SwiftUI app into a file (needs a debuggable or
 # profileable build): Android/scripts/dump <package> <out.tree>
 D="$(dirname "$0")/device"
 "$D" logcat -c
-"$D" shell am broadcast -a org.swiftui2.DUMP -p "$1" >/dev/null
+"$D" shell am broadcast -a org.swiftui.DUMP -p "$1" >/dev/null
 sleep 1
-"$D" logcat -d -s SwiftUI2Dump:I | sed 's/^.*SwiftUI2Dump: //' > "$2"
+"$D" logcat -d -s SwiftUIDump:I | sed 's/^.*SwiftUIDump: //' > "$2"
 tail -1 "$2"

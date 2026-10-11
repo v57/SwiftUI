@@ -1,5 +1,5 @@
 // Records update counts of the parity scenarios on Apple's SwiftUI. The output is the golden data
-// SwiftUI2 is checked against (Tests/ParityTests).
+// SwiftUI is checked against (Tests/ParityTests).
 //
 //   swift run parity-recorder [output-path]
 //

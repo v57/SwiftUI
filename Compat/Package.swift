@@ -14,11 +14,11 @@ let nonApple: [Platform] = [.android, .linux, .windows]
 #if os(Linux) || os(Windows)
 let crossCompiling = true
 #else
-let crossCompiling = Context.environment["SWIFTUI2_CROSS_COMPILE"] != nil
+let crossCompiling = Context.environment["SWIFTUI_CROSS_COMPILE"] != nil
 #endif
 
 let package = Package(
-    name: "SwiftUI2Compat",
+    name: "SwiftUICompat",
     products: [
         .library(name: "UniformTypeIdentifiers", targets: ["UniformTypeIdentifiers"]),
         .library(name: "CoreTransferable", targets: [crossCompiling ? "CoreTransferable" : "CombineUnavailableOnApplePlatforms"]),

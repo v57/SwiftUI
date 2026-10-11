@@ -4,7 +4,7 @@
 #   vm ip                      the VM's address (WINDOWS_VM_HOST[:WINDOWS_VM_PORT], else 127.0.0.1:2222 when
 #                              ~/Downloads/VMs/Windows-qemu.sh runs it, else the UTM shared-network lease)
 #   vm ssh <powershell…>       runs a command in the VM
-#   vm sync                    copies this package's sources to C:\dev\SwiftUI2 (no .build/.git)
+#   vm sync                    copies this package's sources to C:\dev\SwiftUI (no .build/.git)
 #   vm build [args…]           sync + Windows/scripts/build-app.ps1 [args…]
 #   vm run <exe> [args…]       runs a program on the VM's desktop (interactive session) and waits
 #   vm screenshot <local.png>  captures the VM's desktop
@@ -16,7 +16,7 @@ set -e
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 MAC="${WINDOWS_VM_MAC:-02:57:57:0a:11:01}"
 USER_NAME="${WINDOWS_VM_USER:-v57}"
-REMOTE='C:\dev\SwiftUI2'
+REMOTE='C:\dev\SwiftUI'
 
 if [ -z "$WINDOWS_VM_HOST" ] && pgrep -f "qemu-system-aarch64 -name Windows" >/dev/null; then
   WINDOWS_VM_HOST=127.0.0.1; WINDOWS_VM_PORT="${WINDOWS_VM_PORT:-2222}"
@@ -30,7 +30,7 @@ vm_ip() {
   awk -v mac="1,$short" '/ip_address=/{ip=substr($0, index($0,"=")+1)} /hw_address=/{if (substr($0, index($0,"=")+1)==mac) print ip}' /var/db/dhcpd_leases | head -1
 }
 
-SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o ServerAliveInterval=30 -o UserKnownHostsFile="$HOME/.ssh/known_hosts_swiftui2_windows")
+SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o ServerAliveInterval=30 -o UserKnownHostsFile="$HOME/.ssh/known_hosts_swiftui_windows")
 remote() { ssh "${SSH_OPTS[@]}" -p "$PORT" "$USER_NAME@$(vm_ip)" "$@"; }
 copy() { scp -q "${SSH_OPTS[@]}" -P "$PORT" "$@"; }
 
@@ -38,12 +38,12 @@ case "$1" in
   ip) vm_ip ;;
   ssh) shift; remote "$@" ;;
   sync)
-    TAR="$(mktemp -t swiftui2-src).tar"
+    TAR="$(mktemp -t swiftui-src).tar"
     COPYFILE_DISABLE=1 tar -h -C "$ROOT" --exclude .build --exclude .git --exclude '.build-*' --exclude 'Android/build' \
       --exclude 'Android/*/build' --exclude '*/bin' --exclude '*/obj' --exclude .swiftpm -cf "$TAR" .
-    copy "$TAR" "$USER_NAME@$(vm_ip):C:/dev/swiftui2-src.tar"
+    copy "$TAR" "$USER_NAME@$(vm_ip):C:/dev/swiftui-src.tar"
     rm -f "$TAR"
-    remote "New-Item -ItemType Directory -Force '$REMOTE' | Out-Null; tar -xf C:/dev/swiftui2-src.tar -C '$REMOTE'; Remove-Item C:/dev/swiftui2-src.tar"
+    remote "New-Item -ItemType Directory -Force '$REMOTE' | Out-Null; tar -xf C:/dev/swiftui-src.tar -C '$REMOTE'; Remove-Item C:/dev/swiftui-src.tar"
     ;;
   build) shift; "$0" sync; remote "& '$REMOTE\\Windows\\scripts\\build-app.ps1' $*" ;;
   run)

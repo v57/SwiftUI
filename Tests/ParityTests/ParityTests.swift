@@ -1,9 +1,9 @@
 import Foundation
 import Testing
 import ParityScenarios
-import SwiftUI2Headless
+import SwiftUIHeadless
 
-/// Runs every shared scenario on SwiftUI2 and compares counters with the golden recording made on
+/// Runs every shared scenario on SwiftUI and compares counters with the golden recording made on
 /// Apple's SwiftUI (`swift run parity-recorder`):
 ///  * `body.*` counters must match exactly,
 ///  * `layout.*` counters must be ≤ SwiftUI's (doing less layout work is allowed, more is a bug).
@@ -60,12 +60,12 @@ struct ParityTests {
             let theirs = expected[key] ?? 0
             if Self.report {
                 let pad = { (s: String, n: Int) in s.padding(toLength: n, withPad: " ", startingAt: 0) }
-                print("  \(pad(step, 16)) \(pad(key, 34)) SwiftUI \(pad(String(theirs), 4)) SwiftUI2 \(ours)")
+                print("  \(pad(step, 16)) \(pad(key, 34)) SwiftUI \(pad(String(theirs), 4)) SwiftUI \(ours)")
             }
             if ParityPolicy.isExact(key) {
-                #expect(ours == theirs, "[\(step)] \(key): SwiftUI2 \(ours) vs SwiftUI \(theirs)")
+                #expect(ours == theirs, "[\(step)] \(key): SwiftUI \(ours) vs SwiftUI \(theirs)")
             } else {
-                #expect(ours <= theirs, "[\(step)] \(key): SwiftUI2 did more layout work (\(ours)) than SwiftUI (\(theirs))")
+                #expect(ours <= theirs, "[\(step)] \(key): SwiftUI did more layout work (\(ours)) than SwiftUI (\(theirs))")
             }
         }
     }

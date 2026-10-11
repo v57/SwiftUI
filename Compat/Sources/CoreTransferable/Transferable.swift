@@ -1,6 +1,6 @@
 // CoreTransferable's API on non-Apple platforms: `Transferable` types describe how they export
 // to / import from data or files of given content types. Representations resolve to a flat
-// list of type-erased entries (`_TransferEntry`) that item providers (SwiftUI2Portability)
+// list of type-erased entries (`_TransferEntry`) that item providers (SwiftUIPortability)
 // and apps use.
 import Foundation
 import UniformTypeIdentifiers

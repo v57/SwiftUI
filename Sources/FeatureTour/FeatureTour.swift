@@ -1,7 +1,7 @@
 // Exercises desktop and drawing features backends must support: menu bar commands and keyboard
 // shortcuts, onKeyPress, file dialogs, shadows, masks, blend modes, color filters, path clips and
 // filled symbols. Plain SwiftUI (built for Windows as FeatureTourWinUI).
-import SwiftUI2
+import SwiftUI
 import UniformTypeIdentifiers
 
 @Observable

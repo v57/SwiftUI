@@ -1,14 +1,14 @@
 #!/bin/bash
 # Runs a cross-compiled SwiftPM test bundle on the connected Android device.
 # Usage: Android/scripts/run-tests-on-device <path/to/Package.xctest> [test-args...]
-# Pushes the bundle, its resource bundles and the Swift runtime to /data/local/tmp/swiftui2-tests.
+# Pushes the bundle, its resource bundles and the Swift runtime to /data/local/tmp/swiftui-tests.
 set -e
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 . "$ROOT/Android/scripts/env.sh"
 SERIAL="${ANDROID_SERIAL:-$($ADB devices | awk 'NR>1 && $2=="device" && $1 !~ /^emulator-/ {print $1; exit}')}"
 [ -n "$SERIAL" ] || { echo "No physical Android device connected (adb devices)." >&2; exit 1; }
 BUNDLE="$1"; shift
-DIR=/data/local/tmp/swiftui2-tests
+DIR=/data/local/tmp/swiftui-tests
 BUILD_DIR="$(dirname "$BUNDLE")"
 $ADB -s "$SERIAL" shell mkdir -p $DIR/lib
 # Runtime libraries (pushed once; adb push skips unchanged files quickly).

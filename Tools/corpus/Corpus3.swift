@@ -3,11 +3,7 @@
 import Foundation
 import Combine
 import Observation
-#if canImport(SwiftUI2) && !APPLE_SWIFTUI
-import SwiftUI2
-#else
 import SwiftUI
-#endif
 
 final class LegacyModel: ObservableObject {
     @Published var title = "Legacy"

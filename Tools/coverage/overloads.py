@@ -111,11 +111,11 @@ for path in files:
         if s and not s.startswith('@'): attrs = []
 
 ours = {}
-for f in glob.glob('' + ROOT + '/Sources/SwiftUI2*/**/*.swift', recursive=True):
+for f in glob.glob('' + ROOT + '/Sources/SwiftUI*/**/*.swift', recursive=True):
     text = open(f).read()
     # offsets of `extension View` bodies (brace matched)
     spans = []
-    for m in re.finditer(r'^\s*(?:@\w+\s+)*(?:public\s+)?extension\s+(?:SwiftUI2Core\.)?View\b[^{]*\{', text, re.M):
+    for m in re.finditer(r'^\s*(?:@\w+\s+)*(?:public\s+)?extension\s+(?:_SwiftUICore\.)?View\b[^{]*\{', text, re.M):
         e = balanced(text, m.end() - 1, '{', '}')
         spans.append((m.end(), e))
     for m in re.finditer(r'func (\w+)', text):

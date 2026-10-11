@@ -1,8 +1,4 @@
-#if SWIFTUI2
-import SwiftUI2
-#else
 import SwiftUI
-#endif
 import Observation
 
 // MARK: - State & bindings

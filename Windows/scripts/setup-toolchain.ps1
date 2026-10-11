@@ -1,4 +1,4 @@
-# Installs what building SwiftUI2 apps for Windows needs, on Windows 11 ARM64 (or x64):
+# Installs what building SwiftUI apps for Windows needs, on Windows 11 ARM64 (or x64):
 #   - Visual Studio Build Tools: MSVC + Windows SDK (the Swift toolchain links with them)
 #   - Swift (toolchain + Windows SDK + runtime; no IDE/debugger/Android extras)
 #   - Git (MinGit: SwiftPM clones package dependencies with it)

@@ -1,13 +1,9 @@
 // Reference app: written against Apple's SwiftUI. It is the executable behavioural spec for
-// SwiftUI2 — each screen exercises a feature area, and every screen should eventually compile and
-// behave identically when built against SwiftUI2 (see docs/PARITY.md).
+// SwiftUI — each screen exercises a feature area, and every screen should eventually compile and
+// behave identically when built against SwiftUI (see docs/PARITY.md).
 //
 //   swift run ReferenceApp
-#if SWIFTUI2
-import SwiftUI2
-#else
 import SwiftUI
-#endif
 
 @main
 struct ReferenceApp: App {

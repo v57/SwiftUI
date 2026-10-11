@@ -52,10 +52,10 @@ def balanced(text, i):
             if d == 0: return j
     return len(text)
 defs = {}
-for f in glob.glob(ROOT + '/Sources/SwiftUI2*/**/*.swift', recursive=True):
+for f in glob.glob(ROOT + '/Sources/SwiftUI*/**/*.swift', recursive=True):
     text = open(f).read()
     spans = []
-    for m in re.finditer(r'^\s*(?:@\w+\s+)*(?:public\s+)?extension\s+(?:SwiftUI2Core\.)?View\b[^{]*\{', text, re.M):
+    for m in re.finditer(r'^\s*(?:@\w+\s+)*(?:public\s+)?extension\s+(?:_SwiftUICore\.)?View\b[^{]*\{', text, re.M):
         spans.append((m.end(), balanced(text, m.end() - 1)))
     for m in re.finditer(r'func (\w+)\b[^{\n]*\{([^\n]*)', text):
         if any(a <= m.start() < b for a, b in spans):

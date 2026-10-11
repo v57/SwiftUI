@@ -1,4 +1,4 @@
-import SwiftUI2
+import SwiftUI
 
 @Observable
 final class TodoStore {
@@ -32,7 +32,7 @@ final class Preferences: ObservableObject {
 @main
 struct DemoApp: App {
     var body: some Scene {
-        WindowGroup("SwiftUI2 Demo") {
+        WindowGroup("SwiftUI Demo") {
             DemoRoot()
         }
         .defaultSize(width: 520, height: 560)
@@ -59,7 +59,7 @@ struct Header: View {
     let count: Int
     var body: some View {
         HStack {
-            Text("SwiftUI2").font(.largeTitle).bold()
+            Text("SwiftUI").font(.largeTitle).bold()
             Spacer()
             Text("\(count) open")
                 .padding(6)

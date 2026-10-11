@@ -1,13 +1,13 @@
 # Sends real (OS-level) input to the desktop: clicks at screen coordinates (physical pixels) and
 # keystrokes in SendKeys syntax (^ Ctrl, + Shift, % Alt, {ESC}, {ENTER}, ...). Run in the
 # interactive session (run-interactive.ps1) when invoked over SSH.
-# Keystrokes go to the foreground window: first -Process's main window (default SwiftUI2Host).
+# Keystrokes go to the foreground window: first -Process's main window (default SwiftUIHost).
 # -Shot saves a screenshot after the input from this same process (starting another one would
 # take the focus and close open menus/flyouts).
 # -Steps runs several actions in one process (e.g. open a menu, then click an item):
 #   "click:146,72; wait:400; click:204,175; keys:^i; text:hi" (move:x,y moves the pointer without clicking)
 # Usage: input.ps1 -X 120 -Y 80 [-Right] | -Keys "^i" | -Text "hello" | -Steps "..." [-Process name] [-DelayMs 300] [-Shot path.png]
-param([int]$X = -1, [int]$Y = -1, [switch]$Right, [string]$Keys, [string]$Text, [string]$Steps, [string]$Process = "SwiftUI2Host", [int]$DelayMs = 300, [string]$Shot)
+param([int]$X = -1, [int]$Y = -1, [switch]$Right, [string]$Keys, [string]$Text, [string]$Steps, [string]$Process = "SwiftUIHost", [int]$DelayMs = 300, [string]$Shot)
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 Add-Type @"
 using System;

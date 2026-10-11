@@ -2,11 +2,7 @@
 
 import Foundation
 import Observation
-#if canImport(SwiftUI2) && !APPLE_SWIFTUI
-import SwiftUI2
-#else
 import SwiftUI
-#endif
 
 struct Rank: LayoutValueKey { static let defaultValue = 0 }
 

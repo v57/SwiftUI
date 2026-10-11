@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Typechecks the corpus against Apple SwiftUI (must succeed) — SwiftUI2 compiles it as a test.
+# Typechecks the corpus against Apple SwiftUI (must succeed) — SwiftUI compiles it as a test.
 cd "$(dirname $0)"
 tmp=$(mktemp -d)
 for f in Corpus*.swift; do cp $f $tmp/$f; done

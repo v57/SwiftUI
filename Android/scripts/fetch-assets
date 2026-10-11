@@ -2,7 +2,7 @@
 # Downloads the Material Symbols variable font (Apache 2.0, google/material-design-icons) that the
 # Android backend uses for Image(systemName:) — SF Symbols can't be shipped on Android.
 set -e
-DIR="$(cd "$(dirname "$0")/.." && pwd)/swiftui2/src/main/assets"
+DIR="$(cd "$(dirname "$0")/.." && pwd)/swiftui/src/main/assets"
 mkdir -p "$DIR"
 FONT="$DIR/MaterialSymbolsOutlined.ttf"
 if [ ! -s "$FONT" ]; then

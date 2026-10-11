@@ -1,10 +1,6 @@
-// Shared between Apple SwiftUI and SwiftUI2 builds (symlinked into two targets).
+// Shared between Apple SwiftUI and SwiftUI builds (symlinked into two targets).
 // Only use API both frameworks provide.
-#if SWIFTUI2
-import SwiftUI2
-#else
 import SwiftUI
-#endif
 import Foundation
 import Observation
 

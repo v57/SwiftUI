@@ -2,7 +2,7 @@
 # WinUI host uses for Image(systemName:), like the Android backend — SF Symbols can't be shipped.
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$dir = Join-Path $PSScriptRoot "..\SwiftUI2Host\Assets"
+$dir = Join-Path $PSScriptRoot "..\SwiftUIHost\Assets"
 New-Item -ItemType Directory -Force $dir | Out-Null
 
 $font = Join-Path $dir "MaterialSymbolsOutlined.ttf"

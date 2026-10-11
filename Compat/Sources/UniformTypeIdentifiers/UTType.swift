@@ -1,6 +1,6 @@
 import Foundation
 
-/// The subset of Apple's `UTType` that apps and SwiftUI2 use: identifiers, conformance, file
+/// The subset of Apple's `UTType` that apps and SwiftUI use: identifiers, conformance, file
 /// extensions and MIME types for the common system types, plus app-declared types.
 public struct UTType: Hashable, Sendable, Codable, CustomStringConvertible {
     public let identifier: String

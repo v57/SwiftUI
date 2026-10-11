@@ -1,13 +1,9 @@
-// API usage corpus: idiomatic SwiftUI that must compile unchanged against SwiftUI2.
+// API usage corpus: idiomatic SwiftUI that must compile unchanged against SwiftUI.
 // Typecheck against Apple: Tools/corpus/check.sh
 
 import Foundation
 import Observation
-#if canImport(SwiftUI2) && !APPLE_SWIFTUI
-import SwiftUI2
-#else
 import SwiftUI
-#endif
 
 @Observable final class CorpusModel {
     var name = "Ada"

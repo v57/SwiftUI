@@ -1,10 +1,10 @@
-# Builds a SwiftUI2 app for Windows and stages it with the WinUI host:
+# Builds a SwiftUI app for Windows and stages it with the WinUI host:
 # 1. builds the Swift app DLL (`swift build --product <Product>`, e.g. GalleryWinUI.dll),
-# 2. builds the C# host (Windows/SwiftUI2Host, unpackaged, self-contained Windows App SDK),
-# 3. stages the app DLL and the Swift runtime next to SwiftUI2Host.exe in .build\winui\<Product>,
+# 2. builds the C# host (Windows/SwiftUIHost, unpackaged, self-contained Windows App SDK),
+# 3. stages the app DLL and the Swift runtime next to SwiftUIHost.exe in .build\winui\<Product>,
 # 4. optionally runs it (-Run; -Script/-Log are passed to the host).
 # Usage: Windows/scripts/build-app.ps1 [-Product GalleryWinUI] [-PackagePath dir] [-Configuration debug|release] [-Run] [-Script file] [-Log file]
-#   -PackagePath builds an app from another package that depends on SwiftUI2 (e.g. Ports\hub-app\WindowsBuild).
+#   -PackagePath builds an app from another package that depends on SwiftUI (e.g. Ports\hub-app\WindowsBuild).
 param(
     [string]$Product = "GalleryWinUI",
     [string]$PackagePath,
@@ -29,9 +29,9 @@ $dll = Join-Path $bin "$Product.dll"
 if (-not (Test-Path $dll)) { throw "Build failed: $dll missing" }
 
 $out = Join-Path $package ".build\winui\$Product"
-if (-not $SkipHost -or -not (Test-Path "$out\SwiftUI2Host.exe")) {
+if (-not $SkipHost -or -not (Test-Path "$out\SwiftUIHost.exe")) {
     Write-Host "Building the WinUI host"
-    dotnet build "$root\Windows\SwiftUI2Host\SwiftUI2Host.csproj" -c Debug -r "win-$arch" -p:Platform=$($arch.ToUpper()) -o $out --nologo -v quiet
+    dotnet build "$root\Windows\SwiftUIHost\SwiftUIHost.csproj" -c Debug -r "win-$arch" -p:Platform=$($arch.ToUpper()) -o $out --nologo -v quiet
     if ($LASTEXITCODE -ne 0) { throw "dotnet build failed" }
 }
 
@@ -44,12 +44,12 @@ if ($swiftCore) {
 } else {
     Write-Warning "Swift runtime (swiftCore.dll) not on PATH; the host will look for it on PATH at launch"
 }
-Set-Content -Path "$out\swiftui2-app.txt" -Value $Product -NoNewline
+Set-Content -Path "$out\swiftui-app.txt" -Value $Product -NoNewline
 Write-Host "Staged: $out"
 
 if ($Run) {
     $arguments = @()
     if ($Script) { $arguments += @("--script", (Resolve-Path $Script).Path) }
     if ($Log) { $arguments += @("--log", $Log) }
-    & "$out\SwiftUI2Host.exe" @arguments
+    & "$out\SwiftUIHost.exe" @arguments
 }

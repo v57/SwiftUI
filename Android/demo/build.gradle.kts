@@ -4,11 +4,11 @@ plugins {
 
 // The Swift app library to run (lib<name>.so) and the package id: -PswiftLibrary=X -PappId=Y.
 val swiftLibrary = (findProperty("swiftLibrary") as String?) ?: "DemoAndroid"
-val appId = (findProperty("appId") as String?) ?: "org.swiftui2.demo"
-val appLabel = (findProperty("appLabel") as String?) ?: "SwiftUI2 Demo"
+val appId = (findProperty("appId") as String?) ?: "org.swiftui.demo"
+val appLabel = (findProperty("appLabel") as String?) ?: "SwiftUI Demo"
 
 android {
-    namespace = "org.swiftui2.demo"
+    namespace = "org.swiftui.demo"
     compileSdk = 36
     defaultConfig {
         applicationId = appId
@@ -39,5 +39,5 @@ android {
 }
 
 dependencies {
-    implementation(project(":swiftui2"))
+    implementation(project(":swiftui"))
 }

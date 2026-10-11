@@ -3,11 +3,7 @@
 import Foundation
 import Observation
 import UniformTypeIdentifiers
-#if canImport(SwiftUI2) && !APPLE_SWIFTUI
-import SwiftUI2
-#else
 import SwiftUI
-#endif
 
 struct Recipe: Identifiable, Hashable, Codable { var id = UUID(); var name: String }
 

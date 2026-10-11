@@ -12,6 +12,6 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "SwiftUI2Android"
-// The host library (org.swiftui2) and the demo app; app modules package one Swift app library.
-include(":swiftui2", ":demo")
+rootProject.name = "SwiftUIAndroid"
+// The host library (org.swiftui) and the demo app; app modules package one Swift app library.
+include(":swiftui", ":demo")

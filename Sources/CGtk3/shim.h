@@ -1,7 +1,7 @@
-// GTK 3 for the SwiftUI2 GTK backend. Swift can't use GObject's cast and signal macros, so the
+// GTK 3 for the SwiftUI GTK backend. Swift can't use GObject's cast and signal macros, so the
 // few the backend needs are wrapped here as inline functions.
-#ifndef SWIFTUI2_CGTK3_SHIM_H
-#define SWIFTUI2_CGTK3_SHIM_H
+#ifndef SWIFTUI_CGTK3_SHIM_H
+#define SWIFTUI_CGTK3_SHIM_H
 
 #include <gtk/gtk.h>
 #include <glib-unix.h>

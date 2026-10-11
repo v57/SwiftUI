@@ -9,7 +9,7 @@ param(
     [switch]$NoWait
 )
 $ErrorActionPreference = "Stop"
-$name = "SwiftUI2-Interactive-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+$name = "SwiftUI-Interactive-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
 $action = if ($Arguments) { New-ScheduledTaskAction -Execute $Command -Argument $Arguments -WorkingDirectory $WorkingDirectory }
           else { New-ScheduledTaskAction -Execute $Command -WorkingDirectory $WorkingDirectory }
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest

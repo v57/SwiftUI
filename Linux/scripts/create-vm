@@ -1,23 +1,23 @@
 #!/bin/bash
 # Creates the Linux test VM unattended: an Ubuntu desktop arm64 ISO is remastered for
-# autoinstall (user $SWIFTUI2_VM_USER, your ~/.ssh/id_ed25519.pub, passwordless sudo, auto login
+# autoinstall (user $SWIFTUI_VM_USER, your ~/.ssh/id_ed25519.pub, passwordless sudo, auto login
 # on Xorg), a UTM Apple-Virtualization bundle is created with a sparse disk, the install runs
 # headless (vzrun), then the guest gets GTK 3 dev packages, Swift 6.3.3 and the symbol font.
 # Usage: Linux/scripts/create-vm <ubuntu-desktop-arm64.iso> [disk GB, default 20]
-# Afterwards open the bundle in UTM once (`open -a UTM "$SWIFTUI2_VM_BUNDLE"`) to list it there.
+# Afterwards open the bundle in UTM once (`open -a UTM "$SWIFTUI_VM_BUNDLE"`) to list it there.
 set -e
 . "$(dirname "$0")/env.sh"
 ISO="$1"; DISK_GB="${2:-20}"
 [ -f "$ISO" ] || { sed -n '2,8p' "$0"; exit 1; }
-[ -e "$SWIFTUI2_VM_BUNDLE" ] && { echo "$SWIFTUI2_VM_BUNDLE exists" >&2; exit 1; }
+[ -e "$SWIFTUI_VM_BUNDLE" ] && { echo "$SWIFTUI_VM_BUNDLE exists" >&2; exit 1; }
 command -v xorriso >/dev/null || brew install xorriso
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
 # 1. Autoinstall ISO (grub boots with `autoinstall`, config at the ISO root).
 PASSWORD=$(openssl rand -base64 9 | tr -d '/+=' | cut -c1-10)
-printf 'Ubuntu VM (UTM "%s")\nuser: %s\npassword: %s\n' "$SWIFTUI2_VM_NAME" "$SWIFTUI2_VM_USER" "$PASSWORD" > "$SWIFTUI2_VM_DIR/$SWIFTUI2_VM_NAME-login.txt"
-chmod 600 "$SWIFTUI2_VM_DIR/$SWIFTUI2_VM_NAME-login.txt"
+printf 'Ubuntu VM (UTM "%s")\nuser: %s\npassword: %s\n' "$SWIFTUI_VM_NAME" "$SWIFTUI_VM_USER" "$PASSWORD" > "$SWIFTUI_VM_DIR/$SWIFTUI_VM_NAME-login.txt"
+chmod 600 "$SWIFTUI_VM_DIR/$SWIFTUI_VM_NAME-login.txt"
 cat > "$WORK/autoinstall.yaml" <<EOF
 autoinstall:
   version: 1
@@ -26,8 +26,8 @@ autoinstall:
   timezone: Etc/UTC
   identity:
     hostname: ubuntu-swift
-    realname: $SWIFTUI2_VM_USER
-    username: $SWIFTUI2_VM_USER
+    realname: $SWIFTUI_VM_USER
+    username: $SWIFTUI_VM_USER
     password: '$(openssl passwd -6 "$PASSWORD")'
   ssh:
     install-server: true
@@ -38,9 +38,9 @@ autoinstall:
   drivers: {install: false}
   updates: security
   late-commands:
-    - echo '$SWIFTUI2_VM_USER ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/$SWIFTUI2_VM_USER
-    - chmod 440 /target/etc/sudoers.d/$SWIFTUI2_VM_USER
-    - mkdir -p /target/etc/gdm3 && printf '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=$SWIFTUI2_VM_USER\nWaylandEnable=false\n' > /target/etc/gdm3/custom.conf
+    - echo '$SWIFTUI_VM_USER ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/$SWIFTUI_VM_USER
+    - chmod 440 /target/etc/sudoers.d/$SWIFTUI_VM_USER
+    - mkdir -p /target/etc/gdm3 && printf '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=$SWIFTUI_VM_USER\nWaylandEnable=false\n' > /target/etc/gdm3/custom.conf
   shutdown: poweroff
 EOF
 xorriso -osirrox on -indev "$ISO" -extract /boot/grub/grub.cfg "$WORK/grub.cfg" 2>/dev/null
@@ -50,18 +50,18 @@ xorriso -indev "$ISO" -outdev "$WORK/autoinstall.iso" -map "$WORK/grub.cfg" /boo
   -map "$WORK/autoinstall.yaml" /autoinstall.yaml -boot_image any replay 2>&1 | tail -1
 
 # 2. UTM bundle (Apple backend, UEFI, NAT, sparse raw disk).
-mkdir -p "$SWIFTUI2_VM_BUNDLE/Data"
-mkfile -n "${DISK_GB}g" "$SWIFTUI2_VM_BUNDLE/Data/disk.img"
-[ -x "$SWIFTUI2_VZRUN" ] || { mkdir -p "$(dirname "$SWIFTUI2_VZRUN")"; swiftc -O "$SWIFTUI2_ROOT/Linux/tools/vzrun.swift" -o "$SWIFTUI2_VZRUN" && codesign -s - -f --entitlements "$SWIFTUI2_ROOT/Linux/tools/vzrun.entitlements" "$SWIFTUI2_VZRUN"; }
-MACHINE=$("$SWIFTUI2_VZRUN" init "$SWIFTUI2_VM_BUNDLE")
+mkdir -p "$SWIFTUI_VM_BUNDLE/Data"
+mkfile -n "${DISK_GB}g" "$SWIFTUI_VM_BUNDLE/Data/disk.img"
+[ -x "$SWIFTUI_VZRUN" ] || { mkdir -p "$(dirname "$SWIFTUI_VZRUN")"; swiftc -O "$SWIFTUI_ROOT/Linux/tools/vzrun.swift" -o "$SWIFTUI_VZRUN" && codesign -s - -f --entitlements "$SWIFTUI_ROOT/Linux/tools/vzrun.entitlements" "$SWIFTUI_VZRUN"; }
+MACHINE=$("$SWIFTUI_VZRUN" init "$SWIFTUI_VM_BUNDLE")
 MAC=$(printf '02:%02x:%02x:%02x:%02x:%02x' $((RANDOM % 256)) $((RANDOM % 256)) $((RANDOM % 256)) $((RANDOM % 256)) $((RANDOM % 256)))
-python3 -I - "$SWIFTUI2_VM_BUNDLE" "$SWIFTUI2_VM_NAME" "$MACHINE" "$MAC" <<'EOF'
+python3 -I - "$SWIFTUI_VM_BUNDLE" "$SWIFTUI_VM_NAME" "$MACHINE" "$MAC" <<'EOF'
 import base64, plistlib, sys, uuid
 bundle, name, machine, mac = sys.argv[1:5]
 plistlib.dump({
     "Backend": "Apple", "ConfigurationVersion": 4,
     "Information": {"Name": name, "UUID": str(uuid.uuid4()).upper(), "Icon": "ubuntu", "IconCustom": False,
-                    "Notes": "Ubuntu desktop (arm64) for the SwiftUI2 GTK backend (SwiftUI2/Linux/scripts)."},
+                    "Notes": "Ubuntu desktop (arm64) for the SwiftUI GTK backend (SwiftUI/Linux/scripts)."},
     "System": {"Architecture": "aarch64", "CPUCount": 4, "MemorySize": 6144,
                "Boot": {"OperatingSystem": "Linux", "UEFIBoot": True, "EfiVariableStoragePath": "efi_vars.fd"},
                "GenericPlatform": {"machineIdentifier": base64.b64decode(machine)}},
@@ -75,8 +75,8 @@ plistlib.dump({
 EOF
 
 # 3. Unattended install (powers off when done, ~10 minutes).
-echo "Installing (console: $SWIFTUI2_VM_DIR/$SWIFTUI2_VM_NAME-console.log)..."
-"$SWIFTUI2_VZRUN" run "$SWIFTUI2_VM_BUNDLE" --iso "$WORK/autoinstall.iso"
+echo "Installing (console: $SWIFTUI_VM_DIR/$SWIFTUI_VM_NAME-console.log)..."
+"$SWIFTUI_VZRUN" run "$SWIFTUI_VM_BUNDLE" --iso "$WORK/autoinstall.iso"
 
 # 4. Guest setup.
 "$(dirname "$0")/vm" start
@@ -96,4 +96,4 @@ echo "Installing (console: $SWIFTUI2_VM_DIR/$SWIFTUI2_VM_NAME-console.log)..."
     [ -f /etc/xdg/autostart/$f.desktop ] && { cp /etc/xdg/autostart/$f.desktop ~/.config/autostart/; echo Hidden=true >> ~/.config/autostart/$f.desktop; }
   done'
 "$(dirname "$0")/fetch-assets"
-echo "Done. Open the bundle in UTM: open -a UTM \"$SWIFTUI2_VM_BUNDLE\""
+echo "Done. Open the bundle in UTM: open -a UTM \"$SWIFTUI_VM_BUNDLE\""
