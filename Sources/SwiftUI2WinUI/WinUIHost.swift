@@ -211,7 +211,16 @@ final class WinUIHost {
 /// loop), so due timers are fired here and the host arms a `DispatcherQueueTimer` for the next one.
 @MainActor
 enum WinUIMainLoop {
+    /// After a callback that may have scheduled timers: fires due ones and re-arms, soon, from the
+    /// host's timer. Not here: on Windows, Foundation's main run loop also dispatches window messages
+    /// (it's set to receive all input), and doing that inside a XAML callback (an event, a frame)
+    /// re-enters XAML's input processing, which fail-fasts.
     static func serviceTimers() {
+        sui_main_loop_arm_timer(0)
+    }
+
+    /// The host's timer fired (a top-level dispatcher callback, outside XAML's dispatch).
+    static func fireTimers() {
         guard let next = RunLoop.main.limitDate(forMode: .default) else {
             sui_main_loop_arm_timer(-1)
             return

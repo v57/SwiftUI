@@ -5,7 +5,7 @@
 # -Shot saves a screenshot after the input from this same process (starting another one would
 # take the focus and close open menus/flyouts).
 # -Steps runs several actions in one process (e.g. open a menu, then click an item):
-#   "click:146,72; wait:400; click:204,175; keys:^i; text:hi"
+#   "click:146,72; wait:400; click:204,175; keys:^i; text:hi" (move:x,y moves the pointer without clicking)
 # Usage: input.ps1 -X 120 -Y 80 [-Right] | -Keys "^i" | -Text "hello" | -Steps "..." [-Process name] [-DelayMs 300] [-Shot path.png]
 param([int]$X = -1, [int]$Y = -1, [switch]$Right, [string]$Keys, [string]$Text, [string]$Steps, [string]$Process = "SwiftUI2Host", [int]$DelayMs = 300, [string]$Shot)
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
@@ -39,6 +39,7 @@ foreach ($step in ($Steps -split ";")) {
     if (-not $step) { continue }
     $kind, $value = $step -split ":", 2
     switch ($kind) {
+        "move" { $p = $value -split ","; [Input]::SetCursorPos([int]$p[0], [int]$p[1]) | Out-Null }
         "click" { $p = $value -split ","; [Input]::Click([int]$p[0], [int]$p[1], $false) }
         "rclick" { $p = $value -split ","; [Input]::Click([int]$p[0], [int]$p[1], $true) }
         "keys" { [System.Windows.Forms.SendKeys]::SendWait($value) }

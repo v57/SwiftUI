@@ -216,6 +216,31 @@ sealed class HostView
         PlatformControlMetrics = 6, PlatformImageSize = 7, PlatformShowKeyboard = 8, PlatformHideKeyboard = 9,
         PlatformSetTitle = 10, PlatformSetToolbar = 11, PlatformActivate = 12, PlatformSetMenuBar = 13, PlatformFileDialog = 14;
 
+    /// Copies text to the clipboard. Flush keeps it after the app exits. While another process (e.g. a
+    /// clipboard manager or a VM's clipboard sync) has the clipboard open, retries every 50 ms.
+    void CopyText(string text, int attempts)
+    {
+        try
+        {
+            var package = new DataPackage();
+            package.SetText(text);
+            Clipboard.SetContent(package);
+            Clipboard.Flush();
+        }
+        catch (Exception e)
+        {
+            if (attempts <= 1) { Native.Report(e); return; }
+            copyRetry?.Stop();
+            copyRetry = Queue.CreateTimer();
+            copyRetry.Interval = TimeSpan.FromMilliseconds(50);
+            copyRetry.IsRepeating = false;
+            copyRetry.Tick += (_, _) => CopyText(text, attempts - 1);
+            copyRetry.Start();
+        }
+    }
+
+    Microsoft.UI.Dispatching.DispatcherQueueTimer? copyRetry;
+
     public string? Platform(int op, string? argument)
     {
         switch (op)
@@ -226,9 +251,8 @@ sealed class HostView
             case PlatformShare:
             case PlatformCopy:
             {
-                var package = new DataPackage();
-                package.SetText(argument ?? "");
-                Clipboard.SetContent(package);
+                copyRetry?.Stop(); // a newer copy replaces a pending retry
+                CopyText(argument ?? "", attempts: 30);
                 return null;
             }
             case PlatformPaste:

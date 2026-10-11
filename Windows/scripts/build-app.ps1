@@ -3,9 +3,11 @@
 # 2. builds the C# host (Windows/SwiftUI2Host, unpackaged, self-contained Windows App SDK),
 # 3. stages the app DLL and the Swift runtime next to SwiftUI2Host.exe in .build\winui\<Product>,
 # 4. optionally runs it (-Run; -Script/-Log are passed to the host).
-# Usage: Windows/scripts/build-app.ps1 [-Product GalleryWinUI] [-Configuration debug|release] [-Run] [-Script file] [-Log file]
+# Usage: Windows/scripts/build-app.ps1 [-Product GalleryWinUI] [-PackagePath dir] [-Configuration debug|release] [-Run] [-Script file] [-Log file]
+#   -PackagePath builds an app from another package that depends on SwiftUI2 (e.g. Ports\hub-app\WindowsBuild).
 param(
     [string]$Product = "GalleryWinUI",
+    [string]$PackagePath,
     [ValidateSet("debug", "release")][string]$Configuration = "debug",
     [switch]$Run,
     [string]$Script,
@@ -17,15 +19,16 @@ $root = (Resolve-Path "$PSScriptRoot\..\..").Path
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
 
 & "$PSScriptRoot\fetch-assets.ps1" | Out-Null
+$package = if ($PackagePath) { (Resolve-Path $(if ([IO.Path]::IsPathRooted($PackagePath)) { $PackagePath } else { Join-Path $root $PackagePath })).Path } else { $root }
 
 Write-Host "Building $Product ($Configuration)"
-swift build --package-path $root --product $Product -c $Configuration
+swift build --package-path $package --product $Product -c $Configuration
 if ($LASTEXITCODE -ne 0) { throw "swift build failed" }
-$bin = (swift build --package-path $root -c $Configuration --show-bin-path).Trim()
+$bin = (swift build --package-path $package -c $Configuration --show-bin-path).Trim()
 $dll = Join-Path $bin "$Product.dll"
 if (-not (Test-Path $dll)) { throw "Build failed: $dll missing" }
 
-$out = Join-Path $root ".build\winui\$Product"
+$out = Join-Path $package ".build\winui\$Product"
 if (-not $SkipHost -or -not (Test-Path "$out\SwiftUI2Host.exe")) {
     Write-Host "Building the WinUI host"
     dotnet build "$root\Windows\SwiftUI2Host\SwiftUI2Host.csproj" -c Debug -r "win-$arch" -p:Platform=$($arch.ToUpper()) -o $out --nologo -v quiet

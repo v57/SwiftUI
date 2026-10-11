@@ -237,6 +237,10 @@ sealed class TextFieldNode : NodeView
     bool wantsFocus;
     bool multiline;
     int configured = -1;
+    /// The text last sent to Swift. TextChanged is raised asynchronously, after keystrokes are already
+    /// in the box: an update (e.g. an animation frame) that still carries this text is behind the box,
+    /// not a change from the app, and applying it would drop the unreported keystrokes.
+    string? reported;
 
     public TextFieldNode(HostView host, int id) : base(host, id, Kinds.TextField) { }
 
@@ -252,14 +256,14 @@ sealed class TextFieldNode : NodeView
         if (secure)
         {
             var box = new PasswordBox();
-            box.PasswordChanged += (_, _) => { if (!updating) Host.Event(Id, Events.SetText, text: box.Password); };
+            box.PasswordChanged += (_, _) => { if (!updating) Report(box.Password); };
             passwordBox = box;
             field = box;
         }
         else
         {
             var box = new TextBox();
-            box.TextChanged += (_, _) => { if (!updating) Host.Event(Id, Events.SetText, text: box.Text); };
+            box.TextChanged += (_, _) => { if (!updating) Report(box.Text); };
             textBox = box;
             field = box;
         }
@@ -274,7 +278,14 @@ sealed class TextFieldNode : NodeView
         field.GotFocus += (_, _) => Host.Event(Id, Events.FocusChanged, 1);
         field.LostFocus += (_, _) => Host.Event(Id, Events.FocusChanged, 0);
         Element.Children.Insert(0, field);
+        reported = null;
         Layout();
+    }
+
+    void Report(string text)
+    {
+        reported = text;
+        Host.Event(Id, Events.SetText, text: text);
     }
 
     public override void ApplyContent(Reader r)
@@ -325,7 +336,7 @@ sealed class TextFieldNode : NodeView
         }
         if (textBox != null)
         {
-            if (textBox.Text != text)
+            if (textBox.Text != text && text != reported)
             {
                 var selection = textBox.SelectionStart;
                 textBox.Text = text;
@@ -336,7 +347,7 @@ sealed class TextFieldNode : NodeView
         }
         if (passwordBox != null)
         {
-            if (passwordBox.Password != text) passwordBox.Password = text;
+            if (passwordBox.Password != text && text != reported) passwordBox.Password = text;
             passwordBox.PlaceholderText = placeholder ?? "";
         }
         var control = Field;
@@ -346,6 +357,7 @@ sealed class TextFieldNode : NodeView
         control.FontStyle = italic ? FontStyle.Italic : FontStyle.Normal;
         if (Fonts.Family(design, name) is { } family) control.FontFamily = family;
         control.Foreground = Colors.Brush(color);
+        reported = text;
         updating = false;
         if (focus != wantsFocus)
         {

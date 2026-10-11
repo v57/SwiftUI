@@ -181,6 +181,6 @@ public func swiftui2_key(_ handle: Int64, _ code: Int32, _ characters: UnsafePoi
 /// Main-queue work ran or a run loop timer is due.
 @_cdecl("swiftui2_timer_fired")
 public func swiftui2_timer_fired() {
-    MainActor.assumeIsolated { WinUIMainLoop.serviceTimers() }
+    MainActor.assumeIsolated { WinUIMainLoop.fireTimers() }
 }
 #endif

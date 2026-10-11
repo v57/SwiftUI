@@ -151,14 +151,21 @@ static unsafe class Native
 
     public static Action<int, string>? LogHandler;
 
+    // Callbacks catch everything: an exception escaping an [UnmanagedCallersOnly] method fail-fasts
+    // the process (an illegal instruction in coreclr.dll).
+
     [UnmanagedCallersOnly]
     static void OnLog(int level, byte* message)
     {
-        var text = String(message) ?? "";
-        var prefix = level >= 6 ? "error: " : level == 5 ? "warning: " : "";
-        System.Diagnostics.Debug.WriteLine("[SwiftUI2] " + prefix + text);
-        Console.Error.WriteLine("[SwiftUI2] " + prefix + text);
-        LogHandler?.Invoke(level, text);
+        try
+        {
+            var text = String(message) ?? "";
+            var prefix = level >= 6 ? "error: " : level == 5 ? "warning: " : "";
+            System.Diagnostics.Debug.WriteLine("[SwiftUI2] " + prefix + text);
+            Console.Error.WriteLine("[SwiftUI2] " + prefix + text);
+            LogHandler?.Invoke(level, text);
+        }
+        catch (Exception e) { Report(e); }
     }
 
     static HostView? Host(IntPtr handle) => handle == IntPtr.Zero ? null : GCHandle.FromIntPtr(handle).Target as HostView;
@@ -171,7 +178,11 @@ static unsafe class Native
     }
 
     [UnmanagedCallersOnly]
-    static void OnHostRequestFrame(IntPtr host) => Host(host)?.RequestFrame();
+    static void OnHostRequestFrame(IntPtr host)
+    {
+        try { Host(host)?.RequestFrame(); }
+        catch (Exception e) { Report(e); }
+    }
 
     [UnmanagedCallersOnly]
     static byte* OnHostPlatform(IntPtr host, int op, byte* argument)
@@ -202,7 +213,8 @@ static unsafe class Native
     [UnmanagedCallersOnly]
     static void OnReleaseRef(IntPtr handle)
     {
-        if (handle != IntPtr.Zero) GCHandle.FromIntPtr(handle).Free();
+        try { if (handle != IntPtr.Zero) GCHandle.FromIntPtr(handle).Free(); }
+        catch (Exception e) { Report(e); }
     }
 
     [UnmanagedCallersOnly]
@@ -213,16 +225,24 @@ static unsafe class Native
     }
 
     [UnmanagedCallersOnly]
-    static void OnReleaseImage(int id) => Images.Release(id);
+    static void OnReleaseImage(int id)
+    {
+        try { Images.Release(id); }
+        catch (Exception e) { Report(e); }
+    }
 
     [UnmanagedCallersOnly]
     static void OnArmTimer(double seconds)
     {
-        if (timer == null) return;
-        timer.Stop();
-        if (seconds < 0) return;
-        timer.Interval = TimeSpan.FromSeconds(Math.Max(seconds, 0.001));
-        timer.Start();
+        try
+        {
+            if (timer == null) return;
+            timer.Stop();
+            if (!(seconds >= 0)) return; // negative: disarm (NaN too)
+            timer.Interval = TimeSpan.FromSeconds(Math.Clamp(seconds, 0.001, 86_400));
+            timer.Start();
+        }
+        catch (Exception e) { Report(e); }
     }
 
     [UnmanagedCallersOnly]
@@ -240,8 +260,12 @@ static unsafe class Native
     [UnmanagedCallersOnly]
     static void OnCloseWindow(IntPtr host)
     {
-        var view = Host(host);
-        if (view != null) queue?.TryEnqueue(() => view.Window.Close());
+        try
+        {
+            var view = Host(host);
+            if (view != null) queue?.TryEnqueue(() => view.Window.Close());
+        }
+        catch (Exception e) { Report(e); }
     }
 
     [UnmanagedCallersOnly]
