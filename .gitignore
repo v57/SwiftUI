@@ -4,7 +4,7 @@
 DerivedData/
 .DS_Store
 Ports/
-*.md
+/docs/ROADMAP.md
 .build-android/
 .build-linux/
 CLAUDE.md
