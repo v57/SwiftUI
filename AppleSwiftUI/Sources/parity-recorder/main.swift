@@ -1,12 +1,13 @@
 // Records update counts of the parity scenarios on Apple's SwiftUI. The output is the golden data
 // SwiftUI is checked against (Tests/ParityTests).
 //
-//   swift run parity-recorder [output-path]
+//   swift run --package-path AppleSwiftUI parity-recorder [output-path]
 //
-// Default output: Parity/Golden/swiftui-golden.json
+// Default output (relative to the working directory, normally the repository root):
+// Parity/Golden/swiftui-golden.json
 import AppKit
 import Foundation
-import ParityScenariosSwiftUI
+import AppleParityScenarios
 import SwiftUI
 
 @MainActor

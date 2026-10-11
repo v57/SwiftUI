@@ -4,7 +4,7 @@ import ParityScenarios
 import SwiftUIHeadless
 
 /// Runs every shared scenario on SwiftUI and compares counters with the golden recording made on
-/// Apple's SwiftUI (`swift run parity-recorder`):
+/// Apple's SwiftUI (`swift run --package-path AppleSwiftUI parity-recorder`):
 ///  * `body.*` counters must match exactly,
 ///  * `layout.*` counters must be ≤ SwiftUI's (doing less layout work is allowed, more is a bug).
 /// Keep in sync with `ScenarioCatalog.all()` (checked by `catalogIsCovered`).
@@ -36,7 +36,7 @@ struct ParityTests {
     func matchesSwiftUI(_ name: String) throws {
         let golden = try Self.loadGolden()
         let scenario = try #require(ScenarioCatalog.all().first { $0.name == name })
-        let expected = try #require(golden.scenarios[name], "No golden data for \(name); run `swift run parity-recorder`")
+        let expected = try #require(golden.scenarios[name], "No golden data for \(name); run `swift run --package-path AppleSwiftUI parity-recorder`")
 
         if Self.report { print("── \(name)") }
         Probe.reset()

@@ -34,6 +34,7 @@ import SwiftUI
 | `Sources/SwiftUI` | Umbrella module apps import |
 | `Parity/` | Scenarios compiled against **both** Apple SwiftUI and this SwiftUI, golden counts |
 | `Sources/ReferenceApp` | Large app on Apple SwiftUI — the behavioural spec to port |
+| `AppleSwiftUI/` | Separate package for the targets built on Apple's SwiftUI (reference app, parity recorder) |
 | `Sources/Demo` | SwiftUI demo app on AppKit |
 
 Supported today (see `Sources/ReferenceApp` for every feature in use — it compiles unchanged
@@ -83,8 +84,9 @@ SwiftData, ShareLink, ...).
 ```bash
 swift test                # graph, core, AppKit and parity suites (all must pass)
 swift run Demo            # SwiftUI + AppKit
-swift run ReferenceApp    # Apple SwiftUI reference
-swift run ReferenceApp2   # the same app on SwiftUI
+swift run ReferenceApp2   # the reference app on SwiftUI
+swift run --package-path AppleSwiftUI ReferenceApp     # the same app on Apple SwiftUI
+swift run --package-path AppleSwiftUI parity-recorder  # re-record the golden counts
 ```
 
 Requires Swift 6.2+ (developed with Swift 6.4 / Xcode 27, macOS 15+).

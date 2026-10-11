@@ -16,8 +16,7 @@ import PackageDescription
 
 let nonApple: [Platform] = [.android, .linux, .windows]
 
-/// Set by `Android/scripts/swift-android`: Apple-SwiftUI-only targets (the reference app, the
-/// parity recorder) and the AppKit tests can't be cross-compiled, so they are left out.
+/// Set by `Android/scripts/swift-android`: the AppKit tests can't be cross-compiled, so they are left out.
 let crossCompiling = Context.environment["SWIFTUI_CROSS_COMPILE"] != nil
 
 let package = Package(
@@ -28,8 +27,6 @@ let package = Package(
         .library(name: "_SwiftUICore", targets: ["_SwiftUICore"]),
         .library(name: "SwiftUICharts", targets: ["SwiftUICharts"]),
         .library(name: "SwiftUIHeadless", targets: ["SwiftUIHeadless"]),
-        .executable(name: "parity-recorder", targets: ["parity-recorder"]),
-        .executable(name: "ReferenceApp", targets: ["ReferenceApp"]),
         .executable(name: "Demo", targets: ["Demo"]),
         .executable(name: "ReferenceApp2", targets: ["ReferenceApp2"]),
     ],
@@ -97,19 +94,15 @@ let package = Package(
             ]
         ),
 
-        // Parity: the same scenario sources (Parity/Scenarios, symlinked into both targets)
-        // are compiled once against Apple's SwiftUI and once against SwiftUI.
+        // Parity: the same scenario sources (Parity/Scenarios, symlinked) are compiled against
+        // SwiftUI here and against Apple's SwiftUI in AppleSwiftUI/ (the recorder of the golden data).
         .target(
             name: "ParityScenarios",
             dependencies: ["SwiftUI", "SwiftUIHeadless"]
         ),
-        .target(name: "ParityScenariosSwiftUI"),
-        .executableTarget(name: "parity-recorder", dependencies: ["ParityScenariosSwiftUI"]),
 
-        // Large reference app written against Apple's SwiftUI. It is the behavioural spec:
-        // every screen in it must eventually run unchanged on SwiftUI.
-        .executableTarget(name: "ReferenceApp"),
-        // The same reference app sources compiled against SwiftUI (the porting target).
+        // The reference app (Sources/ReferenceApp, the behavioural spec written against Apple's
+        // SwiftUI and run on it from AppleSwiftUI/) compiled against SwiftUI.
         .executableTarget(name: "ReferenceApp2", dependencies: ["SwiftUI"]),
         // Small app running on SwiftUI + AppKit backend.
         .executableTarget(name: "Demo", dependencies: ["SwiftUI"]),
@@ -137,9 +130,8 @@ let buildingOnWindows = false
 #endif
 
 if buildingOnLinux {
-    // Native Linux build (GTK backend): Apple-SwiftUI-only and other platforms' backends are left out.
-    let excluded: Set<String> = ["ReferenceApp", "parity-recorder", "ParityScenariosSwiftUI", "SwiftUIAppKit", "SwiftUISwiftData",
-                                 "CSwiftUIAndroid", "SwiftUIAndroid"]
+    // Native Linux build (GTK backend): the other platforms' backends are left out.
+    let excluded: Set<String> = ["SwiftUIAppKit", "SwiftUISwiftData", "CSwiftUIAndroid", "SwiftUIAndroid"]
     package.targets.removeAll { excluded.contains($0.name) }
     package.products.removeAll { excluded.contains($0.name) }
     for target in package.targets where target.name == "SwiftUI" {
@@ -149,9 +141,9 @@ if buildingOnLinux {
     package.targets += [.executableTarget(name: "GalleryGtk", dependencies: ["SwiftUI"])]
     package.products += [.executable(name: "GalleryGtk", targets: ["GalleryGtk"])]
 } else if buildingOnWindows {
-    // Native Windows build (WinUI backend): Apple-SwiftUI-only and other platforms' backends are left out.
-    let excluded: Set<String> = ["ReferenceApp", "ReferenceApp2", "Demo", "parity-recorder", "ParityScenariosSwiftUI",
-                                 "SwiftUIAppKit", "SwiftUISwiftData", "CSwiftUIAndroid", "SwiftUIAndroid", "CGtk3", "SwiftUIGtk"]
+    // Native Windows build (WinUI backend): executables and the other platforms' backends are left out.
+    let excluded: Set<String> = ["ReferenceApp2", "Demo", "SwiftUIAppKit", "SwiftUISwiftData", "CSwiftUIAndroid", "SwiftUIAndroid",
+                                 "CGtk3", "SwiftUIGtk"]
     package.targets.removeAll { excluded.contains($0.name) }
     package.products.removeAll { excluded.contains($0.name) }
     for target in package.targets where target.name == "SwiftUI" {
@@ -173,9 +165,6 @@ if buildingOnLinux {
         .testTarget(name: "SwiftUIAppKitTests", dependencies: ["SwiftUI"]),
     ]
 } else {
-    let appleOnly: Set<String> = ["ReferenceApp", "parity-recorder", "ParityScenariosSwiftUI"]
-    package.targets.removeAll { appleOnly.contains($0.name) }
-    package.products.removeAll { appleOnly.contains($0.name) }
     // Android apps are shared libraries the Kotlin host loads (`lib<Name>.so`); the library's
     // `main` (from `@main`) registers the app's scenes. Same sources as the macOS Demo.
     package.targets += [.target(name: "DemoAndroid", dependencies: ["SwiftUI"])]

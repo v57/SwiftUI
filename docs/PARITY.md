@@ -6,17 +6,20 @@ Behaviour and update counts are checked against **real SwiftUI**, not against ou
 
 1. `Parity/Scenarios/*.swift` contains scenarios: a root view plus scripted model mutations. The
    directory is symlinked into two targets:
-   * `ParityScenariosSwiftUI` — compiled against Apple's SwiftUI,
+   * `AppleParityScenarios` in the `AppleSwiftUI/` package — compiled against Apple's SwiftUI,
    * `ParityScenarios` — compiled against this SwiftUI.
-   Files just `import SwiftUI`: each target's dependencies decide which framework that is, so
-   **the same source** runs on both, unchanged.
+   Files just `import SwiftUI`: each target's package decides which framework that is, so
+   **the same source** runs on both, unchanged. The Apple targets need their own package: SwiftPM
+   puts all modules of a build on one search path ahead of the SDK, so next to this package's
+   `SwiftUI` module their `import SwiftUI` would resolve to it.
 2. View code reports work through `Probe`:
    * `let _ = Probe.body("Name")` inside `body` → `body.Name`,
    * `.probeLayout("name")` wraps a view in a transparent `Layout` that counts
      `layout.name.sizeThatFits` / `layout.name.place` (the only way to observe layout inside
      Apple's SwiftUI).
-3. `swift run parity-recorder` hosts each scenario in an `NSHostingView` (400×600, offscreen),
-   applies each step, pumps the run loop, and writes `Parity/Golden/swiftui-golden.json`.
+3. `swift run --package-path AppleSwiftUI parity-recorder` hosts each scenario in an
+   `NSHostingView` (400×600, offscreen), applies each step, pumps the run loop, and writes
+   `Parity/Golden/swiftui-golden.json`.
 4. `ParityTests` runs the same scenarios on the headless backend and compares:
    * `body.*` must be **equal** (fewer = a missed update, more = wasted work),
    * `layout.*` must be **≤** SwiftUI's (SwiftUI is allowed to do less layout work).
@@ -28,12 +31,13 @@ Behaviour and update counts are checked against **real SwiftUI**, not against ou
 1. Add views/models and a `ParityScenario` to `Parity/Scenarios/Scenarios.swift`
    (only API both frameworks have; `Layout` methods must stay nonisolated).
 2. Add its name to `scenarioNames` in `Tests/ParityTests/ParityTests.swift`.
-3. `swift run parity-recorder` (re-record on new macOS releases, commit the JSON).
+3. `swift run --package-path AppleSwiftUI parity-recorder` (re-record on new macOS releases,
+   commit the JSON).
 4. `swift test --filter ParityTests`.
 
 ## Findings so far (macOS 27.0.1)
 
-* Body counts of all 11 scenarios match exactly.
+* Body counts of all 12 scenarios match exactly.
 * Apple SwiftUI keeps overlay *content* changes inside the overlay (plus one re-placement of the
   primary view), but re-lays out the whole enclosing stack for: background content changes,
   structural changes inside an overlay (`if` in the overlay builder), fixed-frame content changes
@@ -42,8 +46,8 @@ Behaviour and update counts are checked against **real SwiftUI**, not against ou
 
 ## The reference app
 
-`Sources/ReferenceApp` (`swift run ReferenceApp`) is a large SwiftUI app covering state, observation,
-layout, custom layouts, overlays, identity, lists/navigation, forms, environment, animation,
-preferences, text, presentations, async and a 1000-row performance lab, with a live body-evaluation
-panel. Porting milestone: compile it against SwiftUI (swap the import) and promote each screen's
-interactions into parity scenarios.
+`Sources/ReferenceApp` (`swift run --package-path AppleSwiftUI ReferenceApp`) is a large SwiftUI
+app covering state, observation, layout, custom layouts, overlays, identity, lists/navigation,
+forms, environment, animation, preferences, text, presentations, async and a 1000-row performance
+lab, with a live body-evaluation panel. `swift run ReferenceApp2` runs the same sources, unchanged, on this SwiftUI. Next: promote
+each screen's interactions into parity scenarios.
