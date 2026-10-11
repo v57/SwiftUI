@@ -56,9 +56,12 @@ Set `AppRuntime.runner` to a function that opens one platform window per `Window
 
 ## Platform notes
 
-* **Combine**: on Linux/Windows/Android `Combine` does not exist; `_SwiftUICore` compiles
-  `State/CombineShim.swift` instead (`ObservableObject`, `@Published`, `AnyCancellable`). On macOS
-  you can check it builds with `swift build --scratch-path .build/shim -Xswiftc -DSWIFTUI_COMBINE_SHIM`.
+* **Combine**: on Linux/Windows/Android the package's `Combine` stand-in (vendored OpenCombine,
+  `Sources/Combine`) provides it, so app code keeps `import Combine`. Without any Combine module,
+  `_SwiftUICore` compiles `State/CombineShim.swift` instead (`ObservableObject`, `@Published`,
+  `AnyCancellable`). On macOS you can check the shim builds with
+  `swift build --scratch-path .build/shim -Xswiftc -DSWIFTUI_COMBINE_SHIM --target _SwiftUICore` (only the
+  core: AppKit brings in the real Combine, which makes `ObservableObject` ambiguous in SwiftUIAppKit).
 * **CoreGraphics types**: `CGFloat/CGSize/CGPoint/CGRect` come from Foundation on non-Apple
   platforms; sources import `CoreGraphics` conditionally.
 * **Observation** ships with the Swift toolchain on all platforms.

@@ -16,7 +16,7 @@ less. Both claims are verified against Apple's SwiftUI by the parity harness (`d
 └────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ SwiftUIGraph ───────────┐   ┌─ backends (RenderBackend + PlatformServices) ───────┐
 │ Attribute, Subgraph,      │   │ SwiftUIAppKit  · SwiftUIHeadless (tests)          │
-│ push-dirty / pull / cutoff│   │ SwiftUIGtk · SwiftUIWinUI · SwiftUIAndroid (todo) │
+│ push-dirty / pull / cutoff│   │ SwiftUIGtk · SwiftUIWinUI · SwiftUIAndroid        │
 └───────────────────────────┘   └──────────────────────────────────────────────────────┘
 ```
 
