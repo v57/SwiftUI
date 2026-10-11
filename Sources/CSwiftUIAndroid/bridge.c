@@ -235,11 +235,11 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *javaVM, void *reserved) {
     vm = javaVM;
     redirectOutput();
     JNIEnv *e = env();
-    jclass native = (*e)->FindClass(e, "org/swiftui/Native");
+    jclass native = (*e)->FindClass(e, "dev/v57/swiftui/Native");
     if (!native) { check(e); return JNI_VERSION_1_6; }
     static const JNINativeMethod methods[] = {
         {"runMain", "(Ljava/lang/String;)Z", (void *)runMain},
-        {"createHost", "(Lorg/swiftui/HostView;FI)J", (void *)createHost},
+        {"createHost", "(Ldev/v57/swiftui/HostView;FI)J", (void *)createHost},
         {"destroyHost", "(J)V", (void *)destroyHost},
         {"setSize", "(JFF)V", (void *)setSize},
         {"setInsets", "(JFFFF)V", (void *)setInsets},
@@ -250,16 +250,16 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *javaVM, void *reserved) {
     };
     (*e)->RegisterNatives(e, native, methods, sizeof methods / sizeof methods[0]);
     check(e);
-    hostViewClass = (*e)->NewGlobalRef(e, (*e)->FindClass(e, "org/swiftui/HostView"));
+    hostViewClass = (*e)->NewGlobalRef(e, (*e)->FindClass(e, "dev/v57/swiftui/HostView"));
     applyMethod = (*e)->GetMethodID(e, hostViewClass, "apply", "(Ljava/nio/ByteBuffer;)V");
     requestFrameMethod = (*e)->GetMethodID(e, hostViewClass, "requestFrame", "()V");
     platformMethod = (*e)->GetMethodID(e, hostViewClass, "platform", "(ILjava/lang/String;)Ljava/lang/String;");
-    textMeasureClass = (*e)->NewGlobalRef(e, (*e)->FindClass(e, "org/swiftui/TextMeasure"));
+    textMeasureClass = (*e)->NewGlobalRef(e, (*e)->FindClass(e, "dev/v57/swiftui/TextMeasure"));
     measureMethod = (*e)->GetStaticMethodID(e, textMeasureClass, "measure", "(Ljava/nio/ByteBuffer;F[F)V");
     measureOut = (*e)->NewGlobalRef(e, (*e)->NewFloatArray(e, 4));
-    pathsClass = (*e)->NewGlobalRef(e, (*e)->FindClass(e, "org/swiftui/Paths"));
+    pathsClass = (*e)->NewGlobalRef(e, (*e)->FindClass(e, "dev/v57/swiftui/Paths"));
     pathOpMethod = (*e)->GetStaticMethodID(e, pathsClass, "op", "(Ljava/nio/ByteBuffer;IZ)[B");
-    imagesClass = (*e)->NewGlobalRef(e, (*e)->FindClass(e, "org/swiftui/Images"));
+    imagesClass = (*e)->NewGlobalRef(e, (*e)->FindClass(e, "dev/v57/swiftui/Images"));
     decodeMethod = (*e)->GetStaticMethodID(e, imagesClass, "decode", "(Ljava/nio/ByteBuffer;[I)I");
     releaseImageMethod = (*e)->GetStaticMethodID(e, imagesClass, "release", "(I)V");
     imageSizeOut = (*e)->NewGlobalRef(e, (*e)->NewIntArray(e, 2));

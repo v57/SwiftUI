@@ -3,7 +3,7 @@
 # profileable build): Android/scripts/dump <package> <out.tree>
 D="$(dirname "$0")/device"
 "$D" logcat -c
-"$D" shell am broadcast -a org.swiftui.DUMP -p "$1" >/dev/null
+"$D" shell am broadcast -a dev.v57.swiftui.DUMP -p "$1" >/dev/null
 sleep 1
 "$D" logcat -d -s SwiftUIDump:I | sed 's/^.*SwiftUIDump: //' > "$2"
 tail -1 "$2"

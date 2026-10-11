@@ -1,4 +1,4 @@
-package org.swiftui
+package dev.v57.swiftui
 
 import android.app.Activity
 import android.content.pm.PackageManager
@@ -9,7 +9,7 @@ import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 
 /**
- * Runs a SwiftUI app: loads the Swift library named by the `org.swiftui.library` meta-data,
+ * Runs a SwiftUI app: loads the Swift library named by the `dev.v57.swiftui.library` meta-data,
  * runs its `@main` App (which registers the scenes) and shows the launch scene in a [HostView].
  */
 open class SwiftUIActivity : Activity() {
@@ -43,7 +43,7 @@ open class SwiftUIActivity : Activity() {
             invalidateOptionsMenu()
         }
         setContentView(hostView)
-        // Debugging: `am start --ei org.swiftui.dump <ms>` logs the view tree (tag SwiftUIDump).
+        // Debugging: `am start --ei dev.v57.swiftui.dump <ms>` logs the view tree (tag SwiftUIDump).
         val dumpDelay = intent.getIntExtra(EXTRA_DUMP, -1)
         if (dumpDelay >= 0) hostView.postDelayed({ hostView.dump() }, dumpDelay.toLong())
         if (android.os.Build.VERSION.SDK_INT >= 33) {
@@ -82,14 +82,14 @@ open class SwiftUIActivity : Activity() {
         hostView.configurationChanged(newConfig)
     }
 
-    /** Debugging: `am broadcast -a org.swiftui.DUMP -p <package>` logs the view tree. */
+    /** Debugging: `am broadcast -a dev.v57.swiftui.DUMP -p <package>` logs the view tree. */
     private val dumpReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: android.content.Intent) = hostView.dump()
     }
 
     override fun onResume() {
         super.onResume()
-        val filter = android.content.IntentFilter("org.swiftui.DUMP")
+        val filter = android.content.IntentFilter("dev.v57.swiftui.DUMP")
         if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(dumpReceiver, filter, RECEIVER_EXPORTED)
         else registerReceiver(dumpReceiver, filter)
     }
@@ -112,11 +112,11 @@ open class SwiftUIActivity : Activity() {
     }
 
     companion object {
-        const val META_LIBRARY = "org.swiftui.library"
+        const val META_LIBRARY = "dev.v57.swiftui.library"
         const val BACK = "navigation.back"
         /** Index of the scene to show (default: the one that opens at launch). */
-        const val EXTRA_SCENE = "org.swiftui.scene"
-        const val EXTRA_DUMP = "org.swiftui.dump"
+        const val EXTRA_SCENE = "dev.v57.swiftui.scene"
+        const val EXTRA_DUMP = "dev.v57.swiftui.dump"
         private var started = false
         internal const val TAG = "SwiftUI"
 

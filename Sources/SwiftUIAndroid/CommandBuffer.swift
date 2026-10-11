@@ -2,7 +2,7 @@
 import Foundation
 import _SwiftUICore
 
-/// Little-endian byte stream shared with the Kotlin host (`org.swiftui.Commands` reads it).
+/// Little-endian byte stream shared with the Kotlin host (`dev.v57.swiftui.Commands` reads it).
 /// Render changes of one commit are batched into one buffer and applied with a single JNI call.
 struct ByteWriter {
     private(set) var bytes: [UInt8] = []
@@ -65,7 +65,7 @@ struct ByteWriter {
     }
 }
 
-/// Render commands (the opcodes `org.swiftui.HostView.apply` understands).
+/// Render commands (the opcodes `dev.v57.swiftui.HostView.apply` understands).
 enum Op: UInt8 {
     case create = 1, destroy, frame, children, content, presentation, accessibility
 }

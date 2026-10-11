@@ -8,12 +8,12 @@
         <!-- simpleperf / Perfetto can profile release builds. -->
         <profileable android:shell="true" />
         <activity
-            android:name="org.swiftui.SwiftUIActivity"
+            android:name="dev.v57.swiftui.SwiftUIActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode|locale|layoutDirection|fontScale"
             android:windowSoftInputMode="adjustResize">
             <!-- The Swift app library (lib<name>.so) whose @main App runs in this activity. -->
-            <meta-data android:name="org.swiftui.library" android:value="${swiftLibrary}" />
+            <meta-data android:name="dev.v57.swiftui.library" android:value="${swiftLibrary}" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

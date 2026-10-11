@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "org.swiftui"
+    namespace = "dev.v57.swiftui"
     compileSdk = 36
     defaultConfig {
         minSdk = 28

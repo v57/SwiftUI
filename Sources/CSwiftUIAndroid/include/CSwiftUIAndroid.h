@@ -1,5 +1,5 @@
-// JNI glue between the Swift backend (SwiftUIAndroid) and the Kotlin host (org.swiftui).
-// Swift calls the sui_* functions; Kotlin's `org.swiftui.Native` methods call the swiftui_*
+// JNI glue between the Swift backend (SwiftUIAndroid) and the Kotlin host (dev.v57.swiftui).
+// Swift calls the sui_* functions; Kotlin's `dev.v57.swiftui.Native` methods call the swiftui_*
 // functions that Swift exports with @_cdecl. Everything runs on the Android main thread.
 #pragma once
 #ifdef __ANDROID__

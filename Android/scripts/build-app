@@ -49,7 +49,7 @@ echo "Staged: $(ls "$JNI" | tr '\n' ' ')"
 cd "$ROOT/Android"
 TASK=assembleDebug; VARIANT=debug
 [ "$CONFIG" = release ] && TASK=assembleRelease && VARIANT=release
-[ -n "$APP_ID" ] || APP_ID="org.swiftui.$(echo "$PRODUCT" | tr 'A-Z' 'a-z' | tr -cd 'a-z0-9')"
+[ -n "$APP_ID" ] || APP_ID="dev.v57.swiftui.$(echo "$PRODUCT" | tr 'A-Z' 'a-z' | tr -cd 'a-z0-9')"
 [ -n "$LABEL" ] || LABEL="$PRODUCT"
 gradle -q ":$MODULE:$TASK" -PswiftLibrary="$PRODUCT" -PappId="$APP_ID" -PappLabel="$LABEL"
 APK="$ROOT/Android/$MODULE/build/outputs/apk/$VARIANT/$MODULE-$VARIANT.apk"
@@ -59,4 +59,4 @@ SERIAL="${ANDROID_SERIAL:-$($ADB devices | awk 'NR>1 && $2=="device" && $1 !~ /^
 [ -n "$SERIAL" ] || { echo "No physical Android device connected (adb devices)." >&2; exit 1; }
 $ADB -s "$SERIAL" install -r "$APK"
 $ADB -s "$SERIAL" shell input keyevent KEYCODE_WAKEUP
-$ADB -s "$SERIAL" shell am start -S -n "$APP_ID/org.swiftui.SwiftUIActivity" $START_ARGS
+$ADB -s "$SERIAL" shell am start -S -n "$APP_ID/dev.v57.swiftui.SwiftUIActivity" $START_ARGS

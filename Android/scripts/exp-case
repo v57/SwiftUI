@@ -9,7 +9,7 @@ CASE="$1"; OUT=/tmp/sui2; mkdir -p "$OUT"
 D="$ROOT/Android/scripts/device"
 "$D" shell input keyevent KEYCODE_WAKEUP; "$D" shell wm dismiss-keyguard
 "$D" logcat -c
-"$D" shell am start -S -n org.swiftui.expandroid/org.swiftui.SwiftUIActivity -e env.EXP_CASE "$CASE" --ei org.swiftui.dump 2500 >/dev/null
+"$D" shell am start -S -n dev.v57.swiftui.expandroid/dev.v57.swiftui.SwiftUIActivity -e env.EXP_CASE "$CASE" --ei dev.v57.swiftui.dump 2500 >/dev/null
 sleep 4
 "$D" shot "$OUT/$CASE-android.png"
 "$D" logcat -d -s SwiftUI.stdout:I | sed -n 's/.*PROBE /PROBE /p' > "$OUT/$CASE-android.probes"

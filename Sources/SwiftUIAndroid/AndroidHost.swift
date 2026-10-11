@@ -3,7 +3,7 @@ import Foundation
 import CSwiftUIAndroid
 import _SwiftUICore
 
-/// Hosts one view graph in an `org.swiftui.HostView`. Like the AppKit host, graph updates are
+/// Hosts one view graph in an `dev.v57.swiftui.HostView`. Like the AppKit host, graph updates are
 /// coalesced (one per main-loop turn, or synchronously at the end of an input event so the next
 /// frame shows its effect), and animations are driven by Choreographer frame callbacks.
 @MainActor

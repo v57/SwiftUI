@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "SwiftUIAndroid"
-// The host library (org.swiftui) and the demo app; app modules package one Swift app library.
+// The host library (dev.v57.swiftui) and the demo app; app modules package one Swift app library.
 include(":swiftui", ":demo")

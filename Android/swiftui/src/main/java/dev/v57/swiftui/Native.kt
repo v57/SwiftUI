@@ -1,4 +1,4 @@
-package org.swiftui
+package dev.v57.swiftui
 
 /** Kotlin → Swift calls (registered by the Swift library's JNI_OnLoad; see CSwiftUIAndroid.h). */
 object Native {

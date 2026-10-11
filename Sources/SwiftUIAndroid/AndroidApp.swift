@@ -4,7 +4,7 @@ import CSwiftUIAndroid
 import _SwiftUICore
 
 /// Runs an `App` on Android. The activity owns the main loop: `App.main()` (called by the host
-/// through the library's `main`) only registers the scenes; `org.swiftui.SwiftUIActivity` then
+/// through the library's `main`) only registers the scenes; `dev.v57.swiftui.SwiftUIActivity` then
 /// creates a host for the scene that opens at launch.
 @MainActor
 public enum AndroidAppRunner {
