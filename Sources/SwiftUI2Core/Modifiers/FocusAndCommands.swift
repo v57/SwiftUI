@@ -192,6 +192,18 @@ public struct PasteboardWriter: @unchecked Sendable {
 
 struct PasteboardWriterKey: EnvironmentKey { static let defaultValue = PasteboardWriter { _ in } }
 
+/// The system pasteboard for code outside a view, e.g. a "copy" helper (SwiftUI2 extension; SwiftUI
+/// apps use `NSPasteboard`/`UIPasteboard`). Writes go through the most recently created view graph's backend.
+@MainActor
+public final class Pasteboard {
+    public static let general = Pasteboard()
+    weak var backend: (any RenderBackend)?
+
+    /// Replaces the pasteboard's contents with items (strings, URLs, images…).
+    public func setItems(_ items: [Any]) { backend?.writeToPasteboard(items) }
+    public func setString(_ string: String) { setItems([string]) }
+}
+
 extension EnvironmentValues {
     public var _pasteboard: PasteboardWriter {
         get { self[PasteboardWriterKey.self] }

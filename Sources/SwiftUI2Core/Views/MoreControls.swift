@@ -374,15 +374,19 @@ extension LabelStyle where Self == IconOnlyLabelStyle { public static var iconOn
 struct AnyLabelStyleBox {
     let make: @MainActor (LabelStyleConfiguration) -> AnyView
     let identity: ObjectIdentifier
+    /// The style value: a style whose properties change (e.g. `TabStyle(selected:)`) is a new style.
+    nonisolated(unsafe) let style: Any
 }
 
 extension AnyLabelStyleBox: _GraphComparable {
-    nonisolated static func _isIdentical(_ lhs: AnyLabelStyleBox, _ rhs: AnyLabelStyleBox) -> Bool { lhs.identity == rhs.identity }
+    nonisolated static func _isIdentical(_ lhs: AnyLabelStyleBox, _ rhs: AnyLabelStyleBox) -> Bool {
+        lhs.identity == rhs.identity && GraphComparison.compareAny(lhs.style, rhs.style)
+    }
 }
 
 extension View {
     public func labelStyle<S: LabelStyle>(_ style: S) -> some View {
-        environment(\.labelStyleBox, AnyLabelStyleBox(make: { AnyView(style.makeBody(configuration: $0)) }, identity: ObjectIdentifier(S.self)))
+        environment(\.labelStyleBox, AnyLabelStyleBox(make: { AnyView(style.makeBody(configuration: $0)) }, identity: ObjectIdentifier(S.self), style: style))
     }
 }
 

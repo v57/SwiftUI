@@ -101,13 +101,15 @@ extension PrimitiveButtonStyle where Self == LinkButtonStyle { public static var
 struct AnyButtonStyleBox {
     let make: @MainActor (_ action: @escaping @MainActor () -> Void, _ label: AnyView, _ role: ButtonRole?) -> AnyView
     let identity: ObjectIdentifier
+    /// The style value: a style whose properties change (e.g. `TabStyle(selected:)`) is a new style.
+    nonisolated(unsafe) let style: Any
 }
 
 struct CustomButtonStyleKey: EnvironmentKey { static let defaultValue: AnyButtonStyleBox? = nil }
 
 extension AnyButtonStyleBox: _GraphComparable {
     nonisolated static func _isIdentical(_ lhs: AnyButtonStyleBox, _ rhs: AnyButtonStyleBox) -> Bool {
-        lhs.identity == rhs.identity
+        lhs.identity == rhs.identity && GraphComparison.compareAny(lhs.style, rhs.style)
     }
 }
 
@@ -127,7 +129,7 @@ extension View {
             } else {
                 environment.customButtonStyle = AnyButtonStyleBox(make: { action, label, role in
                     AnyView(style.makeBody(configuration: PrimitiveButtonStyleConfiguration(role: role, label: .init(content: label), action: action)))
-                }, identity: ObjectIdentifier(S.self))
+                }, identity: ObjectIdentifier(S.self), style: style)
             }
         }
     }
@@ -135,7 +137,7 @@ extension View {
     public func buttonStyle<S: ButtonStyle>(_ style: S) -> some View {
         environment(\.customButtonStyle, AnyButtonStyleBox(make: { action, label, role in
             AnyView(_PressableButton(style: style, action: action, label: label, role: role))
-        }, identity: ObjectIdentifier(S.self)))
+        }, identity: ObjectIdentifier(S.self), style: style))
     }
 }
 
@@ -478,10 +480,14 @@ extension ToggleStyle where Self == ButtonToggleStyle { public static var button
 struct AnyToggleStyleBox {
     let make: @MainActor (ToggleStyleConfiguration) -> AnyView
     let identity: ObjectIdentifier
+    /// The style value: a style whose properties change (e.g. `TabStyle(selected:)`) is a new style.
+    nonisolated(unsafe) let style: Any
 }
 
 extension AnyToggleStyleBox: _GraphComparable {
-    nonisolated static func _isIdentical(_ lhs: AnyToggleStyleBox, _ rhs: AnyToggleStyleBox) -> Bool { lhs.identity == rhs.identity }
+    nonisolated static func _isIdentical(_ lhs: AnyToggleStyleBox, _ rhs: AnyToggleStyleBox) -> Bool {
+        lhs.identity == rhs.identity && GraphComparison.compareAny(lhs.style, rhs.style)
+    }
 }
 
 struct CustomToggleStyleKey: EnvironmentKey { static let defaultValue: AnyToggleStyleBox? = nil }
@@ -500,7 +506,7 @@ extension View {
                 environment.toggleStyle = kind
                 environment.customToggleStyle = nil
             } else {
-                environment.customToggleStyle = AnyToggleStyleBox(make: { AnyView(style.makeBody(configuration: $0)) }, identity: ObjectIdentifier(S.self))
+                environment.customToggleStyle = AnyToggleStyleBox(make: { AnyView(style.makeBody(configuration: $0)) }, identity: ObjectIdentifier(S.self), style: style)
             }
         }
     }

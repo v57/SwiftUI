@@ -168,11 +168,22 @@ final class LayoutEngineComputer<L: Layout>: LayoutComputer {
         LayoutSubviews(elements: children.enumerated().map { LayoutSubview(computer: $1, index: $0, recorder: nil, traits: traits[$0]) })
     }
 
+    /// The proposal of the layout's latest `sizeThatFits` call (sizes are memoized per proposal).
+    private var sizedProposal: ProposedViewSize?
+
     override func computeSize(_ proposal: ProposedViewSize) -> CGSize {
-        layout.sizeThatFits(proposal: proposal, subviews: subviews, cache: &cacheBox.cache!)
+        sizedProposal = proposal
+        return layout.sizeThatFits(proposal: proposal, subviews: subviews, cache: &cacheBox.cache!)
     }
 
     func place(in geometry: ViewGeometry) -> Placements {
+        // Layouts may keep proposal-dependent results in their cache for `placeSubviews` (e.g. a
+        // grid's column count). When probes with other proposals ran after the placement proposal
+        // was sized (its size then comes from the memo), size it again so the cache matches.
+        if sizedProposal != geometry.proposal {
+            sizedProposal = geometry.proposal
+            _ = layout.sizeThatFits(proposal: geometry.proposal, subviews: subviews, cache: &cacheBox.cache!)
+        }
         let recorder = PlacementRecorder(count: children.count)
         let recordingSubviews = LayoutSubviews(elements: children.enumerated().map {
             LayoutSubview(computer: $1, index: $0, recorder: recorder, traits: traits[$0])
