@@ -7,3 +7,5 @@ Ports/
 *.md
 .build-android/
 .build-linux/
+CLAUDE.md
+/.claude
