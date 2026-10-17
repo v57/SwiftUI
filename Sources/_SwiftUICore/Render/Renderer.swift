@@ -440,6 +440,7 @@ public final class Renderer {
     public func commit() {
         let now = clock()
         completionGroup = nil
+        backend.willCommit()
         let movedContent = !needsChildSync.isEmpty || !removed.isEmpty || pending.contains { $0.needsFrame }
 
         // 0. Removals: top-level removed platform views may stay as "ghosts" while a removal
@@ -625,6 +626,7 @@ public final class Renderer {
     /// Advances running animations. Returns true while animations remain.
     @discardableResult
     public func tick(at now: Double) -> Bool {
+        backend.willCommit()
         var resync: [ObjectIdentifier: RenderNode] = [:]
         for (key, node) in animating {
             guard let handle = node.handle else {

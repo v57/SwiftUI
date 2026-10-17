@@ -8,7 +8,7 @@ import _SwiftUICore
 @MainActor
 open class GraphHostingView: NSView {
     public private(set) var graph: ViewGraph!
-    private var backend: AppKitBackend!
+    private(set) var backend: AppKitBackend!
     private var updateScheduled = false
     private var observer: CFRunLoopObserver?
 

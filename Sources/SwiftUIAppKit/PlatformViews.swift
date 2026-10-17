@@ -202,7 +202,7 @@ class FlippedView: NSView {
     }
 }
 
-final class TextNodeView: FlippedView, PlatformNodeView {
+class TextNodeView: FlippedView, PlatformNodeView {
     private var string = NSAttributedString()
     private var resolved: ResolvedText?
     private var fittedWidth: CGFloat?
@@ -356,13 +356,16 @@ final class TextNodeView: FlippedView, PlatformNodeView {
         if link(at: convert(event.locationInWindow, from: nil)) == nil { super.mouseDown(with: event) }
     }
 
-    override func resetCursorRects() {
+    fileprivate func addLinkCursorRects() {
         guard hasLinks else { return }
-        string.enumerateAttribute(.link, in: NSRange(location: 0, length: string.length)) { value, range, _ in
-            guard value != nil else { return }
-            addCursorRect(bounds, cursor: .pointingHand)
-        }
+        addCursorRect(bounds, cursor: .pointingHand)
     }
+}
+
+/// Text with links: the pointing-hand cursor over it. Only views that override `resetCursorRects`
+/// take part in AppKit's cursor-rect passes (which run as content scrolls), so plain text doesn't.
+final class LinkTextNodeView: TextNodeView {
+    override func resetCursorRects() { addLinkCursorRects() }
 }
 
 final class ColorNodeView: FlippedView, PlatformNodeView {
@@ -1076,7 +1079,15 @@ final class MaskSourceNodeView: FlippedView, PlatformNodeView {
     func apply(_ content: RenderContent, backend: AppKitBackend) {}
 }
 
-final class EffectNodeView: FlippedView, PlatformNodeView {
+/// An effect with a pointer style (`pointerStyle`): the only effect views with cursor rects.
+final class PointerEffectNodeView: EffectNodeView {
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addPointerCursorRects()
+    }
+}
+
+class EffectNodeView: FlippedView, PlatformNodeView {
     private var isTapTarget = false
 
     // MARK: Focus (`focusable`)
@@ -1104,11 +1115,10 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
 
     // MARK: Pointer (`pointerStyle`, `pointerVisibility`)
 
-    private var pointerStyle: PointerStyle?
+    fileprivate var pointerStyle: PointerStyle?
     private var hidesPointer = false
 
-    override func resetCursorRects() {
-        super.resetCursorRects()
+    fileprivate func addPointerCursorRects() {
         if let pointerStyle { addCursorRect(bounds, cursor: Self.cursor(pointerStyle)) }
     }
 

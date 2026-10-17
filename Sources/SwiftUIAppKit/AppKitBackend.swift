@@ -26,7 +26,7 @@ public final class AppKitBackend: RenderBackend {
     private func makeNodeView(for node: RenderNode) -> AnyObject {
         let view: NSView & PlatformNodeView
         switch node.content {
-        case .text: view = TextNodeView()
+        case .text(let text): view = text.link != nil || text.runs.contains { $0.link != nil } ? LinkTextNodeView() : TextNodeView()
         case .color: view = ColorNodeView()
         case .shape: view = ShapeNodeView()
         case .image: view = ImageNodeView()
@@ -36,6 +36,7 @@ public final class AppKitBackend: RenderBackend {
         case .slider: view = SliderNodeView()
         case .scrollView: view = ScrollNodeView()
         case .effect(.maskSource): view = MaskSourceNodeView()
+        case .effect(.pointer): view = PointerEffectNodeView()
         case .effect, .empty: view = EffectNodeView()
         case .datePicker: view = DatePickerNodeView()
         case .colorWell: view = ColorWellNodeView()
@@ -53,8 +54,12 @@ public final class AppKitBackend: RenderBackend {
     }
 
     public func setFrame(of view: AnyObject, node: RenderNode) {
+        if commitDepth == 0 { framesOutsideCommit += 1 }
         withoutImplicitAnimations { (view as! NSView).frame = node.frame }
     }
+
+    /// Frame changes made outside a commit's transaction (each would flush AppKit's display cycle).
+    private(set) var framesOutsideCommit = 0
 
     public func setPresentation(of view: AnyObject, node: RenderNode) {
         withoutImplicitAnimations { (view as? FlippedView)?.applyPresentation(node.presentation) }
@@ -67,10 +72,27 @@ public final class AppKitBackend: RenderBackend {
         (view as? FlippedView)?.applyAccessibility(node.accessibility)
     }
 
+    // One Core Animation transaction per commit or animation frame. Each backend call also opens a
+    // (then nested, so cheap) transaction to turn implicit animations off; on its own, committing one
+    // flushed AppKit's display cycle, which walks every view's tracking areas and cursor rects, once
+    // per moved view.
+    private var commitDepth = 0
+
+    public func willCommit() {
+        if commitDepth == 0 {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+        }
+        commitDepth += 1
+    }
+
     public func didCommit() {
         withoutImplicitAnimations {
             for view in maskedViews.allObjects { view.refreshMask() }
         }
+        guard commitDepth > 0 else { return }
+        commitDepth -= 1
+        if commitDepth == 0 { CATransaction.commit() }
     }
 
     public func setChildren(of view: AnyObject, node: RenderNode, to children: [AnyObject]) {

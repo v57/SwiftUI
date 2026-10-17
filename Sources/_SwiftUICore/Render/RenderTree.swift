@@ -342,6 +342,9 @@ public protocol RenderBackend: PlatformServices {
     func readPasteboard() -> [NSItemProvider]
     /// Decodes image data (PNG, JPEG, ...) into a platform image.
     func decodeImage(_ data: Data, scale: CGFloat) -> PlatformImage?
+    /// Called before the renderer applies a batch of changes (a commit or an animation frame); every
+    /// call until `didCommit()` belongs to it (AppKit opens one Core Animation transaction for it).
+    func willCommit()
     /// Called after the renderer applied a batch of changes (e.g. to refresh view masks).
     func didCommit()
     /// Applies `node.accessibility` to the node's view.
@@ -359,6 +362,7 @@ extension RenderBackend {
     public func performHapticFeedback(_ feedback: SensoryFeedback) {}
     public func decodeImage(_ data: Data, scale: CGFloat) -> PlatformImage? { nil }
     public func readPasteboard() -> [NSItemProvider] { [] }
+    public func willCommit() {}
     public func didCommit() {}
     public func updateAccessibility(of view: AnyObject, node: RenderNode) {}
     public func presentFileDialog(_ request: FileDialogRequest, completion: @escaping @MainActor ([URL]?) -> Void) {

@@ -1,6 +1,7 @@
 #if canImport(AppKit)
 import AppKit
 import Testing
+import Observation
 @testable import SwiftUIAppKit
 import SwiftUI
 
@@ -49,6 +50,31 @@ struct AppKitBackendTests {
             if case .text(let text) = node.content { return text.string == "count 1" }
             return false
         })
+    }
+
+    @Observable final class Heights { var first: CGFloat = 20 }
+
+    /// A commit's view changes go in one Core Animation transaction: on its own, each frame change
+    /// committed a transaction, which flushed AppKit's display cycle (a walk of every view's
+    /// tracking areas and cursor rects) once per moved view.
+    @Test func commitsChangeViewsInOneTransaction() throws {
+        let heights = Heights()
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 300, height: 400), styleMask: [.titled], backing: .buffered, defer: true)
+        let host = NSHostingView(rootView: ScrollView {
+            VStack(spacing: 0) {
+                Color.red.frame(height: heights.first)
+                ForEach(0..<200, id: \.self) { Text("row \($0)").frame(height: 20) }
+            }
+        })
+        window.contentView = host
+        host.frame = CGRect(x: 0, y: 0, width: 300, height: 400)
+        heights.first = 60
+        host.graph.update()
+        // Every row moved; none outside the commit's transaction.
+        #expect(host.backend.framesOutsideCommit == 0)
+        #expect(host.graph.tracer.counters[.renderFrame] >= 200)
+        // Plain text has no cursor rects; text with links does.
+        #expect(!descendants(of: host).contains { $0 is LinkTextNodeView })
     }
 
     @Test func colorEffectsAndTransformsReachTheLayers() throws {
