@@ -53,7 +53,13 @@ public struct ScrollView<Content: View>: View {
             ))
         }
         var actions = RenderActions()
-        actions.scrolled = { point in offset.setValue(point) }
+        let host = inputs.host
+        let scrollNode = _RenderNodeRef()
+        actions.scrolled = { point in
+            scrollNode.node?.contentOffset = point
+            host.hoverTracker.contentScrolled()
+            offset.setValue(point)
+        }
         actions.scrollPhase = { phase in
             let (observers, scrollGeometry) = AnyAttribute.withoutDependencies {
                 (environment.value.scrollPhaseObservers,
@@ -93,6 +99,7 @@ public struct ScrollView<Content: View>: View {
             }
         }
         let render = inputs.makePlatformNode(content: content, actions: actions, childOrigin: zero)
+        scrollNode.node = render.parent
         var contentInputs = inputs.child(geometry: contentGeometry, render: render)
         contentInputs.stackAxis = nil
         let scrollTransform = Attribute<CGPoint>(inputs.subgraph, isEqual: { $0 == $1 }) {
@@ -156,7 +163,6 @@ public struct ScrollView<Content: View>: View {
             ScrollViewComputer(axes: axes.value, margins: environment.value.scrollConfiguration.contentMargins, path: path, tracer: tracer, content: contentLayout.value)
         }
         // onScrollGeometryChange: observers get the live geometry after each update.
-        let host = inputs.host
         let geometryReporter = Attribute<ScrollGeometry>(inputs.subgraph, isEqual: { $0 == $1 }) {
             ScrollGeometry(contentOffset: offset.value, contentSize: contentGeometry.value.size, contentInsets: EdgeInsets(), containerSize: geometry.value.size)
         }
@@ -189,6 +195,7 @@ public struct ScrollView<Content: View>: View {
 }
 
 @MainActor final class _ScrollTargetsRef { weak var targets: ScrollTargets? }
+@MainActor final class _RenderNodeRef { weak var node: RenderNode? }
 
 /// Scroll views are flexible along their scrolling axes and take their content's size on the
 /// other axis (measured on macOS SwiftUI). Content changes affect the parent only when they change

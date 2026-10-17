@@ -1174,12 +1174,14 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
         hitShape = nil
         isMaskContainer = false
         isFocusable = false
+        let previousPointerStyle = pointerStyle
         pointerStyle = nil
         hidesPointer = false
-        toolTip = node?.actions.toolTip
+        if toolTip != node?.actions.toolTip { toolTip = node?.actions.toolTip }
         defer {
-            updateTrackingAreas()
-            window?.invalidateCursorRects(for: self)
+            updatePointerTracking()
+            // Cursor rects are the window's: invalidating them makes AppKit ask every view again.
+            if pointerStyle != previousPointerStyle { window?.invalidateCursorRects(for: self) }
         }
         updateDropRegistration()
         guard case .effect(let effect) = content else { return }
@@ -1257,38 +1259,32 @@ final class EffectNodeView: FlippedView, PlatformNodeView {
         return hit === self ? (registeredDropTypes.isEmpty && !isFocusable ? nil : self) : hit
     }
 
+    // Hover (`onHover`, `onContinuousHover`) is the hosting view's hover tracker's; a view only
+    // tracks the pointer itself to hide it (`pointerVisibility(.hidden)`).
     private var trackingArea: NSTrackingArea?
 
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let trackingArea { removeTrackingArea(trackingArea) }
-        guard node?.actions.hover != nil || hidesPointer else { return }
-        var options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect]
-        if node?.actions.hoverLocation != nil { options.insert(.mouseMoved) }
-        let area = NSTrackingArea(rect: bounds, options: options, owner: self)
-        addTrackingArea(area)
-        trackingArea = area
+    private func updatePointerTracking() {
+        if hidesPointer, trackingArea == nil {
+            let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+            addTrackingArea(area)
+            trackingArea = area
+        } else if !hidesPointer, let trackingArea {
+            removeTrackingArea(trackingArea)
+            self.trackingArea = nil
+            if pointerHidden { NSCursor.unhide(); pointerHidden = false }
+        }
     }
 
     private var pointerHidden = false
 
     override func mouseEntered(with event: NSEvent) {
+        guard event.trackingArea === trackingArea else { return super.mouseEntered(with: event) }
         if hidesPointer, !pointerHidden { NSCursor.hide(); pointerHidden = true }
-        node?.actions.hover?(true)
-        node?.actions.hoverLocation?(convert(event.locationInWindow, from: nil))
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        guard let hoverLocation = node?.actions.hoverLocation else { return super.mouseMoved(with: event) }
-        let point = convert(event.locationInWindow, from: nil)
-        FrameTrace.log("mouseMoved event=\(String(format: "%.4f", event.timestamp)) at=(\(Int(point.x)),\(Int(point.y)))")
-        hoverLocation(point)
     }
 
     override func mouseExited(with event: NSEvent) {
+        guard event.trackingArea === trackingArea else { return super.mouseExited(with: event) }
         if pointerHidden { NSCursor.unhide(); pointerHidden = false }
-        node?.actions.hover?(false)
-        node?.actions.hoverLocation?(nil)
     }
 
     private var handlesPointer: Bool { isTapTarget || node?.actions.pointer != nil || node?.actions.dragItem != nil }

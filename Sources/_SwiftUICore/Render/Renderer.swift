@@ -60,6 +60,8 @@ public final class RenderNode {
     public var handle: AnyObject?
     /// The children's views as last given to the backend (a container's), for incremental syncs.
     var syncedChildren: [AnyObject] = []
+    /// A scroll view's content offset, as last reported by the backend (hover hit testing).
+    public internal(set) var contentOffset = CGPoint.zero
 
     var targetContent: RenderContent = .empty
     var targetFrame: CGRect = .zero
@@ -337,6 +339,7 @@ public final class Renderer {
             removed.append((node, container, node.effectiveTransition, match))
         }
         node.isRemoved = true
+        hoverIndex[ObjectIdentifier(node)] = nil
         if node.kind == .platform { tracer.record(.renderRemove, node.path) }
         if let parent = node.parent {
             parent.children.removeAll { $0 === node }
@@ -368,7 +371,19 @@ public final class Renderer {
 
     func setActions(_ node: RenderNode, _ actions: RenderActions) {
         node.actions = actions
+        if actions.hover != nil || actions.hoverLocation != nil {
+            hoverIndex[ObjectIdentifier(node)] = node
+        } else {
+            hoverIndex[ObjectIdentifier(node)] = nil
+        }
     }
+
+    /// Nodes that react to hover: the only candidates hover hit testing visits.
+    private var hoverIndex: [ObjectIdentifier: RenderNode] = [:]
+    var hoverRegions: Dictionary<ObjectIdentifier, RenderNode>.Values { hoverIndex.values }
+    var hasHoverRegions: Bool { !hoverIndex.isEmpty }
+    /// Called after a commit that moved, added or removed views (hover is tested again at rest).
+    var onContentChange: (() -> Void)?
 
     func setAccessibility(_ node: RenderNode, _ properties: AccessibilityProperties) {
         node.accessibility = properties
@@ -395,6 +410,7 @@ public final class Renderer {
     public func commit() {
         let now = clock()
         completionGroup = nil
+        let movedContent = !needsChildSync.isEmpty || !removed.isEmpty || pending.contains { $0.needsFrame }
 
         // 0. Removals: top-level removed platform views may stay as "ghosts" while a removal
         //    transition runs.
@@ -529,6 +545,7 @@ public final class Renderer {
         }
 
         backend.didCommit()
+        if movedContent { onContentChange?() }
 
         if let completionGroup, completionGroup.remaining == 0 {
             for completion in completionGroup.completions { schedule(completion) }

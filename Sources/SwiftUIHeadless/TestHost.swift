@@ -21,6 +21,7 @@ public final class TestHost {
         graph.clock = { clock.time }
         graph.onNeedsUpdate = { [weak self] in self?.needsFlush = true }
         graph.onToolbarChange = { [weak self] in self?.showToolbar($0) }
+        installHoverWakeUps()
         flush()
     }
 
@@ -33,7 +34,57 @@ public final class TestHost {
         graph.clock = { clock.time }
         graph.onNeedsUpdate = { [weak self] in self?.needsFlush = true }
         graph.onToolbarChange = { [weak self] in self?.showToolbar($0) }
+        installHoverWakeUps()
         flush()
+    }
+
+    // MARK: Pointer (hover)
+
+    /// When the hover tracker asked to be woken (manual clock time).
+    public private(set) var hoverWakeUp: Double?
+
+    private func installHoverWakeUps() {
+        graph.hoverTracker.requestWakeUp = { [weak self] delay in
+            guard let self else { return }
+            let due = self.clock.time + delay
+            self.hoverWakeUp = min(self.hoverWakeUp ?? due, due)
+        }
+    }
+
+    /// Wakes the hover tracker when its delay passed (like the host's timer firing), then updates.
+    private func fireHoverWakeUp() {
+        guard let due = hoverWakeUp, clock.time + 1e-9 >= due else { return }
+        hoverWakeUp = nil
+        graph.hoverTracker.wake()
+        flush()
+    }
+
+    /// Moves the pointer to a point in root coordinates (a mouse-moved event).
+    public func movePointer(to point: CGPoint) {
+        graph.hoverTracker.pointerMoved(to: point)
+        flush()
+    }
+
+    /// Clicks at a point: hover is hit-tested at once (the click itself is not delivered).
+    public func pressPointer(at point: CGPoint) {
+        graph.hoverTracker.pointerPressed(at: point)
+        flush()
+    }
+
+    public func pointerExited() {
+        graph.hoverTracker.pointerExited()
+        flush()
+    }
+
+    /// Advances the clock in small steps without animation frames being required (lets the hover
+    /// tracker's wake-ups fire).
+    public func wait(_ seconds: Double) {
+        var remaining = seconds
+        while remaining > 1e-9 {
+            let step = min(remaining, 1.0 / 120)
+            advance(by: step)
+            remaining -= step
+        }
     }
 
     // MARK: Window toolbar
@@ -62,6 +113,7 @@ public final class TestHost {
         time = clock.time
         graph.renderAnimationFrame()
         toolbarGraph?.renderAnimationFrame()
+        fireHoverWakeUp()
     }
 
     /// Runs animation frames at 60 Hz until all animations finished (or `limit` seconds passed).
@@ -173,6 +225,19 @@ public final class TestHost {
         let scrollViews = allViews.filter { if case .scrollView = $0.content { return true } else { return false } }
         scrollViews[index].node?.actions.scrolled?(offset)
         flush()
+    }
+
+    /// Scrolls the `index`th scroll view by `delta` per frame for `frames` frames at 120 Hz, like a
+    /// trackpad scroll (the clock advances, so hover wake-ups may come due meanwhile).
+    public func scroll(by delta: CGPoint, frames: Int, scrollViewAt index: Int = 0) {
+        let scrollViews = allViews.filter { if case .scrollView = $0.content { return true } else { return false } }
+        guard let node = scrollViews[index].node else { return }
+        for _ in 0..<frames {
+            let offset = node.contentOffset
+            node.actions.scrolled?(CGPoint(x: offset.x + delta.x, y: offset.y + delta.y))
+            flush()
+            advance(by: 1.0 / 120)
+        }
     }
 
     /// Escape key: dismisses the top presentation.

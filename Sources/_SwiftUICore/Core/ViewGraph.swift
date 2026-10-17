@@ -11,6 +11,8 @@ public final class ViewGraph: AttributeGraphDelegate {
     public let graph = AttributeGraph()
     public let tracer = UpdateTracer()
     public let renderer: Renderer
+    /// Hover for every backend: hosts feed it the pointer (see `HoverTracker`).
+    public private(set) var hoverTracker: HoverTracker!
     let rootSubgraph: Subgraph
     private let proposal: Attribute<ProposedViewSize>
     private let environment: Attribute<EnvironmentValues>
@@ -30,7 +32,10 @@ public final class ViewGraph: AttributeGraphDelegate {
     private(set) var updateSequence = 0
     /// Time source for animations (seconds). Hosts may replace it (tests use a manual clock).
     public var clock: () -> Double = { ProcessInfo.processInfo.systemUptime } {
-        didSet { renderer.clock = clock }
+        didSet {
+            renderer.clock = clock
+            hoverTracker.clock = clock
+        }
     }
     var now: Double { clock() }
     /// Source attribute advanced on every animation frame while `Animatable` values interpolate.
@@ -57,6 +62,9 @@ public final class ViewGraph: AttributeGraphDelegate {
     public init<Root: View>(rootView: Root, backend: any RenderBackend, environment: EnvironmentValues = EnvironmentValues(), proposedSize: ProposedViewSize = .unspecified) {
         rootSubgraph = Subgraph(graph: graph)
         renderer = Renderer(backend: backend, tracer: tracer)
+        let clock = self.clock
+        hoverTracker = HoverTracker(renderer: renderer, tracer: tracer, clock: clock)
+        renderer.onContentChange = { [unowned hoverTracker] in hoverTracker!.contentChanged() }
         proposal = Attribute(rootSubgraph, value: proposedSize, isEqual: { $0 == $1 })
         var rootEnvironment = environment
         rootEnvironment.openURL = OpenURLAction { [weak backend] url in backend?.openURL(url) }

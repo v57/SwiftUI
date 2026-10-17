@@ -22,12 +22,73 @@ open class GraphHostingView: NSView {
         graph.onNeedsUpdate = { [weak self] in self?.scheduleUpdate() }
         graph.onNeedsAnimationFrame = { [weak self] in self?.startDisplayLink() }
         graph.clock = { CACurrentMediaTime() }
+        graph.hoverTracker.requestWakeUp = { [weak self] delay in self?.scheduleHoverWakeUp(after: delay) }
         applyAppearance()
         graph.setProposedSize(ProposedViewSize(bounds.size))
         graph.update()
     }
 
     private var keyObservers: [NSObjectProtocol] = []
+
+    // MARK: Hover
+
+    // One tracking area for the whole host: the graph's hover tracker hit-tests its hover regions
+    // when the pointer rests (and nothing scrolls) or on a click, instead of AppKit testing a
+    // tracking area per view on every frame content moves under the pointer.
+    private var hoverArea: NSTrackingArea?
+    private var hoverTimer: Timer?
+    private var clickMonitor: Any?
+
+    open override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if hoverArea == nil {
+            let area = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+            addTrackingArea(area)
+            hoverArea = area
+        }
+    }
+
+    open override func mouseEntered(with event: NSEvent) {
+        guard event.trackingArea === hoverArea else { return super.mouseEntered(with: event) }
+        graph.hoverTracker.pointerMoved(to: convert(event.locationInWindow, from: nil))
+    }
+
+    open override func mouseMoved(with event: NSEvent) {
+        graph.hoverTracker.pointerMoved(to: convert(event.locationInWindow, from: nil))
+        super.mouseMoved(with: event)
+    }
+
+    open override func mouseExited(with event: NSEvent) {
+        guard event.trackingArea === hoverArea else { return super.mouseExited(with: event) }
+        graph.hoverTracker.pointerExited()
+    }
+
+    private func scheduleHoverWakeUp(after delay: Double) {
+        hoverTimer?.invalidate()
+        let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.hoverTimer = nil
+                self?.graph.hoverTracker.wake()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        hoverTimer = timer
+    }
+
+    /// Clicks in this window hit-test hover first (before the click is handled).
+    private func installClickMonitor() {
+        if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
+        clickMonitor = nil
+        guard window != nil else { return }
+        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
+            MainActor.assumeIsolated {
+                guard let self, let window = self.window, event.window === window else { return }
+                let point = self.convert(event.locationInWindow, from: nil)
+                if self.bounds.contains(point) { self.graph.hoverTracker.pointerPressed(at: point) }
+            }
+            return event
+        }
+    }
 
     open override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -44,6 +105,7 @@ open class GraphHostingView: NSView {
         keyObservers.forEach(NotificationCenter.default.removeObserver)
         keyObservers = []
         firstResponderObservation = nil
+        installClickMonitor()
         guard let window else { return }
         // \.appearsActive follows the window's key state.
         for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
@@ -123,6 +185,8 @@ open class GraphHostingView: NSView {
     required public init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     isolated deinit {
+        hoverTimer?.invalidate()
+        if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
         displayLink?.invalidate()
         offscreenTimer?.invalidate()
         if let observer { CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes) }
