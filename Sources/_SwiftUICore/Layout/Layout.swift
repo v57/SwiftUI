@@ -326,7 +326,61 @@ extension _ViewInputs {
     /// A list in a unary context: a single static element is built in place; otherwise children
     /// are stacked with `layout` (vertical stack by default, like SwiftUI).
     func makeUnary(list: ViewList) -> _ViewOutputs {
-        makeUnary(list: list, layout: _UnaryListLayout())
+        if let keyed = list.keyedAttribute, accessibility?.isConsumed ?? true {
+            return makeKeyedUnary(keyed)
+        }
+        return makeUnary(list: list, layout: _UnaryListLayout())
+    }
+
+    /// A keyed list (if/else, Optional, `.id`, AnyView) where one view is expected: the content of
+    /// the current key is built in its own subgraph, placed where this view is and measured as
+    /// this view (one view needs no stack; several are stacked like `makeUnary`). Building a
+    /// stack container for every conditional body and overlay was a tenth of a card's attributes.
+    func makeKeyedUnary(_ keyed: Attribute<ViewList>) -> _ViewOutputs {
+        let renderer = host.renderer
+        let group = renderer.makeGroup(path: path)
+        renderer.append(group, to: render.parent)
+        subgraph.onDestroy { renderer.remove(group) }
+        let state = KeyedUnaryState()
+        let parentSubgraph = subgraph
+        var childInputs = self
+        childInputs.depth += 1
+        childInputs.accessibility = nil
+        let current = Attribute<KeyedUnaryContent>(subgraph, isEqual: { $0 === $1 })
+        current.setLabel("keyed unary \(path)")
+        current.order = depth
+        current.setRule {
+            let list = keyed.value
+            if let content = state.content, keyed.changedRevision == state.revision { return content }
+            state.revision = keyed.changedRevision
+            state.content?.subgraph.destroy()
+            let subgraph = parentSubgraph.makeChild()
+            let contentGroup = renderer.makeGroup(path: childInputs.path)
+            renderer.append(contentGroup, to: group)
+            subgraph.onDestroy { renderer.remove(contentGroup) }
+            var inputs = childInputs
+            inputs.subgraph = subgraph
+            inputs.render = _RenderInputs(parent: contentGroup, origin: childInputs.render.origin)
+            let outputs = AnyAttribute.withoutDependencies { () -> _ViewOutputs in
+                if let element = list.staticSingleElement { return element.make(inputs) }
+                if list.isStaticallyEmpty {
+                    let path = inputs.path, tracer = inputs.tracer
+                    return _ViewOutputs(layout: inputs.makeLayoutAttribute { EmptyLayoutComputer(path: path, tracer: tracer) })
+                }
+                return inputs.makeLayoutContainer(layout: inputs.constant(_UnaryListLayout()), list: list)
+            }
+            let content = KeyedUnaryContent(subgraph: subgraph, outputs: outputs)
+            state.content = content
+            return content
+        }
+        current.isEager = true
+        let layout = Attribute<LayoutComputer>(subgraph, isEqual: LayoutComputer.equivalence) { current.value.outputs.layout.value }
+        layout.setLabel("layout \(path)")
+        let preferences = PreferenceOutputs.combined(keys: preferenceKeys, subgraph: subgraph) {
+            let outputs = current.value.outputs.preferences
+            return outputs.isEmpty ? [] : [outputs]
+        }
+        return _ViewOutputs(layout: layout, preferences: preferences)
     }
 
     func makeUnary(list: ViewList, layout: some Layout) -> _ViewOutputs {
@@ -334,6 +388,23 @@ extension _ViewInputs {
             return element.make(self)
         }
         return makeLayoutContainer(layout: constant(layout), list: list)
+    }
+}
+
+@MainActor
+final class KeyedUnaryState {
+    var revision: UInt64 = 0
+    var content: KeyedUnaryContent?
+}
+
+/// The content of a keyed list's current key, where one view is expected.
+@MainActor
+final class KeyedUnaryContent {
+    let subgraph: Subgraph
+    let outputs: _ViewOutputs
+    init(subgraph: Subgraph, outputs: _ViewOutputs) {
+        self.subgraph = subgraph
+        self.outputs = outputs
     }
 }
 

@@ -126,6 +126,31 @@ struct ScalingTests {
         #expect(padded - plain == 3 * 4 + 1)
     }
 
+    /// A conditional where one view is expected (a body, an overlay) builds the current branch in
+    /// place: no stack container, items or item geometry around it.
+    @Test func conditionalBodiesBuildNoContainer() {
+        struct Plain: View {
+            var body: some View { Text("a").padding(1) }
+        }
+        struct Conditional: View {
+            let model: ScalingItemState
+            var body: some View {
+                if model.isBuilt { Text("a").padding(1) } else { Text("bb").padding(2) }
+            }
+        }
+        @MainActor func attributes(_ view: some View) -> Int { TestHost(view).graph.graph.liveAttributeCount }
+        let model = ScalingItemState(isBuilt: true)
+        // The condition, the keyed list, the current branch and the forwarded layout, and a
+        // preference bag the root reads its five keys from (a stack container made 13).
+        #expect(attributes(Conditional(model: model)) - attributes(Plain()) == 4 + 1 + 5)
+        let host = TestHost(Conditional(model: model))
+        #expect(host.texts == ["a"])
+        model.isBuilt = false
+        host.flush()
+        #expect(host.texts == ["bb"])
+        #expect(host.view(withText: "bb")!.absoluteFrame.width == 2 * 6.5)
+    }
+
     /// Building one item of a long page touches that item: each item of a long stack starts its own
     /// space (a container view), so the items below move as a whole instead of every view in them
     /// being placed and framed again, and the renderer sends the backend the changed range only.

@@ -35,7 +35,9 @@ func makeKeyedList<Key: Hashable>(
         return ViewList(nodes: [.nested(component(current), state.list!)])
     }
     attribute.setLabel("keyed list \(inputs.path)")
-    return ViewList(nodes: [.dynamic(nil, attribute)])
+    var list = ViewList(nodes: [.dynamic(nil, attribute)])
+    list.isKeyed = true
+    return list
 }
 
 @MainActor

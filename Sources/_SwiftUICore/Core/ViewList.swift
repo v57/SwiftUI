@@ -75,6 +75,9 @@ public struct ViewList {
     var nodes: [Node]
     /// Identities of a filtered list (used for equality of derived lists).
     var debugIDs: [ViewListID] = []
+    /// A keyed list (if/else, Optional, `.id`, AnyView): one dynamic node whose value changes
+    /// exactly when its key does (its content is then built anew).
+    var isKeyed = false
 
     init(nodes: [Node]) { self.nodes = nodes }
     init(element: ViewListElement) { self.nodes = [.element(element)] }
@@ -119,7 +122,7 @@ public struct ViewList {
     /// a mapping attribute created once, here.
     @MainActor
     func mapElements(in subgraph: Subgraph, _ wrap: @escaping @MainActor (ViewListElement) -> ViewListElement) -> ViewList {
-        ViewList(nodes: nodes.map { node in
+        var mapped = ViewList(nodes: nodes.map { node in
             switch node {
             case .element(let element):
                 return .element(wrap(element))
@@ -132,6 +135,25 @@ public struct ViewList {
                 return .dynamic(component, mapped)
             }
         })
+        mapped.isKeyed = isKeyed
+        return mapped
+    }
+
+    /// The keyed list's attribute, when this is a keyed list.
+    var keyedAttribute: Attribute<ViewList>? {
+        guard isKeyed, nodes.count == 1, case .dynamic(_, let attribute) = nodes[0] else { return nil }
+        return attribute
+    }
+
+    /// Whether the list is static and has no element.
+    var isStaticallyEmpty: Bool {
+        nodes.allSatisfy {
+            switch $0 {
+            case .element: return false
+            case .nested(_, let list): return list.isStaticallyEmpty
+            case .dynamic: return false
+            }
+        }
     }
 
     /// Cheap structural equality: same shape, same identities, same dynamic attributes.
