@@ -139,4 +139,57 @@ struct ScrollFeatureTests {
         host.scroll(to: CGPoint(x: 0, y: 250), scrollViewAt: 0)
         #expect(box.bounds == .some(CGRect(x: 0, y: 150, width: 200, height: 300)))
     }
+
+    /// The scroll view owns its offset: content that changes size above or below the visible part
+    /// while (or after) the user scrolls never moves it back, and an explicit `scrollTo` applies once.
+    /// (Apple's SwiftUI re-applied a stale offset when a lazy stack's content changed mid-scroll,
+    /// and the page bounced back.)
+    @Test func contentChangesNeverMoveTheOffsetBack() {
+        struct Screen: View {
+            let model: ScrollHeights
+            let lazy: Bool
+            var body: some View {
+                ScrollViewReader { proxy in
+                    VStack(spacing: 0) {
+                        Button("Jump") { proxy.scrollTo(50, anchor: .top) }
+                        ScrollView {
+                            if lazy {
+                                LazyVStack(spacing: 0) { rows }
+                            } else {
+                                VStack(spacing: 0) { rows }
+                            }
+                        }
+                    }
+                }
+            }
+            var rows: some View {
+                ForEach(0..<100, id: \.self) { index in
+                    Text("row \(index)").frame(height: model.heights[index] ?? 40)
+                }
+            }
+        }
+        for lazy in [false, true] {
+            let model = ScrollHeights()
+            let host = TestHost(Screen(model: model, lazy: lazy), size: CGSize(width: 300, height: 400))
+            let scroll = scrollNode(host)
+            host.tap("Jump")
+            #expect(scroll.contentOffset.y == 2000)
+            // The user scrolls on; rows above and below change size, a few times.
+            host.scroll(by: CGPoint(x: 0, y: 30), frames: 10)
+            #expect(scroll.contentOffset.y == 2300)
+            model.heights[10] = 140
+            host.flush()
+            model.heights[90] = 10
+            host.flush()
+            host.scroll(by: CGPoint(x: 0, y: 5), frames: 2)
+            model.heights[11] = 90
+            host.flush()
+            #expect(scroll.contentOffset.y == 2310)
+        }
+    }
+}
+
+@Observable
+final class ScrollHeights {
+    var heights: [Int: CGFloat] = [:]
 }

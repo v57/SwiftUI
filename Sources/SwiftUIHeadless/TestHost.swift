@@ -223,6 +223,7 @@ public final class TestHost {
     /// Scrolls the `index`th scroll view to a content offset (like a user scroll).
     public func scroll(to offset: CGPoint, scrollViewAt index: Int = 0) {
         let scrollViews = allViews.filter { if case .scrollView = $0.content { return true } else { return false } }
+        scrollViews[index].contentOffset = offset
         scrollViews[index].node?.actions.scrolled?(offset)
         flush()
     }
@@ -231,10 +232,12 @@ public final class TestHost {
     /// trackpad scroll (the clock advances, so hover wake-ups may come due meanwhile).
     public func scroll(by delta: CGPoint, frames: Int, scrollViewAt index: Int = 0) {
         let scrollViews = allViews.filter { if case .scrollView = $0.content { return true } else { return false } }
-        guard let node = scrollViews[index].node else { return }
+        let view = scrollViews[index]
+        guard let node = view.node else { return }
         for _ in 0..<frames {
-            let offset = node.contentOffset
-            node.actions.scrolled?(CGPoint(x: offset.x + delta.x, y: offset.y + delta.y))
+            let offset = view.contentOffset
+            view.contentOffset = CGPoint(x: offset.x + delta.x, y: offset.y + delta.y)
+            node.actions.scrolled?(view.contentOffset)
             flush()
             advance(by: 1.0 / 120)
         }

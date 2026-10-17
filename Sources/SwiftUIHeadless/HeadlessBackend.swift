@@ -16,6 +16,11 @@ public final class HeadlessView {
     public internal(set) var frameUpdates = 0
     public internal(set) var presentation = RenderPresentation.identity
     public internal(set) var accessibility: AccessibilityProperties?
+    /// A scroll view's content offset: owned by the view, like a platform scroll view's. Moved by the
+    /// user (`TestHost.scroll`) and by explicit scroll requests (once per request id), never by
+    /// content changes.
+    public internal(set) var contentOffset = CGPoint.zero
+    var appliedScrollRequest = 0
 
     init() {}
 
@@ -90,6 +95,7 @@ public final class HeadlessBackend: RenderBackend {
         view.node = node
         view.content = node.content
         view.frame = node.frame
+        applyScrollRequest(view)
         return view
     }
 
@@ -97,6 +103,13 @@ public final class HeadlessBackend: RenderBackend {
         let view = view as! HeadlessView
         view.content = node.content
         view.contentUpdates += 1
+        applyScrollRequest(view)
+    }
+
+    private func applyScrollRequest(_ view: HeadlessView) {
+        guard case .scrollView(let model) = view.content, model.scrollRequestID != view.appliedScrollRequest else { return }
+        view.appliedScrollRequest = model.scrollRequestID
+        if let target = model.requestedOffset { view.contentOffset = target }
     }
 
     public func updateAccessibility(of view: AnyObject, node: RenderNode) {
