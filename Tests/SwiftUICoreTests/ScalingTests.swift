@@ -106,6 +106,8 @@ struct ScalingTests {
         let scroll = host.allViews.first { if case .scrollView = $0.content { true } else { false } }!
         let builtViews = scroll.allDescendants.count
         #expect(builtViews > 2000)
+        // One container view per built item; placeholders have none.
+        #expect(scroll.children.count == 250)
 
         host.tracer.resetCounters()
         let evaluationsBefore = host.graph.graph.evaluationCount
@@ -117,9 +119,11 @@ struct ScalingTests {
         let added = scroll.allDescendants.count - builtViews
         #expect(added == c[.renderInsert])
         #expect(host.tracer.counters.childOperations == added)
-        // Below the item: 248 items move (one frame each); nothing inside them is placed again.
+        // Below the item: the 124 built items move (one frame each), placeholders have no view to
+        // move, and nothing inside the items is placed again.
         #expect(c[.placement] < 40)
-        #expect(c[.renderFrame] < 300)
+        #expect(c[.renderFrame] < 140)
+        #expect(scroll.children.count == 251)
         #expect(evaluations < 1500)
         // Every view still sits where an unisolated layout puts it: the built card right below its
         // neighbour, and the last card at the end of the content.

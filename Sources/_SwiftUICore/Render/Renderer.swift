@@ -71,7 +71,8 @@ public final class RenderNode {
     /// Set on group nodes created by `.matchedGeometryEffect`.
     var matchKey: AnyHashable?
     /// A container standing in for its content (a list item's own space): transitions and matched
-    /// geometry of the views just inside it apply to it.
+    /// geometry of the views just inside it apply to it. It has a platform view only while it holds
+    /// some (a lazy item's placeholder costs the backend nothing, and moving it is free).
     var forwardsTransitions = false
     /// The transition and match key of a group just inside a forwarding container that was removed
     /// in this update (its views go before the container when an item is torn down).
@@ -102,16 +103,32 @@ public final class RenderNode {
         return nil
     }
 
-    /// Platform descendants as the backend sees them, in z-order (groups flattened).
+    /// Platform descendants as the backend sees them, in z-order (groups flattened; empty item
+    /// containers left out).
     public var platformChildren: [RenderNode] {
         var result: [RenderNode] = []
         func visit(_ node: RenderNode) {
             for child in node.children {
-                if child.kind == .platform { result.append(child) } else { visit(child) }
+                if child.kind == .platform {
+                    if child.forwardsTransitions, child.handle == nil, !child.hasPlatformDescendant { continue }
+                    result.append(child)
+                } else {
+                    visit(child)
+                }
             }
         }
         visit(self)
         return result
+    }
+
+    /// Whether a platform node lies below (through groups; empty item containers don't count).
+    var hasPlatformDescendant: Bool {
+        var stack = children
+        while let next = stack.popLast() {
+            if next.kind == .platform, !(next.forwardsTransitions && next.handle == nil && !next.hasPlatformDescendant) { return true }
+            if next.kind != .platform { stack.append(contentsOf: next.children) }
+        }
+        return false
     }
 
     var effectiveMatchKey: AnyHashable? {
@@ -379,6 +396,13 @@ public final class Renderer {
         let target = node.kind == .group ? node.platformAncestor : node
         guard let target, !target.isRemoved else { return }
         needsChildSync[ObjectIdentifier(target)] = target
+        // An item container without a view may need one now: its container lists it (and so on up,
+        // through containers that have none either).
+        var current = target
+        while current.forwardsTransitions, current.handle == nil, let outer = current.platformAncestor, !outer.isRemoved {
+            needsChildSync[ObjectIdentifier(outer)] = outer
+            current = outer
+        }
     }
 
     func update(_ node: RenderNode, frame: CGRect, content: RenderContent) {
@@ -479,7 +503,7 @@ public final class Renderer {
         while !needsChildSync.isEmpty {
             let batch = needsChildSync.values.sorted { depth(of: $0) < depth(of: $1) }
             needsChildSync.removeAll()
-            for container in batch where !container.isRemoved {
+            for container in batch where !container.isRemoved && container.handle != nil {
                 let children = container.platformChildren
                 for child in children where child.handle == nil {
                     child.frame = child.targetFrame
