@@ -513,6 +513,9 @@ final class ShapeNodeView: FlippedView, PlatformNodeView {
 
 final class ImageNodeView: FlippedView, PlatformNodeView {
     override class var drawsContent: Bool { true }
+    /// The image is a subview: the view itself draws only a redaction placeholder, so it gets a
+    /// backing store and a draw pass only then.
+    override var wantsUpdateLayer: Bool { redactedColor == nil }
     private let imageView = NSImageView()
 
     override init(frame: NSRect) {
