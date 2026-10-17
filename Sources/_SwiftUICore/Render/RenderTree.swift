@@ -4,9 +4,16 @@ import CoreGraphics
 #endif
 
 /// Platform-independent description of what a platform node shows. Backends switch over it.
+///
+/// Its layout is fixed: payloads holding Foundation's resilient types (`URL` in text, `Date` in date
+/// pickers) are boxed (`indirect`). Otherwise the size of every type storing a `RenderContent` is known
+/// only at run time, and the field offsets of classes like `RenderNode` and `NodeAnimation` come from
+/// globals the runtime fills in when the class is first used; in the AppKit catalog the first
+/// `NodeAnimation` was stored through one of them still zero, which overwrote its class pointer, and
+/// releasing it crashed in `Renderer.tick`.
 public enum RenderContent: Equatable {
     case empty
-    case text(ResolvedText)
+    indirect case text(ResolvedText)
     case color(Color.Resolved)
     case shape(ResolvedShape)
     case image(ResolvedImage)
@@ -19,7 +26,7 @@ public enum RenderContent: Equatable {
     case scrollView(ResolvedScrollView)
     /// Container applying a display effect to its children.
     case effect(DisplayEffect)
-    case datePicker(ResolvedDatePicker)
+    indirect case datePicker(ResolvedDatePicker)
     case colorWell(Color.Resolved)
     /// Canvas drawing commands, in the node's local coordinates.
     case drawing([DrawCommand])
