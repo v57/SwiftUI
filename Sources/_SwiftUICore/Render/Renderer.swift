@@ -73,6 +73,10 @@ public final class RenderNode {
     /// A container standing in for its content (a list item's own space): transitions and matched
     /// geometry of the views just inside it apply to it.
     var forwardsTransitions = false
+    /// The transition and match key of a group just inside a forwarding container that was removed
+    /// in this update (its views go before the container when an item is torn down).
+    var removedInnerTransition: AnyTransition?
+    var removedInnerMatchKey: AnyHashable?
     var isRemoved = false
     var needsContent = false
     var needsFrame = false
@@ -111,7 +115,7 @@ public final class RenderNode {
     }
 
     var effectiveMatchKey: AnyHashable? {
-        effectiveGroup(where: { $0.matchKey != nil })?.matchKey
+        effectiveGroup(where: { $0.matchKey != nil })?.matchKey ?? (forwardsTransitions ? removedInnerMatchKey : nil)
     }
 
     /// Frame in host coordinates (sum of platform ancestors' frames).
@@ -129,27 +133,20 @@ public final class RenderNode {
     /// Transition of the nearest `.transition` group between this node and its platform ancestor
     /// (or, for a forwarding container, the first one inside it).
     var effectiveTransition: AnyTransition? {
-        effectiveGroup(where: { $0.transition != nil })?.transition
+        effectiveGroup(where: { $0.transition != nil })?.transition ?? (forwardsTransitions ? removedInnerTransition : nil)
     }
 
     /// The group between this node and its platform ancestor matching `test` (nearest first), or for
-    /// a forwarding container the first inside it. A view whose group its container forwards
-    /// leaves it to the container.
+    /// a forwarding container the first inside it. (Views inside a container inserted or removed
+    /// with them leave the animation to it: the renderer skips them.)
     private func effectiveGroup(where test: (RenderNode) -> Bool) -> RenderNode? {
         var node = parent
         while let current = node, current.kind == .group {
-            if test(current) {
-                if let container = current.parent?.platformAncestorOrSelf, container.forwardsTransitions,
-                   container.innerGroup(where: test) === current { return nil }
-                return current
-            }
+            if test(current) { return current }
             node = current.parent
         }
         return forwardsTransitions ? innerGroup(where: test) : nil
     }
-
-    /// This node if it is a platform node, else its platform ancestor.
-    private var platformAncestorOrSelf: RenderNode? { kind == .group ? platformAncestor : self }
 
     /// The first group inside this node (groups only, not past platform nodes) matching `test`.
     fileprivate func innerGroup(where test: (RenderNode) -> Bool) -> RenderNode? {
@@ -357,6 +354,12 @@ public final class Renderer {
 
     func remove(_ node: RenderNode) {
         guard !node.isRemoved else { return }
+        if node.kind == .group, node.transition != nil || node.matchKey != nil,
+           let container = node.platformAncestor, container.forwardsTransitions {
+            if container.removedInnerTransition == nil { container.removedInnerTransition = node.transition }
+            if container.removedInnerMatchKey == nil { container.removedInnerMatchKey = node.matchKey }
+            stashedContainers.append(container)
+        }
         if node.kind == .platform, node.handle != nil, let container = node.platformAncestor {
             // Its index in the container is looked up at commit, only for a removal that animates.
             let match = node.effectiveMatchKey.map { (key: $0, frame: node.absoluteFrame) }
@@ -401,6 +404,9 @@ public final class Renderer {
             hoverIndex[ObjectIdentifier(node)] = nil
         }
     }
+
+    /// Forwarding containers holding a removed inner group's transition until the commit.
+    private var stashedContainers: [RenderNode] = []
 
     /// Nodes that react to hover: the only candidates hover hit testing visits.
     private var hoverIndex: [ObjectIdentifier: RenderNode] = [:]
@@ -484,8 +490,10 @@ public final class Renderer {
                     created[ObjectIdentifier(child)] = true
                     tracer.record(.renderInsert, child.path)
                     if !child.children.isEmpty { needsChildSync[ObjectIdentifier(child)] = child }
-                    // Matched geometry: animate from the removed partner's frame.
-                    if let key = child.effectiveMatchKey, let from = matchedFrames[key], let animation = animation(for: child) {
+                    // Matched geometry: animate from the removed partner's frame (a container
+                    // created with this view and forwarding its transitions animates instead).
+                    let containerAnimates = container.forwardsTransitions && created[ObjectIdentifier(container)] != nil
+                    if !containerAnimates, let key = child.effectiveMatchKey, let from = matchedFrames[key], let animation = animation(for: child) {
                         var origin = CGPoint.zero
                         var ancestor: RenderNode? = container
                         while let node = ancestor, node.kind == .platform {
@@ -570,6 +578,11 @@ public final class Renderer {
 
         backend.didCommit()
         if movedContent { onContentChange?() }
+        for container in stashedContainers {
+            container.removedInnerTransition = nil
+            container.removedInnerMatchKey = nil
+        }
+        stashedContainers.removeAll()
 
         if let completionGroup, completionGroup.remaining == 0 {
             for completion in completionGroup.completions { schedule(completion) }

@@ -13,6 +13,12 @@ final class AnimModel {
     var other = 0
 }
 
+@Observable
+final class TransitionItems {
+    var hidden: Set<Int> = []
+    var inner = true
+}
+
 struct Bar: View {
     let model: AnimModel
     var body: some View {
@@ -145,6 +151,51 @@ struct AnimationTests {
         #expect(host.view(withText: "hello")?.presentation.opacity == 0)
         host.finishAnimations()
         #expect(host.view(withText: "hello")?.presentation.opacity == 1)
+    }
+
+    /// Items of a long stack start their own space (a container view). An item that leaves or
+    /// comes back moves its container with the transition of the view inside (once: the view itself
+    /// sits still in it); a view that comes and goes inside a staying item animates itself.
+    @Test func transitionsOfItemsInLongStacks() {
+        struct Screen: View {
+            let items: TransitionItems
+            var body: some View {
+                VStack(spacing: 0) {
+                    ForEach((0..<20).filter { !items.hidden.contains($0) }, id: \.self) { index in
+                        VStack(spacing: 0) {
+                            Text("item \(index)").frame(height: 20)
+                            if index == 3 && items.inner { Text("inner").transition(.opacity) }
+                        }
+                        .transition(.move(edge: .leading))
+                    }
+                }
+            }
+        }
+        let items = TransitionItems()
+        let host = TestHost(Screen(items: items))
+        withAnimation(.linear(duration: 1)) { _ = items.hidden.insert(7) }
+        host.flush()
+        host.advance(by: 0.5)
+        guard let text = host.view(withText: "item 7"), let container = text.superview else { Issue.record("no ghost"); return }
+        #expect(container.presentation.offset.width < -1)
+        #expect(text.presentation.isIdentity)
+        host.finishAnimations()
+        #expect(!host.texts.contains("item 7"))
+
+        withAnimation(.linear(duration: 1)) { _ = items.hidden.remove(7) }
+        host.flush()
+        let inserted = host.view(withText: "item 7")!
+        #expect(inserted.superview!.presentation.offset.width < -1)
+        #expect(inserted.presentation.isIdentity)
+        host.finishAnimations()
+        #expect(inserted.superview!.presentation.isIdentity)
+
+        withAnimation(.linear(duration: 1)) { items.inner = false }
+        host.flush()
+        host.advance(by: 0.5)
+        let inner = host.view(withText: "inner")!
+        #expect(abs(inner.presentation.opacity - 0.5) < 0.01)
+        #expect(inner.superview!.presentation.isIdentity)
     }
 
     @Test func moveTransitionOffsetsBySize() {
