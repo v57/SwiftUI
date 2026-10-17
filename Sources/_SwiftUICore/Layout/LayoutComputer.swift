@@ -141,6 +141,7 @@ extension _ViewInputs {
     /// `computer.placeChild`, and the modifier exposes `computer` as its layout.
     func makeUnaryLayout(
         component: String,
+        separatePlacement: Bool = true,
         body: (_ViewInputs) -> _ViewOutputs,
         computer makeComputer: @escaping @MainActor (LayoutComputer, ViewPath) -> UnaryLayoutComputer
     ) -> _ViewOutputs {
@@ -157,8 +158,14 @@ extension _ViewInputs {
             makeComputer(childLayout.value, modifierPath)
         }
         current.setLabel("current layout \(modifierPath)")
-        let layout = Attribute<LayoutComputer>(subgraph, isEqual: LayoutComputer.equivalence) { current.value }
-        layout.setLabel("layout \(modifierPath)")
+        // Without independent placement, equivalence is sameness of placement: one attribute.
+        let layout: Attribute<LayoutComputer>
+        if separatePlacement {
+            layout = Attribute<LayoutComputer>(subgraph, isEqual: LayoutComputer.equivalence) { current.value }
+            layout.setLabel("layout \(modifierPath)")
+        } else {
+            layout = current
+        }
         let geometry = self.geometry
         let tracer = self.tracer
         childGeometry.setRule {

@@ -7,13 +7,19 @@ import CoreGraphics
 @MainActor
 protocol UnaryLayoutModifier: ViewModifier where Body == Never {
     static var pathComponent: String { get }
+    /// Whether a computer can be equivalent for the parent's layout while it places its child
+    /// differently (an offset, a position, a fixed frame's alignment): then placement follows the
+    /// current parameters through an attribute of its own.
+    static var placesIndependently: Bool { get }
     func makeComputer(child: LayoutComputer, path: ViewPath, tracer: UpdateTracer) -> UnaryLayoutComputer
 }
 
 extension UnaryLayoutModifier {
+    static var placesIndependently: Bool { false }
+
     public static func _makeView(modifier: _GraphValue<Self>, inputs: _ViewInputs, body: @escaping @MainActor (_ViewInputs) -> _ViewOutputs) -> _ViewOutputs {
         let tracer = inputs.tracer
-        return inputs.makeUnaryLayout(component: pathComponent, body: body) { child, path in
+        return inputs.makeUnaryLayout(component: pathComponent, separatePlacement: placesIndependently, body: body) { child, path in
             modifier.attribute.value.makeComputer(child: child, path: path, tracer: tracer)
         }
     }
@@ -117,6 +123,7 @@ public struct _FrameLayout: UnaryLayoutModifier, Equatable {
     let height: CGFloat?
     let alignment: Alignment
     static var pathComponent: String { "frame" }
+    static var placesIndependently: Bool { true }
 
     func makeComputer(child: LayoutComputer, path: ViewPath, tracer: UpdateTracer) -> UnaryLayoutComputer {
         FrameComputer(width: width, height: height, alignment: alignment, child: child, path: path, tracer: tracer)
@@ -348,6 +355,7 @@ extension View {
 public struct _OffsetEffect: UnaryLayoutModifier, Equatable {
     let offset: CGSize
     static var pathComponent: String { "offset" }
+    static var placesIndependently: Bool { true }
 
     func makeComputer(child: LayoutComputer, path: ViewPath, tracer: UpdateTracer) -> UnaryLayoutComputer {
         OffsetComputer(offset: offset, child: child, path: path, tracer: tracer)
@@ -381,6 +389,7 @@ final class OffsetComputer: UnaryLayoutComputer {
 public struct _PositionLayout: UnaryLayoutModifier, Equatable {
     let position: CGPoint
     static var pathComponent: String { "position" }
+    static var placesIndependently: Bool { true }
 
     func makeComputer(child: LayoutComputer, path: ViewPath, tracer: UpdateTracer) -> UnaryLayoutComputer {
         PositionComputer(position: position, child: child, path: path, tracer: tracer)

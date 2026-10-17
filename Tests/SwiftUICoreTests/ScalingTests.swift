@@ -117,13 +117,13 @@ struct ScalingTests {
 
     /// Projections make attributes only where a consumer reads them: a modifier wrapping another
     /// view projects its content without an attribute of its own (each `padding` makes its
-    /// parameters, its child's geometry and its two layout attributes, nothing for the content in
+    /// parameters, its child's geometry and its layout, nothing for the content in
     /// between; the text reads its own value through one attribute, the root's when unwrapped).
     @Test func modifierChainsProjectContentWithoutAttributes() {
         @MainActor func attributes(_ view: some View) -> Int { TestHost(view).graph.graph.liveAttributeCount }
         let plain = attributes(Text("a"))
         let padded = attributes(Text("a").padding(1).padding(2).padding(3))
-        #expect(padded - plain == 3 * 4 + 1)
+        #expect(padded - plain == 3 * 3 + 1)
     }
 
     /// A conditional where one view is expected (a body, an overlay) builds the current branch in

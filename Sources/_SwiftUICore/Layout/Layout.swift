@@ -362,12 +362,10 @@ extension _ViewInputs {
             state.revision = keyed.changedRevision
             state.content?.subgraph.destroy()
             let subgraph = parentSubgraph.makeChild()
-            let contentGroup = renderer.makeGroup(path: childInputs.path)
-            renderer.append(contentGroup, to: group)
-            subgraph.onDestroy { renderer.remove(contentGroup) }
             var inputs = childInputs
             inputs.subgraph = subgraph
-            inputs.render = _RenderInputs(parent: contentGroup, origin: childInputs.render.origin)
+            // The content's views go in this view's group (removed with the subgraph).
+            inputs.render = _RenderInputs(parent: group, origin: childInputs.render.origin)
             let outputs = AnyAttribute.withoutDependencies { () -> _ViewOutputs in
                 if let element = list.staticSingleElement { return element.make(inputs) }
                 if list.isStaticallyEmpty {
