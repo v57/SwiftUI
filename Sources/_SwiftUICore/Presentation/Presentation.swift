@@ -181,7 +181,7 @@ struct _PresentationContent: View {
 
 extension _PresentationContent: _GraphComparable {
     nonisolated static func _isIdentical(_ lhs: _PresentationContent, _ rhs: _PresentationContent) -> Bool {
-        MainActor.assumeIsolated { lhs.entry === rhs.entry }
+        _onMainActor { lhs.entry === rhs.entry }
     }
 }
 
@@ -231,7 +231,7 @@ struct _PresentationChrome: View {
 
 extension _PresentationChrome: _GraphComparable {
     nonisolated static func _isIdentical(_ lhs: _PresentationChrome, _ rhs: _PresentationChrome) -> Bool {
-        MainActor.assumeIsolated { lhs.entry === rhs.entry && lhs.anchor == rhs.anchor }
+        _onMainActor { lhs.entry === rhs.entry && lhs.anchor == rhs.anchor }
     }
 }
 

@@ -56,7 +56,7 @@ extension ObservedObject: _DynamicPropertyInstallable {
 
 extension ObservedObject: _GraphComparable {
     public nonisolated static func _isIdentical(_ lhs: ObservedObject, _ rhs: ObservedObject) -> Bool {
-        MainActor.assumeIsolated { lhs.wrappedValue === rhs.wrappedValue }
+        _onMainActor { lhs.wrappedValue === rhs.wrappedValue }
     }
 }
 

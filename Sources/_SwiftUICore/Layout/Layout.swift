@@ -60,10 +60,16 @@ public protocol LayoutValueKey {
 }
 
 /// Runs main-actor code from a nonisolated context known to be on the main thread (layout).
+///
+/// Unchecked: layout always runs on the main thread (asserted in debug builds), and
+/// `MainActor.assumeIsolated` checked the executor at runtime on every call, which stacks make
+/// thousands of times per build (a tenth of a card's build time went to the checks).
+@inline(__always)
 nonisolated func _onMainActor<T>(_ body: @MainActor () -> T) -> T {
-    nonisolated(unsafe) var result: T?
-    MainActor.assumeIsolated { result = body() }
-    return result!
+    assert(Thread.isMainThread, "SwiftUI layout runs on the main thread")
+    return withoutActuallyEscaping(body) { body in
+        unsafeBitCast(body, to: (() -> T).self)()
+    }
 }
 
 /// Records child placements while `placeSubviews` runs.
@@ -106,20 +112,20 @@ public struct LayoutSubview: Equatable {
 
     // Like SwiftUI's, usable from nonisolated `Layout` methods (layout always runs on the main thread).
     public nonisolated func sizeThatFits(_ proposal: ProposedViewSize) -> CGSize {
-        MainActor.assumeIsolated { computer.sizeThatFits(proposal) }
+        _onMainActor { computer.sizeThatFits(proposal) }
     }
     public nonisolated func dimensions(in proposal: ProposedViewSize) -> ViewDimensions {
         _onMainActor { computer.dimensions(in: proposal) }
     }
-    public nonisolated var priority: Double { MainActor.assumeIsolated { computer.layoutPriority } }
-    public nonisolated var spacing: ViewSpacing { MainActor.assumeIsolated { computer.spacing } }
+    public nonisolated var priority: Double { _onMainActor { computer.layoutPriority } }
+    public nonisolated var spacing: ViewSpacing { _onMainActor { computer.spacing } }
 
     public nonisolated subscript<K: LayoutValueKey>(key: K.Type) -> K.Value {
         _onMainActor { (computer.layoutValue(ObjectIdentifier(key)) as? K.Value) ?? K.defaultValue }
     }
 
     public nonisolated func place(at position: CGPoint, anchor: UnitPoint = .topLeading, proposal: ProposedViewSize) {
-        MainActor.assumeIsolated {
+        _onMainActor {
             guard let recorder else { return }
             let size = computer.sizeThatFits(proposal)
             let origin = CGPoint(x: position.x - anchor.x * size.width, y: position.y - anchor.y * size.height)

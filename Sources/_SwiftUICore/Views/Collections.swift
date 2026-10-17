@@ -40,7 +40,7 @@ struct _ListTransformView<Content: View>: View {
 
 extension _ListTransformView: _GraphComparable {
     nonisolated static func _isIdentical(_ lhs: _ListTransformView, _ rhs: _ListTransformView) -> Bool {
-        MainActor.assumeIsolated { GraphComparison.isIdentical(lhs.content, rhs.content) }
+        _onMainActor { GraphComparison.isIdentical(lhs.content, rhs.content) }
     }
 }
 
@@ -1628,7 +1628,7 @@ struct _GridLayout: Layout, Equatable {
         for row in rows where !row.isFullWidth {
             var column = 0
             for cell in row.cells {
-                if columnAlignments[column] == nil, let alignment = MainActor.assumeIsolated({ subviews[cell.index].traits.value(GridColumnAlignmentTraitKey.self) }) {
+                if columnAlignments[column] == nil, let alignment = _onMainActor({ subviews[cell.index].traits.value(GridColumnAlignmentTraitKey.self) }) {
                     columnAlignments[column] = alignment
                 }
                 column += cell.span
@@ -1655,7 +1655,7 @@ struct _GridLayout: Layout, Equatable {
                 default: dx = (cellWidth - size.width) / 2
                 }
                 var dy: CGFloat = alignment.vertical == .top ? 0 : alignment.vertical == .bottom ? heights[rowIndex] - size.height : (heights[rowIndex] - size.height) / 2
-                if let anchor = MainActor.assumeIsolated({ subviews[cell.index].traits.value(GridCellAnchorTraitKey.self) }) {
+                if let anchor = _onMainActor({ subviews[cell.index].traits.value(GridCellAnchorTraitKey.self) }) {
                     dx = (cellWidth - size.width) * anchor.x
                     dy = (heights[rowIndex] - size.height) * anchor.y
                 }
@@ -1758,7 +1758,7 @@ struct _LazyGridLayout: Layout {
         var result: [[Int]] = []
         var current: [Int] = []
         for index in subviews.indices {
-            if MainActor.assumeIsolated({ isFullLine(subviews[index]) }) {
+            if _onMainActor({ isFullLine(subviews[index]) }) {
                 if !current.isEmpty { result.append(current); current = [] }
                 result.append([index])
             } else {
@@ -1780,7 +1780,7 @@ struct _LazyGridLayout: Layout {
         for line in allLines {
             var lineSize: CGFloat = 0
             for (column, index) in line.enumerated() {
-                let full = line.count == 1 && MainActor.assumeIsolated { isFullLine(subviews[index]) }
+                let full = line.count == 1 && _onMainActor { isFullLine(subviews[index]) }
                 let size = subviews[index].sizeThatFits(ProposedViewSize(main: nil, cross: full ? cross : tracks[column].size, axis: axis))
                 lineSize = max(lineSize, size[axis])
             }
@@ -1799,7 +1799,7 @@ struct _LazyGridLayout: Layout {
         let crossStart = bounds.origin[axis.other] + max(0, (bounds.size[axis.other] - cross) / 2)
         var position = bounds.origin[axis]
         for line in lines(subviews, columns: tracks.count) {
-            let full = line.count == 1 && MainActor.assumeIsolated { isFullLine(subviews[line[0]]) }
+            let full = line.count == 1 && _onMainActor { isFullLine(subviews[line[0]]) }
             let proposals = line.enumerated().map { column, _ in ProposedViewSize(main: nil, cross: full ? cross : tracks[column].size, axis: axis) }
             let sizes = zip(line, proposals).map { subviews[$0].sizeThatFits($1) }
             let lineSize = sizes.map { $0[axis] }.max() ?? 0

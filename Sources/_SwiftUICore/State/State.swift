@@ -237,7 +237,7 @@ final class LastValueBox<Value> {
 
 extension Binding: _GraphComparable {
     public nonisolated static func _isIdentical(_ lhs: Binding<Value>, _ rhs: Binding<Value>) -> Bool {
-        MainActor.assumeIsolated { lhs.location.isEqual(to: rhs.location) }
+        _onMainActor { lhs.location.isEqual(to: rhs.location) }
     }
 }
 

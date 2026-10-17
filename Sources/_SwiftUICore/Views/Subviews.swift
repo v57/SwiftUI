@@ -48,7 +48,7 @@ public struct Subview: View, Identifiable {
     public let id: ID
     let element: ViewListElement
 
-    public var containerValues: ContainerValues { MainActor.assumeIsolated { element.traits.value(ContainerValuesTraitKey.self) } }
+    public var containerValues: ContainerValues { _onMainActor { element.traits.value(ContainerValuesTraitKey.self) } }
 
     public var body: Never { primitiveBody(Self.self) }
 

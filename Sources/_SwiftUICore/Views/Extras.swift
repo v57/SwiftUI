@@ -252,7 +252,7 @@ public struct EquatableView<Content: View & Equatable>: View {
 
 extension EquatableView: _GraphComparable {
     public nonisolated static func _isIdentical(_ lhs: EquatableView, _ rhs: EquatableView) -> Bool {
-        MainActor.assumeIsolated { lhs.content == rhs.content }
+        _onMainActor { lhs.content == rhs.content }
     }
 }
 

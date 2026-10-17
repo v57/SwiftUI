@@ -87,7 +87,7 @@ struct NavigationContextKey: EnvironmentKey { static let defaultValue: Navigatio
 
 extension NavigationContext: _GraphComparable {
     nonisolated static func _isIdentical(_ lhs: NavigationContext, _ rhs: NavigationContext) -> Bool {
-        MainActor.assumeIsolated { lhs.destinations === rhs.destinations }
+        _onMainActor { lhs.destinations === rhs.destinations }
     }
 }
 

@@ -210,7 +210,7 @@ public struct AnyView: View {
 
 extension AnyView: _GraphComparable {
     public nonisolated static func _isIdentical(_ lhs: AnyView, _ rhs: AnyView) -> Bool {
-        MainActor.assumeIsolated { lhs.storage === rhs.storage || lhs.storage.isIdentical(to: rhs.storage) }
+        _onMainActor { lhs.storage === rhs.storage || lhs.storage.isIdentical(to: rhs.storage) }
     }
 }
 
