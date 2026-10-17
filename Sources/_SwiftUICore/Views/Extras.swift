@@ -388,6 +388,7 @@ public struct _MaskModifier<Mask: View>: ViewModifier {
 }
 
 struct _MaskSourceEffect: PlatformEffectModifier {
+    static var hasActions: Bool { false }
     static var pathComponent: String { "maskSource" }
     func effect(size: CGSize) -> DisplayEffect { .maskSource }
 }

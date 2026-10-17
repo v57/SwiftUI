@@ -32,12 +32,14 @@ public enum ColorFilter: Hashable, Sendable {
 }
 
 public struct _ColorFilterEffect: PlatformEffectModifier, Equatable {
+    static var hasActions: Bool { false }
     let filter: ColorFilter
     static var pathComponent: String { "colorFilter" }
     func effect(size: CGSize) -> DisplayEffect { .colorFilter(filter) }
 }
 
 public struct _BlendModeEffect: PlatformEffectModifier, Equatable {
+    static var hasActions: Bool { false }
     let mode: BlendMode
     static var pathComponent: String { "blendMode" }
     func effect(size: CGSize) -> DisplayEffect { .blendMode(mode) }

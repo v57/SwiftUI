@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 // providers (`NSItemProvider` on Apple platforms) and ask drag sources for one.
 
 struct _DropModifier: PlatformEffectModifier {
+    static var hasActions: Bool { true }
     let types: [String]
     let isTargeted: Binding<Bool>?
     let delegate: (any _DropHandler)
@@ -52,6 +53,7 @@ protocol _DropHandler {
 }
 
 struct _DragModifier: PlatformEffectModifier {
+    static var hasActions: Bool { true }
     let makeItem: @MainActor () -> AnyObject?
     static var pathComponent: String { "onDrag" }
     func effect(size: CGSize) -> DisplayEffect { .opacity(1) }

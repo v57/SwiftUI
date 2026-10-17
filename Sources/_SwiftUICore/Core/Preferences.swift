@@ -125,6 +125,7 @@ public struct PreferenceOutputs {
             }
             return result
         }
+        bag.setLabel("preferences")
         return PreferenceOutputs(bag: bag)
     }
 

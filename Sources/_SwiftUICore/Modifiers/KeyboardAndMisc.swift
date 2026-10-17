@@ -40,6 +40,7 @@ public struct KeyPress: Sendable {
 public enum MoveCommandDirection: Sendable { case up, down, left, right }
 
 struct _KeyPressModifier: PlatformEffectModifier {
+    static var hasActions: Bool { true }
     let phases: KeyPress.Phases
     let matches: @MainActor (KeyPress) -> Bool
     let action: @MainActor (KeyPress) -> KeyPress.Result
@@ -125,6 +126,7 @@ extension View {
 #endif
 
 struct _PasteCommandModifier: PlatformEffectModifier {
+    static var hasActions: Bool { true }
     let types: [String]
     let action: @MainActor ([AnyObject]) -> Void
     static var pathComponent: String { "onPasteCommand" }

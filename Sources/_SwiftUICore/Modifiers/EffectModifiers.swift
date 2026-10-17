@@ -10,6 +10,9 @@ protocol PlatformEffectModifier: ViewModifier where Body == Never {
     static var pathComponent: String { get }
     func effect(size: CGSize) -> DisplayEffect
     func actions(modifier: Attribute<Self>) -> RenderActions
+    /// Whether `actions` makes any (they read the modifier's latest value when they fire). No
+    /// default: an effect that has actions but says it hasn't would silently lose them.
+    static var hasActions: Bool { get }
 }
 
 extension PlatformEffectModifier {
@@ -18,10 +21,12 @@ extension PlatformEffectModifier {
     public static func _makeView(modifier: _GraphValue<Self>, inputs: _ViewInputs, body: @escaping @MainActor (_ViewInputs) -> _ViewOutputs) -> _ViewOutputs {
         let inputs = inputs.with(path: pathComponent)
         let geometry = inputs.geometry
+        // The modifier is read through its projection (the content's own cut-off is enough): an
+        // attribute for it is made only for actions.
         let content = Attribute<RenderContent>(inputs.subgraph, isEqual: { $0 == $1 }) {
-            .effect(modifier.attribute.value.effect(size: geometry.value.size))
+            .effect(modifier.value.effect(size: geometry.value.size))
         }
-        let actions = AnyAttribute.withoutDependencies { modifier.attribute.value.actions(modifier: modifier.attribute) }
+        let actions = Self.hasActions ? AnyAttribute.withoutDependencies { modifier.attribute.value.actions(modifier: modifier.attribute) } : RenderActions()
         let render = inputs.makePlatformNode(content: content, actions: actions)
         var childInputs = inputs
         childInputs.render = render
@@ -30,24 +35,28 @@ extension PlatformEffectModifier {
 }
 
 public struct _OpacityEffect: PlatformEffectModifier, Equatable {
+    static var hasActions: Bool { false }
     let opacity: Double
     static var pathComponent: String { "opacity" }
     func effect(size: CGSize) -> DisplayEffect { .opacity(opacity) }
 }
 
 public struct _ClipEffect<S: Shape>: PlatformEffectModifier {
+    static var hasActions: Bool { false }
     let shape: S
     static var pathComponent: String { "clip" }
     func effect(size: CGSize) -> DisplayEffect { .clip(shape.path(in: CGRect(origin: .zero, size: size))) }
 }
 
 public struct _ContentShapeEffect<S: Shape>: PlatformEffectModifier {
+    static var hasActions: Bool { false }
     let shape: S
     static var pathComponent: String { "contentShape" }
     func effect(size: CGSize) -> DisplayEffect { .contentShape(shape.path(in: CGRect(origin: .zero, size: size))) }
 }
 
 public struct _TransformEffect: PlatformEffectModifier, Equatable {
+    static var hasActions: Bool { false }
     let offset: CGSize
     let scale: CGSize
     let rotation: Double
@@ -57,6 +66,7 @@ public struct _TransformEffect: PlatformEffectModifier, Equatable {
 }
 
 public struct _ShadowEffect: PlatformEffectModifier {
+    static var hasActions: Bool { false }
     let shadow: Color
     let radius: CGFloat
     let offset: CGSize
@@ -67,6 +77,7 @@ public struct _ShadowEffect: PlatformEffectModifier {
 }
 
 public struct _TapGestureModifier: PlatformEffectModifier {
+    static var hasActions: Bool { true }
     let count: Int
     let action: @MainActor () -> Void
     static var pathComponent: String { "onTapGesture" }

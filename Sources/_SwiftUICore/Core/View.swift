@@ -147,6 +147,7 @@ final class _LazyGraphValue<Value> {
     var attribute: Attribute<Value> {
         if let made { return made }
         let attribute = Attribute<Value>(subgraph, rule: get)
+        attribute.setLabel("projection \(Value.self)")
         made = attribute
         return attribute
     }

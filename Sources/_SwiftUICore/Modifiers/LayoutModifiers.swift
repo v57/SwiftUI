@@ -20,7 +20,8 @@ extension UnaryLayoutModifier {
     public static func _makeView(modifier: _GraphValue<Self>, inputs: _ViewInputs, body: @escaping @MainActor (_ViewInputs) -> _ViewOutputs) -> _ViewOutputs {
         let tracer = inputs.tracer
         return inputs.makeUnaryLayout(component: pathComponent, separatePlacement: placesIndependently, body: body) { child, path in
-            modifier.attribute.value.makeComputer(child: child, path: path, tracer: tracer)
+            // Read through the projection: the layout's own cut-off (same placement) is enough.
+            modifier.value.makeComputer(child: child, path: path, tracer: tracer)
         }
     }
 }

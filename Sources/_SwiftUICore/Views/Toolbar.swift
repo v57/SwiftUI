@@ -399,6 +399,7 @@ public enum ToolbarTitleDisplayMode: Sendable { case automatic, large, inline, i
 
 /// `.help(_:)` — a tooltip on AppKit.
 struct _HelpModifier: PlatformEffectModifier {
+    static var hasActions: Bool { true }
     let text: String
     static var pathComponent: String { "help" }
     func effect(size: CGSize) -> DisplayEffect { .opacity(1) }

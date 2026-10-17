@@ -201,19 +201,21 @@ public struct EmptyModifier: ViewModifier {
 /// Base for primitive modifiers that only transform the environment: they apply to the list
 /// inputs too, so composite views inside the content see the modified environment.
 protocol EnvironmentModifier: ViewModifier where Body == Never {
-    static func makeEnvironment(modifier: Attribute<Self>, environment: Attribute<EnvironmentValues>, subgraph: Subgraph) -> Attribute<EnvironmentValues>
+    /// `modifier` is read through its projection in the environment's rule (which compares
+    /// what it writes, so it needs no attribute of its own).
+    static func makeEnvironment(modifier: _GraphValue<Self>, environment: Attribute<EnvironmentValues>, subgraph: Subgraph) -> Attribute<EnvironmentValues>
 }
 
 extension EnvironmentModifier {
     public static func _makeView(modifier: _GraphValue<Self>, inputs: _ViewInputs, body: @escaping @MainActor (_ViewInputs) -> _ViewOutputs) -> _ViewOutputs {
         var inputs = inputs
-        inputs.environment = makeEnvironment(modifier: modifier.attribute, environment: inputs.environment, subgraph: inputs.subgraph)
+        inputs.environment = makeEnvironment(modifier: modifier, environment: inputs.environment, subgraph: inputs.subgraph)
         return body(inputs)
     }
 
     public static func _makeViewList(modifier: _GraphValue<Self>, inputs: _ViewListInputs, body: @escaping @MainActor (_ViewListInputs) -> _ViewListOutputs) -> _ViewListOutputs {
         var inputs = inputs
-        inputs.environment = makeEnvironment(modifier: modifier.attribute, environment: inputs.environment, subgraph: inputs.subgraph)
+        inputs.environment = makeEnvironment(modifier: modifier, environment: inputs.environment, subgraph: inputs.subgraph)
         return body(inputs)
     }
 }

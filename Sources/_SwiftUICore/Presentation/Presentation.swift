@@ -554,6 +554,7 @@ public struct _ContextMenuModifier<MenuContent: View>: ViewModifier {
 }
 
 struct _SecondaryClickModifier: PlatformEffectModifier {
+    static var hasActions: Bool { true }
     let action: @MainActor () -> Void
     static var pathComponent: String { "contextMenu" }
     func effect(size: CGSize) -> DisplayEffect { .opacity(1) }

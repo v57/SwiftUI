@@ -162,6 +162,7 @@ struct _PressableButton<S: ButtonStyle>: View {
 }
 
 struct _PressModifier: PlatformEffectModifier {
+    static var hasActions: Bool { true }
     let isPressed: Binding<Bool>
     let action: @MainActor () -> Void
     static var pathComponent: String { "pressable" }

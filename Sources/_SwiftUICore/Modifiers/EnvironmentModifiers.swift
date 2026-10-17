@@ -55,7 +55,7 @@ public struct _EnvironmentKeyWritingModifier<Value>: ViewModifier, EnvironmentMo
 
     // The modifier is only read in rules: its value may depend on layout (e.g. a font sized
     // from a GeometryReader proxy), which doesn't exist while the graph is being built.
-    static func makeEnvironment(modifier: Attribute<Self>, environment: Attribute<EnvironmentValues>, subgraph: Subgraph) -> Attribute<EnvironmentValues> {
+    static func makeEnvironment(modifier: _GraphValue<Self>, environment: Attribute<EnvironmentValues>, subgraph: Subgraph) -> Attribute<EnvironmentValues> {
         makeWritingEnvironment(parent: environment, subgraph: subgraph, value: { _KeyedValue(keyPath: modifier.value.keyPath, value: modifier.value.value) }) { environment, entry in
             environment[keyPath: entry.keyPath] = entry.value
         }
@@ -67,7 +67,7 @@ public struct _EnvironmentTransformModifier<Value>: ViewModifier, EnvironmentMod
     let transform: (inout Value) -> Void
     public typealias Body = Never
 
-    static func makeEnvironment(modifier: Attribute<Self>, environment: Attribute<EnvironmentValues>, subgraph: Subgraph) -> Attribute<EnvironmentValues> {
+    static func makeEnvironment(modifier: _GraphValue<Self>, environment: Attribute<EnvironmentValues>, subgraph: Subgraph) -> Attribute<EnvironmentValues> {
         makeWritingEnvironment(parent: environment, subgraph: subgraph, value: {
             let current = modifier.value
             var value = environment.value[keyPath: current.keyPath]
@@ -83,7 +83,7 @@ struct _EnvironmentObjectModifier<Object: AnyObject>: ViewModifier, EnvironmentM
     let object: Object?
     typealias Body = Never
 
-    static func makeEnvironment(modifier: Attribute<Self>, environment: Attribute<EnvironmentValues>, subgraph: Subgraph) -> Attribute<EnvironmentValues> {
+    static func makeEnvironment(modifier: _GraphValue<Self>, environment: Attribute<EnvironmentValues>, subgraph: Subgraph) -> Attribute<EnvironmentValues> {
         makeWritingEnvironment(parent: environment, subgraph: subgraph, value: { modifier.value.object }) { environment, object in
             environment[object: Object.self] = object
         }

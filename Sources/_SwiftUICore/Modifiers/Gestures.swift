@@ -488,6 +488,7 @@ final class GestureSession {
 }
 
 public struct _GestureModifier<G: Gesture>: PlatformEffectModifier {
+    static var hasActions: Bool { true }
     let gesture: G
     var isEnabled = true
     static var pathComponent: String { "gesture" }
@@ -580,6 +581,7 @@ public enum HoverPhase: Equatable, Sendable {
 }
 
 struct _HoverModifier: PlatformEffectModifier {
+    static var hasActions: Bool { true }
     let action: @MainActor (Bool) -> Void
     static var pathComponent: String { "onHover" }
     func effect(size: CGSize) -> DisplayEffect { .opacity(1) }

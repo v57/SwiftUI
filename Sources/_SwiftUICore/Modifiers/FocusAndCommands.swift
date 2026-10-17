@@ -81,6 +81,7 @@ func _isUnfocused<V>(_ value: V) -> Bool {
 /// Handles a responder-chain action (`copy:`, `cut:`, `onCommand(#selector(...))`) while the view
 /// exists; the most recently built handler for a selector wins.
 struct _CommandModifier: PlatformEffectModifier {
+    static var hasActions: Bool { true }
     let selector: String
     let action: (@MainActor () -> Void)?
     static var pathComponent: String { "onCommand" }

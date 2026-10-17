@@ -102,7 +102,7 @@ public struct _OverlayModifier<Overlay: View>: ViewModifier {
 
     public static func _makeView(modifier: _GraphValue<Self>, inputs: _ViewInputs, body: @escaping @MainActor (_ViewInputs) -> _ViewOutputs) -> _ViewOutputs {
         let overlay = modifier.project(inputs) { $0.overlay }
-        let alignment = Attribute<Alignment>(inputs.subgraph, isEqual: { $0 == $1 }) { modifier.attribute.value.alignment }
+        let alignment = Attribute<Alignment>(inputs.subgraph, isEqual: { $0 == $1 }) { modifier.value.alignment }
         return makeSecondaryLayer(secondary: overlay, alignment: alignment, placement: .above, inputs: inputs, body: body)
     }
 }
@@ -114,7 +114,7 @@ public struct _BackgroundModifier<Background: View>: ViewModifier {
 
     public static func _makeView(modifier: _GraphValue<Self>, inputs: _ViewInputs, body: @escaping @MainActor (_ViewInputs) -> _ViewOutputs) -> _ViewOutputs {
         let background = modifier.project(inputs) { $0.background }
-        let alignment = Attribute<Alignment>(inputs.subgraph, isEqual: { $0 == $1 }) { modifier.attribute.value.alignment }
+        let alignment = Attribute<Alignment>(inputs.subgraph, isEqual: { $0 == $1 }) { modifier.value.alignment }
         return makeSecondaryLayer(secondary: background, alignment: alignment, placement: .below, inputs: inputs, body: body)
     }
 }
