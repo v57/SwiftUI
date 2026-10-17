@@ -153,6 +153,23 @@ public final class RenderNode {
         effectiveGroup(where: { $0.transition != nil })?.transition ?? (forwardsTransitions ? removedInnerTransition : nil)
     }
 
+    /// `effectiveTransition` and `effectiveMatchKey` in one walk up.
+    var effectiveTransitionAndMatchKey: (AnyTransition?, AnyHashable?) {
+        var transition: AnyTransition?
+        var matchKey: AnyHashable?
+        var node = parent
+        while let current = node, current.kind == .group, transition == nil || matchKey == nil {
+            if transition == nil { transition = current.transition }
+            if matchKey == nil { matchKey = current.matchKey }
+            node = current.parent
+        }
+        if forwardsTransitions {
+            if transition == nil { transition = innerGroup(where: { $0.transition != nil })?.transition ?? removedInnerTransition }
+            if matchKey == nil { matchKey = innerGroup(where: { $0.matchKey != nil })?.matchKey ?? removedInnerMatchKey }
+        }
+        return (transition, matchKey)
+    }
+
     /// The group between this node and its platform ancestor matching `test` (nearest first), or for
     /// a forwarding container the first inside it. (Views inside a container inserted or removed
     /// with them leave the animation to it: the renderer skips them.)
@@ -363,7 +380,16 @@ public final class Renderer {
     }
 
     func setChildren(of parent: RenderNode, _ children: [RenderNode]) {
-        if parent.children.count == children.count, zip(parent.children, children).allSatisfy({ $0 === $1 }) { return }
+        if parent.children.count == children.count {
+            // Loops, not standard-library closures (each call of a main-actor closure passed to
+            // the standard library checks the executor).
+            var same = true
+            for index in children.indices where parent.children[index] !== children[index] {
+                same = false
+                break
+            }
+            if same { return }
+        }
         for child in children { child.parent = parent }
         parent.children = children
         structureChanged(below: parent)
@@ -379,14 +405,19 @@ public final class Renderer {
         }
         if node.kind == .platform, node.handle != nil, let container = node.platformAncestor {
             // Its index in the container is looked up at commit, only for a removal that animates.
-            let match = node.effectiveMatchKey.map { (key: $0, frame: node.absoluteFrame) }
-            removed.append((node, container, node.effectiveTransition, match))
+            let (transition, matchKey) = node.effectiveTransitionAndMatchKey
+            let match = matchKey.map { (key: $0, frame: node.absoluteFrame) }
+            removed.append((node, container, transition, match))
         }
         node.isRemoved = true
         hoverIndex[ObjectIdentifier(node)] = nil
         if node.kind == .platform { tracer.record(.renderRemove, node.path) }
         if let parent = node.parent {
-            parent.children.removeAll { $0 === node }
+            var index = parent.children.count - 1
+            while index >= 0 {
+                if parent.children[index] === node { parent.children.remove(at: index) }
+                index -= 1
+            }
             structureChanged(below: parent)
         }
         node.parent = nil
