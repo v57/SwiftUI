@@ -53,7 +53,8 @@ public struct LocalizedStringKey: Equatable, @unchecked Sendable, ExpressibleByS
         public init(literalCapacity: Int, interpolationCount: Int) { key.reserveCapacity(literalCapacity + interpolationCount * 2) }
 
         public mutating func appendLiteral(_ literal: String) {
-            key += literal.replacingOccurrences(of: "%", with: "%%")
+            // (Foundation's replacing is slow; most literals have no percent sign.)
+            key += literal.contains("%") ? literal.replacingOccurrences(of: "%", with: "%%") : literal
         }
 
         public mutating func appendInterpolation(_ string: String) {
@@ -215,6 +216,42 @@ enum LocalizedTextResolver {
         return pieces(format: translated, arguments: key.arguments, hasFormatting: key.hasFormatting)
     }
 
+    /// Fills `%@`, `%lld`, `%llu` and `%%` in order; nil for any other specifier (positional
+    /// arguments, precision, floating point...), which `String(format:)` handles.
+    static func simpleFormat(_ format: String, arguments: [CVarArg]) -> String? {
+        var result = ""
+        result.reserveCapacity(format.utf8.count + arguments.count * 8)
+        var next = 0
+        var scalars = format.unicodeScalars.makeIterator()
+        while let scalar = scalars.next() {
+            guard scalar == "%" else {
+                result.unicodeScalars.append(scalar)
+                continue
+            }
+            switch scalars.next() {
+            case "%": result.append("%")
+            case "@":
+                guard next < arguments.count, let string = arguments[next] as? String else { return nil }
+                result += string
+                next += 1
+            case "l":
+                guard scalars.next() == "l", next < arguments.count else { return nil }
+                switch scalars.next() {
+                case "d":
+                    guard let value = arguments[next] as? Int64 else { return nil }
+                    result += String(value)
+                case "u":
+                    guard let value = arguments[next] as? UInt64 else { return nil }
+                    result += String(value)
+                default: return nil
+                }
+                next += 1
+            default: return nil
+            }
+        }
+        return next == arguments.count ? result : nil
+    }
+
     static func pieces(format: String, arguments: [LocalizedStringKey.FormatArgument], hasFormatting: Bool) -> [Piece] {
         guard hasFormatting else { return [.string(format)] }
         // Text/Image arguments are formatted as markers, then split back out.
@@ -231,8 +268,10 @@ enum LocalizedTextResolver {
                 return argument.cVarArg
             }
         }
-        // Foundation applies stringsdict plural rules to translated formats.
-        let formatted = String(format: format, locale: Locale.current, arguments: cArguments)
+        // Foundation applies stringsdict plural rules to translated formats; keys made by plain
+        // interpolation (`%@`, `%lld`, `%llu`, `%%` only) are filled in directly.
+        let formatted = simpleFormat(format, arguments: cArguments)
+            ?? String(format: format, locale: Locale.current, arguments: cArguments)
         guard !embedded.isEmpty else { return [.string(formatted)] }
         var result: [Piece] = []
         let parts = formatted.split(separator: marker, omittingEmptySubsequences: false)

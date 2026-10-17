@@ -104,4 +104,21 @@ struct TextLocalizationTests {
         #expect(nested.first { $0.text == "both" }?.style == [.bold, .italic])
         #expect(InlineMarkdown.parse("2 * 3 * 4").map(\.text).joined() == "2 * 3 * 4")
     }
+
+    /// Keys made by plain interpolation are filled in without `String(format:)`, with the same
+    /// result; anything else still goes through Foundation.
+    @Test func simpleKeysFormatLikeFoundation() {
+        let cases: [(String, [CVarArg])] = [
+            ("%@ has %lld changes, %llu left", ["main", Int64(-12), UInt64(7)]),
+            ("100%% of %@", ["tests"]),
+            ("plain", []),
+            ("%@%@", ["a", "b"]),
+        ]
+        for (format, arguments) in cases {
+            #expect(LocalizedTextResolver.simpleFormat(format, arguments: arguments) == String(format: format, locale: Locale.current, arguments: arguments))
+        }
+        #expect(LocalizedTextResolver.simpleFormat("%.2f", arguments: [1.5]) == nil)
+        #expect(LocalizedTextResolver.simpleFormat("%1$@", arguments: ["x"]) == nil)
+        #expect(LocalizedTextResolver.simpleFormat("%d", arguments: [Int64(3)]) == nil)
+    }
 }

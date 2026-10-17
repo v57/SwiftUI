@@ -209,4 +209,31 @@ struct ScalingTests {
         // measured again).
         #expect(host.backend.textMeasurements <= texts * 6)
     }
+
+    /// Time to build cards (`BUILD_BENCH=<rounds>` prints it; profiling target).
+    @Test func buildBenchmark() {
+        guard let rounds = ProcessInfo.processInfo.environment["BUILD_BENCH"].flatMap(Int.init) else { return }
+        let rows = makeScalingRows(60)
+        let states = (0..<60).map { _ in ScalingItemState(isBuilt: false) }
+        let host = TestHost(ScrollView {
+            VStack(spacing: 8) {
+                ForEach(0..<rows.count, id: \.self) { ScalingLazyItem(state: states[$0], row: rows[$0], index: $0) }
+            }
+        }, size: CGSize(width: 600, height: 800))
+        host.tracer.isRecording = false
+        var built = 0.0, evaluations = 0, attributes = 0
+        for _ in 0..<rounds {
+            let before = host.graph.graph.evaluationCount
+            let attributesBefore = host.graph.graph.liveAttributeCount
+            let start = Date()
+            for state in states { state.isBuilt = true }
+            host.flush()
+            built += Date().timeIntervalSince(start)
+            evaluations += host.graph.graph.evaluationCount - before
+            attributes += host.graph.graph.liveAttributeCount - attributesBefore
+            for state in states { state.isBuilt = false }
+            host.flush()
+        }
+        print(String(format: "build bench: %.3f ms per card, %.2f µs per evaluation, %d evaluations and %d attributes per card", built / Double(rounds * 60) * 1000, built / Double(evaluations) * 1e6, evaluations / (rounds * 60), attributes / (rounds * 60)))
+    }
 }
