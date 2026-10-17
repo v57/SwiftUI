@@ -41,6 +41,16 @@ extension ViewModifier {
     /// bodies normally produce the same environment); when it goes away the proxy falls back to
     /// the modifier's outer environment.
     public static func _makeViewList(modifier: _GraphValue<Self>, inputs: _ViewListInputs, body: @escaping @MainActor (_ViewListInputs) -> _ViewListOutputs) -> _ViewListOutputs {
+        if Body.self == Never.self {
+            // A primitive modifier gives its content the environment it gets (the ones that change
+            // it are environment modifiers, with their own list form): no proxy to rebind.
+            let list = body(inputs).list.mapElements(in: inputs.subgraph) { element in
+                ViewListElement(traits: element.traits) { placement in
+                    Self._makeView(modifier: modifier, inputs: inputs.instantiate(placement)) { element.make($0) }
+                }
+            }
+            return _ViewListOutputs(list: list)
+        }
         let outer = inputs.environment
         let proxy = Attribute<EnvironmentValues>(inputs.subgraph)
         proxy.setLabel("modifier content environment \(inputs.path)")
