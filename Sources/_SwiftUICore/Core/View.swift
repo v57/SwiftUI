@@ -75,16 +75,41 @@ func typeName(_ type: Any.Type) -> String {
 // MARK: - Graph values
 
 /// A view (or modifier) value living in the graph.
+///
+/// A projection (`project`) makes no attribute of its own: it reads the value it projects from
+/// whenever it is read. Its attribute, with the equality cut-off that keeps an unchanged child
+/// from updating, is made when a consumer first asks for `attribute` (a body, a primitive's rules,
+/// a layout). Values that are only projected further (a stack's content, a tuple's elements, the
+/// content of a modifier wrapping another modifier) cost nothing, like SwiftUI's offset
+/// attributes; they were a third of the attributes a page built.
 @MainActor
 public struct _GraphValue<Value> {
-    public let attribute: Attribute<Value>
+    private let source: Attribute<Value>?
+    private let projection: _LazyGraphValue<Value>?
 
-    public init(_ attribute: Attribute<Value>) { self.attribute = attribute }
+    public init(_ attribute: Attribute<Value>) {
+        source = attribute
+        projection = nil
+    }
 
-    /// Projection with structural equality cut-off.
+    private init(projection: _LazyGraphValue<Value>) {
+        source = nil
+        self.projection = projection
+    }
+
+    /// The value as an attribute (made on first use for a projection).
+    public var attribute: Attribute<Value> { source ?? projection!.attribute }
+
+    /// The current value, read like an attribute's (registers a dependency on what it comes from).
+    var value: Value { source?.value ?? projection!.read() }
+
+    /// Projection; consumers that make its attribute get structural equality cut-off.
     func project<T>(_ subgraph: Subgraph, _ transform: @escaping (Value) -> T) -> _GraphValue<T> {
-        let source = attribute
-        return _GraphValue<T>(Attribute(subgraph) { transform(source.value) })
+        if let source {
+            return _GraphValue<T>(projection: _LazyGraphValue(subgraph) { transform(source.value) })
+        }
+        let parent = projection!
+        return _GraphValue<T>(projection: _LazyGraphValue(subgraph) { transform(parent.read()) })
     }
 
     func project<T>(_ inputs: _ViewInputs, _ transform: @escaping (Value) -> T) -> _GraphValue<T> {
@@ -94,6 +119,29 @@ public struct _GraphValue<Value> {
     func project<T>(_ inputs: _ViewListInputs, _ transform: @escaping (Value) -> T) -> _GraphValue<T> {
         project(inputs.subgraph, transform)
     }
+}
+
+/// A projected value whose attribute is made when first asked for.
+@MainActor
+final class _LazyGraphValue<Value> {
+    private let subgraph: Subgraph
+    private let get: () -> Value
+    private var made: Attribute<Value>?
+
+    init(_ subgraph: Subgraph, _ get: @escaping () -> Value) {
+        self.subgraph = subgraph
+        self.get = get
+    }
+
+    var attribute: Attribute<Value> {
+        if let made { return made }
+        let attribute = Attribute<Value>(subgraph, rule: get)
+        made = attribute
+        return attribute
+    }
+
+    /// Reads through the attribute once there is one (its cut-off), else projects anew.
+    func read() -> Value { made?.value ?? get() }
 }
 
 // MARK: - Inputs / outputs
