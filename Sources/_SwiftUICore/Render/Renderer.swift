@@ -554,7 +554,12 @@ public final class Renderer {
                     // Matched geometry: animate from the removed partner's frame (a container
                     // created with this view and forwarding its transitions animates instead).
                     let containerAnimates = container.forwardsTransitions && created[ObjectIdentifier(container)] != nil
-                    if !containerAnimates, let key = child.effectiveMatchKey, let from = matchedFrames[key], let animation = animation(for: child) {
+                    // The child's groups, walked once (only when they can matter: a matched view
+                    // was removed, or the child joins an existing container).
+                    let insertedInExisting = created[ObjectIdentifier(container)] == nil
+                    let (transition, matchKey) = (!matchedFrames.isEmpty && !containerAnimates) || insertedInExisting
+                        ? child.effectiveTransitionAndMatchKey : (nil, nil)
+                    if !containerAnimates, let key = matchKey, let from = matchedFrames[key], let animation = animation(for: child) {
                         var origin = CGPoint.zero
                         var ancestor: RenderNode? = container
                         while let node = ancestor, node.kind == .platform {
@@ -572,8 +577,8 @@ public final class Renderer {
                         continue
                     }
                     // Insertion transition for views inserted into an existing container.
-                    if created[ObjectIdentifier(container)] == nil {
-                        let transition = child.effectiveTransition ?? .opacity
+                    if insertedInExisting {
+                        let transition = transition ?? .opacity
                         if let animation = transition.animation ?? animation(for: child) {
                             let active = RenderPresentation(effect: transition.insertion, size: child.frame.size)
                             if !active.isIdentity {
