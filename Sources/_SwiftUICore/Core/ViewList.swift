@@ -218,14 +218,19 @@ final class ViewListContainer {
         let size: Attribute<ViewGeometry>
         /// The item's origin in its parent's space.
         let origin: Attribute<CGPoint>
-        let path: ViewPath
+        private let parentPath: ViewPath
+        private let id: ViewListID
 
-        init(node: RenderNode, size: Attribute<ViewGeometry>, origin: Attribute<CGPoint>, path: ViewPath) {
+        init(node: RenderNode, size: Attribute<ViewGeometry>, origin: Attribute<CGPoint>, parentPath: ViewPath, id: ViewListID) {
             self.node = node
             self.size = size
             self.origin = origin
-            self.path = path
+            self.parentPath = parentPath
+            self.id = id
         }
+
+        /// The item's path, for the tracer (made only while it records).
+        var path: ViewPath { parentPath.appending(id.description) }
 
         var frame: CGRect { CGRect(origin: origin.peekValue ?? .zero, size: size.peekValue?.size ?? .zero) }
     }
@@ -367,13 +372,12 @@ final class ViewListContainer {
         let outputs = element.make(childInputs)
         if let geometry {
             let tracer = inputs.tracer
-            let pathBox = PathBox()
             geometry.setRule { [unowned self] in
                 guard let index = self.index(of: id), let placement = self.placement else { return geometry.peekValue ?? .zero }
                 return placement(index)
             }
-            geometry.onChange = { _ in tracer.record(.geometry, pathBox.path) }
-            pathBox.path = inputs.path.appending(id.description)
+            let parentPath = inputs.path
+            geometry.onChange = { _ in tracer.record(.geometry) { parentPath.appending(id.description) } }
         }
         if let targets = inputs.scrollTargets, let key = id.lastExplicit {
             let spaceOrigin = inputs.spaceOrigin
@@ -417,7 +421,7 @@ final class ViewListContainer {
             }
         }
         if placer == nil { makePlacer() }
-        return ItemSpace(node: node, size: size, origin: origin, path: inputs.path.appending(id.description))
+        return ItemSpace(node: node, size: size, origin: origin, parentPath: inputs.path, id: id)
     }
 
     /// The attribute that places items with their own space: it reads the container's placements
@@ -440,7 +444,7 @@ final class ViewListContainer {
                 let size = ViewGeometry(origin: .zero, size: placed.size, proposal: placed.proposal)
                 let moved = space.origin.peekValue != placed.origin
                 if moved || space.size.peekValue != size {
-                    tracer.record(.geometry, space.path)
+                    tracer.record(.geometry) { space.path }
                     space.size.setSourceValueDuringUpdate(size)
                     space.origin.setSourceValueDuringUpdate(placed.origin)
                 }
@@ -509,7 +513,3 @@ final class ListItemReference {
     }
 }
 
-@MainActor
-final class PathBox {
-    var path: ViewPath?
-}

@@ -66,10 +66,21 @@ extension View {
     }
 }
 
+/// A type's name without generic arguments (view paths), demangled once per type.
 func typeName(_ type: Any.Type) -> String {
+    let key = ObjectIdentifier(type)
+    if isOnMainQueue {
+        if let name = _onMainActor({ TypeNames.cache[key] }) { return name }
+    }
     let name = _typeName(type, qualified: false)
-    if let index = name.firstIndex(of: "<") { return String(name[..<index]) }
-    return name
+    let result = name.firstIndex(of: "<").map { String(name[..<$0]) } ?? name
+    if isOnMainQueue { _onMainActor { TypeNames.cache[key] = result } }
+    return result
+}
+
+@MainActor
+private enum TypeNames {
+    static var cache: [ObjectIdentifier: String] = [:]
 }
 
 // MARK: - Graph values

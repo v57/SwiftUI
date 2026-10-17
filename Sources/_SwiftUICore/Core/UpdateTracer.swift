@@ -92,6 +92,13 @@ public final class UpdateTracer {
         events.append(Event(kind: kind, path: path?.description ?? "<root>"))
     }
 
+    /// Like `record`, with a path made only while recording.
+    func record(_ kind: Kind, path: () -> ViewPath?) {
+        counters.kinds[kind.index] += 1
+        guard isRecording else { return }
+        events.append(Event(kind: kind, path: path()?.description ?? "<root>"))
+    }
+
     public func reset() { events.removeAll(keepingCapacity: true) }
 
     public func resetCounters() { counters = Counters() }
