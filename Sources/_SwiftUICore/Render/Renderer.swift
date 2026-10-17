@@ -496,7 +496,8 @@ public final class Renderer {
         let now = clock()
         completionGroup = nil
         backend.willCommit()
-        let movedContent = !needsChildSync.isEmpty || !removed.isEmpty || pending.contains { $0.needsFrame }
+        var movedContent = !needsChildSync.isEmpty || !removed.isEmpty
+        if !movedContent { for node in pending where node.needsFrame { movedContent = true; break } }
 
         // 0. Removals: top-level removed platform views may stay as "ghosts" while a removal
         //    transition runs.
@@ -532,7 +533,11 @@ public final class Renderer {
         // 1. Structure: create views for new platform nodes and sync child lists, top-down.
         var created: [ObjectIdentifier: Bool] = [:]
         while !needsChildSync.isEmpty {
-            let batch = needsChildSync.values.sorted { depth(of: $0) < depth(of: $1) }
+            // Each container's depth once (a walk to the root), not in every comparison.
+            var byDepth: [(depth: Int, node: RenderNode)] = []
+            byDepth.reserveCapacity(needsChildSync.count)
+            for node in needsChildSync.values { byDepth.append((depth(of: node), node)) }
+            let batch = Self.sortedByDepth(byDepth)
             needsChildSync.removeAll()
             for container in batch where !container.isRemoved && container.handle != nil {
                 let children = container.platformChildren
@@ -736,6 +741,12 @@ public final class Renderer {
             }
         }
         return nil
+    }
+
+    /// Nonisolated: a main-actor comparator passed to the standard library checks the executor on
+    /// every comparison.
+    private nonisolated static func sortedByDepth(_ nodes: [(depth: Int, node: RenderNode)]) -> [RenderNode] {
+        nodes.sorted { $0.depth < $1.depth }.map(\.node)
     }
 
     private func depth(of node: RenderNode) -> Int {
