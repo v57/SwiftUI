@@ -126,7 +126,7 @@ extension View {
     }
 
     public func foregroundStyle<S: ShapeStyle>(_ style: S) -> some View {
-        environment(\.foregroundStyle, AnyShapeStyle(style))
+        transformEnvironment(\.foregroundStyle) { current in current = _InheritedForegroundStyle.storing(style, over: current) }
     }
 
     public func foregroundStyle<S1: ShapeStyle, S2: ShapeStyle>(_ primary: S1, _ secondary: S2) -> some View {

@@ -290,6 +290,27 @@ public struct ForegroundStyle: ShapeStyle, Hashable {
     }
 }
 
+/// A foreground style that refers to the foreground (`.foreground`, `.foreground.opacity(0.5)`) set
+/// as the foreground: it resolves against the style it replaced, not against itself.
+struct _InheritedForegroundStyle: ShapeStyle, Equatable {
+    let style: AnyShapeStyle
+    let parent: AnyShapeStyle?
+
+    func _resolvePaint(in environment: EnvironmentValues) -> ResolvedPaint {
+        var outer = environment
+        outer.foregroundStyle = parent
+        return style._resolvePaint(in: outer)
+    }
+
+    /// The value `.foregroundStyle(style)` stores over `current`.
+    static func storing<S: ShapeStyle>(_ style: S, over current: AnyShapeStyle?) -> AnyShapeStyle? {
+        if style is ForegroundStyle || (style as? AnyShapeStyle)?.base is ForegroundStyle { return current }
+        let erased = AnyShapeStyle(style)
+        guard String(reflecting: type(of: erased.base)).contains("ForegroundStyle") else { return erased }
+        return AnyShapeStyle(_InheritedForegroundStyle(style: erased, parent: current))
+    }
+}
+
 public struct HierarchicalShapeStyle: ShapeStyle, Hashable {
     let level: Int
     public func _resolvePaint(in environment: EnvironmentValues) -> ResolvedPaint {

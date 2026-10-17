@@ -106,4 +106,18 @@ struct StyleTests {
         host.tap("change")
         #expect(host.texts.contains(" = "))
     }
+
+    /// `.foregroundStyle(.foreground)` keeps the enclosing style, and a style built on the
+    /// foreground resolves against the one it replaced (it recursed forever).
+    @Test func foregroundStyleReferringToTheForegroundInherits() {
+        let host = TestHost(VStack {
+            Text("kept").foregroundStyle(AnyShapeStyle(.foreground))
+            Text("kept too").foregroundStyle(.foreground)
+        }.foregroundStyle(Color.red))
+        let red = Color.red.resolve(in: EnvironmentValues())
+        for text in ["kept", "kept too"] {
+            guard case .text(let resolved) = host.view(withText: text)?.content else { Issue.record("no \(text)"); continue }
+            #expect(resolved.color == red)
+        }
+    }
 }
