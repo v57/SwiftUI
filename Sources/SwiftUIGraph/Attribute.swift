@@ -235,6 +235,7 @@ public class AnyAttribute {
     @exclusivity(unchecked) static var currentReader: AnyAttribute?
     @exclusivity(unchecked) static var currentStamp: UInt64 = 0
 
+    @usableFromInline
     final func recordRead() {
         guard AnyAttribute.currentReader != nil else { return }
         if readStamp == AnyAttribute.currentStamp { return }
@@ -308,7 +309,7 @@ public class AnyAttribute {
 public final class Attribute<Value>: AnyAttribute {
     public typealias Comparator = (Value, Value) -> Bool
 
-    @exclusivity(unchecked) private var storage: Value?
+    @exclusivity(unchecked) @usableFromInline var storage: Value?
     @exclusivity(unchecked) private var rule: (() -> Value)?
     /// The comparator given, or nil for `GraphComparison.isIdentical` (resolved once per type:
     /// `rawIsEqual`).
@@ -351,17 +352,24 @@ public final class Attribute<Value>: AnyAttribute {
     }
 
     /// Current value; registers a dependency when read from inside another attribute's rule.
+    /// Inlinable, so modules reading attributes do it in code specialized for the value's type
+    /// (generic code instantiated `Optional<Value>`'s metadata on every read).
+    @inlinable
     public var value: Value {
         updateIfNeeded()
         recordRead()
-        guard let storage else {
-            preconditionFailure("SwiftUI: attribute \(label ?? "<unnamed>") read before it had a value")
-        }
+        guard let storage else { readBeforeValue() }
         return storage
+    }
+
+    @usableFromInline
+    func readBeforeValue() -> Never {
+        preconditionFailure("SwiftUI: attribute \(label ?? "<unnamed>") read before it had a value")
     }
 
     /// Like `value`, but nil (still registering the dependency) while a late-bound attribute has
     /// no rule yet; the dependent stays dirty and recomputes once the rule is set.
+    @inlinable
     public var valueIfPresent: Value? {
         updateIfNeeded()
         recordRead()
@@ -369,6 +377,7 @@ public final class Attribute<Value>: AnyAttribute {
     }
 
     /// Value without bringing it up to date or registering a dependency.
+    @inlinable
     public var peekValue: Value? { storage }
 
     /// Sets a source value. No-op when equal to the current value.
