@@ -23,6 +23,8 @@ public final class ViewGraph: AttributeGraphDelegate {
     private var setRoot: ((Any) -> Void)?
     private var afterUpdate: [@MainActor () -> Void] = []
     private var isTornDown = false
+    /// An update (or animation frame) is running.
+    public private(set) var isUpdating = false
 
     // MARK: Transactions & animation state
     private var pendingTransaction = Transaction()
@@ -198,6 +200,14 @@ public final class ViewGraph: AttributeGraphDelegate {
     /// Brings the graph up to date, commits render changes, then runs deferred actions
     /// (onAppear, onChange, ...). Repeats while actions caused further changes.
     public func update() {
+        // Never re-entered: a platform callback during a commit (AppKit resizing the host in the
+        // layout pass of the commit's Core Animation transaction) asks for the next turn instead.
+        if isUpdating {
+            onNeedsUpdate?()
+            return
+        }
+        isUpdating = true
+        defer { isUpdating = false }
         guard !isTornDown else { return }
         var passes = 0
         renderer.schedule = { [unowned self] action in afterUpdate.append(action) }
@@ -227,6 +237,7 @@ public final class ViewGraph: AttributeGraphDelegate {
     /// properties. Call once per display frame while `hasActiveAnimations`.
     public func renderAnimationFrame() {
         guard !isTornDown else { return }
+        guard !isUpdating else { return }
         let time = now
         if activeAnimators > 0 {
             // State changed by events since the last update (e.g. a hover) is applied in its own
@@ -236,7 +247,9 @@ public final class ViewGraph: AttributeGraphDelegate {
             animationTime.setValue(time)
             update()
         }
+        isUpdating = true
         renderer.tick(at: time)
+        isUpdating = false
         let actions = afterUpdate
         afterUpdate.removeAll()
         if !actions.isEmpty {

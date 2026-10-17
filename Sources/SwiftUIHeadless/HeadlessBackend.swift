@@ -148,6 +148,11 @@ public final class HeadlessBackend: RenderBackend {
     // MARK: Metrics
 
     /// Each character is `0.5 × pointSize` wide; lines are `1.2 × pointSize` tall. Words wrap.
+    /// Called at the end of each commit (tests simulate platform callbacks made from inside one).
+    public var onDidCommit: (@MainActor () -> Void)?
+
+    public func didCommit() { onDidCommit?() }
+
     /// Text measurements asked of the backend (tests assert layout doesn't re-measure text).
     public private(set) var textMeasurements = 0
 

@@ -370,4 +370,31 @@ struct IdentityTests {
         #expect(host.texts.isEmpty)
         #expect(host.allViews.count == 1)
     }
+
+    /// A platform callback inside a commit that asks for an update (AppKit resizing the host in the
+    /// layout pass of the commit's transaction) gets it on the next turn: updates never nest.
+    @Test func updatesRequestedDuringACommitWaitForTheNextTurn() {
+        @MainActor final class Box { var count = 0; var nested = 0 }
+        let box = Box()
+        struct Screen: View {
+            @State var count = 0
+            let box: Box
+            var body: some View {
+                Button("tap \(count)") { count += 1 }
+            }
+        }
+        let host = TestHost(Screen(box: box))
+        host.backend.onDidCommit = { [unowned host] in
+            box.nested += 1
+            #expect(host.graph.isUpdating)
+            host.graph.update()
+        }
+        host.tap("tap 0")
+        #expect(host.texts.contains("tap 1"))
+        #expect(box.nested >= 1)
+        #expect(host.needsFlush)
+        host.backend.onDidCommit = nil
+        host.flush()
+        #expect(host.texts.contains("tap 1"))
+    }
 }
