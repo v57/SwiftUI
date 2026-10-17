@@ -107,26 +107,41 @@ public final class RenderNode {
     /// containers left out).
     public var platformChildren: [RenderNode] {
         var result: [RenderNode] = []
-        func visit(_ node: RenderNode) {
-            for child in node.children {
-                if child.kind == .platform {
-                    if child.forwardsTransitions, child.handle == nil, !child.hasPlatformDescendant { continue }
-                    result.append(child)
-                } else {
-                    visit(child)
-                }
+        result.reserveCapacity(children.count)
+        appendPlatformChildren(to: &result)
+        return result
+    }
+
+    // Recursion with an inout result and index loops: a long page's content is walked on every
+    // structural change (a nested function capturing the result and array copies for the
+    // placeholder check were a tenth of a scroll step on AppKit).
+    private func appendPlatformChildren(to result: inout [RenderNode]) {
+        let children = self.children
+        var index = 0
+        while index < children.count {
+            let child = children[index]
+            index += 1
+            if child.kind == .platform {
+                if child.forwardsTransitions, child.handle == nil, !child.hasPlatformDescendant { continue }
+                result.append(child)
+            } else {
+                child.appendPlatformChildren(to: &result)
             }
         }
-        visit(self)
-        return result
     }
 
     /// Whether a platform node lies below (through groups; empty item containers don't count).
     var hasPlatformDescendant: Bool {
-        var stack = children
-        while let next = stack.popLast() {
-            if next.kind == .platform, !(next.forwardsTransitions && next.handle == nil && !next.hasPlatformDescendant) { return true }
-            if next.kind != .platform { stack.append(contentsOf: next.children) }
+        let children = self.children
+        var index = 0
+        while index < children.count {
+            let next = children[index]
+            index += 1
+            if next.kind == .platform {
+                if !(next.forwardsTransitions && next.handle == nil && !next.hasPlatformDescendant) { return true }
+            } else if next.hasPlatformDescendant {
+                return true
+            }
         }
         return false
     }
