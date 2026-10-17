@@ -3,7 +3,7 @@ import Foundation
 import CoreGraphics
 #endif
 
-@resultBuilder @MainActor
+@resultBuilder
 public enum ViewBuilder {
     public static func buildBlock() -> EmptyView { EmptyView() }
 
@@ -48,8 +48,8 @@ public struct EmptyView: View, Equatable {
 /// Built by `ViewBuilder` for multiple children. `T` is a tuple of views; elements are found by
 /// runtime reflection of the tuple layout (once per type).
 public struct TupleView<T>: View {
-    public var value: T
-    public init(_ value: T) { self.value = value }
+    nonisolated(unsafe) public var value: T
+    nonisolated public init(_ value: T) { self.value = value }
     public var body: Never { primitiveBody(Self.self) }
 
     typealias Element = TupleViewElement

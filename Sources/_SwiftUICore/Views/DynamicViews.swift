@@ -142,8 +142,8 @@ extension View {
 
 @MainActor
 class AnyViewStorageBase {
-    let type: any View.Type
-    init(type: any View.Type) { self.type = type }
+    nonisolated(unsafe) let type: any View.Type
+    nonisolated init(type: any View.Type) { self.type = type }
     func makeViewList(view: _GraphValue<AnyView>, inputs: _ViewListInputs) -> ViewList { fatalError() }
     func isIdentical(to other: AnyViewStorageBase) -> Bool { false }
     /// The erased view.
@@ -152,8 +152,8 @@ class AnyViewStorageBase {
 
 @MainActor
 final class AnyViewStorage<V: View>: AnyViewStorageBase {
-    let view: V
-    init(_ view: V) {
+    nonisolated(unsafe) let view: V
+    nonisolated init(_ view: V) {
         self.view = view
         super.init(type: V.self)
     }
@@ -180,7 +180,7 @@ final class AnyViewStorage<V: View>: AnyViewStorageBase {
 public struct AnyView: View {
     let storage: AnyViewStorageBase
 
-    public init<V: View>(_ view: V) {
+    nonisolated public init<V: View>(_ view: V) {
         if let any = view as? AnyView {
             storage = any.storage
         } else {
@@ -188,7 +188,7 @@ public struct AnyView: View {
         }
     }
 
-    public init<V: View>(erasing view: V) { self.init(view) }
+    nonisolated public init<V: View>(erasing view: V) { self.init(view) }
 
     public var body: Never { primitiveBody(Self.self) }
 

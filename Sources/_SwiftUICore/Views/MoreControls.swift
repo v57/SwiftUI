@@ -115,6 +115,11 @@ extension EnvironmentValues {
         get { self[LabelsHiddenKey.self] }
         set { self[LabelsHiddenKey.self] = newValue }
     }
+    /// `.labelsHidden()` / `.labelsVisibility(_:)` as a visibility.
+    public var labelsVisibility: Visibility {
+        get { self[LabelsHiddenKey.self] ? .hidden : .automatic }
+        set { self[LabelsHiddenKey.self] = newValue == .hidden }
+    }
     var textFieldStyle: TextFieldStyleKind {
         get { self[TextFieldStyleKey.self] }
         set { self[TextFieldStyleKey.self] = newValue }

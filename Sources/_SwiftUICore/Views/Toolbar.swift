@@ -133,6 +133,9 @@ public protocol ToolbarContent {
 }
 
 extension ToolbarContent {
+    /// The toolbar's shared glass is the platform's; items draw as given.
+    public func sharedBackgroundVisibility(_ visibility: Visibility) -> some ToolbarContent { self }
+
     public func _toolbarItems(into items: inout [(ToolbarItemPlacement, any View)]) {
         body._toolbarItems(into: &items)
     }

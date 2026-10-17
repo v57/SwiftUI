@@ -102,7 +102,8 @@ public struct ScrollView<Content: View>: View {
         }
         let boundary = CoordinateSpaces(scrollTransform: scrollTransform, parent: inputs.coordinateSpaces)
         // `.scrollView`: the visible region (content point minus the content offset).
-        contentInputs.coordinateSpaces = CoordinateSpaces(name: AnyHashable(_ScrollViewCoordinateSpaceName()), origin: offset, parent: boundary)
+        let viewportSize = Attribute<CGSize>(inputs.subgraph, isEqual: { $0 == $1 }) { geometry.value.size }
+        contentInputs.coordinateSpaces = CoordinateSpaces(name: AnyHashable(_ScrollViewCoordinateSpaceName()), origin: offset, size: viewportSize, parent: boundary)
         contentInputs.scrollViewport = Attribute<CGRect>(inputs.subgraph, isEqual: { $0 == $1 }) {
             CGRect(origin: offset.value, size: geometry.value.size)
         }
@@ -237,6 +238,14 @@ public struct GeometryProxy {
 
     public var size: CGSize { geometry.size }
     public var safeAreaInsets: EdgeInsets { EdgeInsets() }
+
+    /// The bounds of a named coordinate space (`.scrollView`: the scroll view's visible region) in
+    /// this view's local coordinates; nil when no such space encloses the view.
+    @MainActor
+    public func bounds(of coordinateSpace: NamedCoordinateSpace) -> CGRect? {
+        guard let bounds = spaces?.bounds(of: coordinateSpace.name) else { return nil }
+        return bounds.offsetBy(dx: -geometry.origin.x, dy: -geometry.origin.y)
+    }
 
     @MainActor
     public func frame(in coordinateSpace: some CoordinateSpaceProtocol) -> CGRect {

@@ -117,4 +117,26 @@ struct ScrollFeatureTests {
         }
         #expect(transforms == [CGSize(width: 0, height: 40)])
     }
+
+    /// `GeometryProxy.bounds(of: .scrollView)`: the visible region in the view's own coordinates
+    /// (what ComponentKit's lazy stack plans from); nil outside a scroll view.
+    @Test func boundsOfScrollViewIsTheVisibleRegionInLocalCoordinates() {
+        final class Box { var bounds: CGRect?? = .none; var outside: CGRect?? = .none }
+        let box = Box()
+        let host = TestHost(VStack(spacing: 0) {
+            Color.blue.frame(height: 20)
+                .onGeometryChange(for: CGRect?.self) { $0.bounds(of: .scrollView) } action: { box.outside = .some($0) }
+            ScrollView {
+                VStack(spacing: 0) {
+                    Color.red.frame(height: 100)
+                    Color.green.frame(height: 1000)
+                        .onGeometryChange(for: CGRect?.self) { $0.bounds(of: .scrollView) } action: { box.bounds = .some($0) }
+                }
+            }
+        }, size: CGSize(width: 200, height: 320))
+        #expect(box.outside == .some(nil))
+        #expect(box.bounds == .some(CGRect(x: 0, y: -100, width: 200, height: 300)))
+        host.scroll(to: CGPoint(x: 0, y: 250), scrollViewAt: 0)
+        #expect(box.bounds == .some(CGRect(x: 0, y: 150, width: 200, height: 300)))
+    }
 }

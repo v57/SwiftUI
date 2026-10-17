@@ -299,6 +299,8 @@ public enum AppRuntime {
     /// Opens a window for an id and/or value (installed by the backend runner).
     public static var openWindow: (@MainActor (String?, AnyHashable?) -> Void)?
     public static var dismissWindow: (@MainActor (String?, AnyHashable?) -> Void)?
+    /// Starts moving the window under the pointer with the current mouse-down (`WindowDragGesture`).
+    public static var performWindowDrag: (@MainActor () -> Void)?
     /// The app's menu bar commands (evaluated by backends when menus open).
     public static var commands: [any Commands] = []
     /// Environment seen by commands (color scheme, ...).

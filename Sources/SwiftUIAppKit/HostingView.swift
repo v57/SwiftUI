@@ -319,6 +319,21 @@ open class NSHostingView<Content: View>: GraphHostingView {
         get { fatalError("rootView getter is not supported") }
         set { graph.setRootView(newValue) }
     }
+
+    /// Which of the content's sizes the view reports to Auto Layout (stored; this host never
+    /// constrains itself).
+    public var sizingOptions: NSHostingSizingOptions = .standardBounds
+}
+
+/// `NSHostingView.sizingOptions`.
+public struct NSHostingSizingOptions: OptionSet, Sendable {
+    public let rawValue: Int
+    public init(rawValue: Int) { self.rawValue = rawValue }
+    public static let minSize = NSHostingSizingOptions(rawValue: 1 << 0)
+    public static let intrinsicContentSize = NSHostingSizingOptions(rawValue: 1 << 1)
+    public static let maxSize = NSHostingSizingOptions(rawValue: 1 << 2)
+    public static let preferredContentSize = NSHostingSizingOptions(rawValue: 1 << 3)
+    public static let standardBounds: NSHostingSizingOptions = [.minSize, .intrinsicContentSize, .maxSize]
 }
 
 /// Runs an `App` with AppKit.
@@ -366,6 +381,10 @@ public enum AppKitAppRunner {
         self.menuBar = menuBar
         app.mainMenu = menuBar.makeMainMenu()
         AppRuntime.openWindow = { id, value in open(id: id, value: value) }
+        AppRuntime.performWindowDrag = {
+            guard let event = NSApp.currentEvent, event.type == .leftMouseDown, let window = event.window else { return }
+            window.performDrag(with: event)
+        }
         AppRuntime.dismissWindow = { id, value in dismiss(id: id, value: value) }
         // Like SwiftUI, the first window scene opens at launch (plus scenes presented at launch;
         // document apps start with an untitled document).

@@ -231,6 +231,9 @@ public macro Preview(_ name: String? = nil, body: @escaping @MainActor () -> Any
 @freestanding(declaration)
 public macro Preview(_ name: String? = nil, traits: Any..., body: @escaping @MainActor () -> Any) = #externalMacro(module: "SwiftUIMacros", type: "PreviewMacro")
 
+@attached(peer)
+public macro Previewable() = #externalMacro(module: "SwiftUIMacros", type: "PreviewableMacro")
+
 extension EnvironmentValues {
     /// Environment seen by uninstalled `@Environment` properties (menu bar commands).
     @MainActor static var ambient: EnvironmentValues?

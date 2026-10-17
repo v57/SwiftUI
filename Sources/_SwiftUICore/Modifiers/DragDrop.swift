@@ -160,3 +160,69 @@ extension View {
     }
 }
 #endif
+
+// MARK: - Drag sessions (macOS 26)
+
+/// Which operations a drag started in this view allows.
+public struct DragConfiguration: Sendable {
+    public var allowMove: Bool
+    public var allowCopy: Bool
+    public var allowDelete: Bool
+    public var allowAlias: Bool
+
+    public init(allowMove: Bool = true, allowCopy: Bool = true, allowDelete: Bool = false, allowAlias: Bool = false) {
+        self.allowMove = allowMove
+        self.allowCopy = allowCopy
+        self.allowDelete = allowDelete
+        self.allowAlias = allowAlias
+    }
+}
+
+/// A drag in progress, as `onDragSessionUpdated` reports it.
+public struct DragSession {
+    public enum Phase {
+        case initial, active
+        case ended(DropOperation)
+        case dataTransferCompleted
+    }
+
+    public var phase: Phase
+}
+
+/// Drag sessions started by this app's drag sources; backends report their phases.
+@MainActor
+public enum DragSessions {
+    final class Observer {
+        var action: (DragSession) -> Void = { _ in }
+    }
+
+    static var observers: [ObjectIdentifier: Observer] = [:]
+
+    /// Called by backends when a drag starts and ends.
+    public static func update(_ phase: DragSession.Phase) {
+        for observer in observers.values { observer.action(DragSession(phase: phase)) }
+    }
+}
+
+struct _DragSessionObserverModifier: ViewModifier {
+    let action: (DragSession) -> Void
+    @State private var observer = DragSessions.Observer()
+
+    func body(content: Content) -> some View {
+        observer.action = action
+        let observer = self.observer
+        return content
+            .onAppear { DragSessions.observers[ObjectIdentifier(observer)] = observer }
+            .onDisappear { DragSessions.observers[ObjectIdentifier(observer)] = nil }
+    }
+}
+
+extension View {
+    /// Drags are configured by the backend (move and copy within the app).
+    public func dragConfiguration(_ configuration: DragConfiguration) -> some View { self }
+
+    /// Calls `action` as a drag started by this app moves through its phases.
+    public func onDragSessionUpdated(_ action: @escaping (DragSession) -> Void) -> some View {
+        modifier(_DragSessionObserverModifier(action: action))
+    }
+}

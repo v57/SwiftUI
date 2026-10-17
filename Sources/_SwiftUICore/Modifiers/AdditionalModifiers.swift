@@ -85,6 +85,8 @@ extension View {
     /// Radio-group pickers lay their options out in a row.
     public func horizontalRadioGroupLayout() -> some View { environment(\._horizontalRadioGroup, true) }
     public func scrollEdgeEffectStyle(_ style: ScrollEdgeEffectStyle?, for edges: Edge.Set) -> some View { self }
+    /// Scroll edge effects are the platform's (none on the AppKit backend).
+    public func scrollEdgeEffectHidden(_ hidden: Bool = true, for edges: Edge.Set = .all) -> some View { self }
     public func backgroundExtensionEffect() -> some View { self }
     public func flipsForRightToLeftLayoutDirection(_ enabled: Bool) -> some View { self }
     public func symbolVariableValueMode(_ mode: SymbolVariableValueMode?) -> some View { self }

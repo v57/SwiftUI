@@ -118,6 +118,27 @@ extension ListStyle where Self == BorderedListStyle { public static var bordered
 struct ListContextKey: EnvironmentKey { static let defaultValue: ListContext? = nil }
 struct ListStyleKindKey: EnvironmentKey { static let defaultValue = ListStyleKind.automatic }
 struct SidebarColumnKey: EnvironmentKey { static let defaultValue = false }
+struct DefaultMinListRowHeightKey: EnvironmentKey { static let defaultValue: CGFloat? = nil }
+struct DefaultMinListHeaderHeightKey: EnvironmentKey { static let defaultValue: CGFloat? = nil }
+
+extension EnvironmentValues {
+    /// Set by `.environment(\.defaultMinListRowHeight, …)`; nil: the list style's own minimum.
+    var _defaultMinListRowHeight: CGFloat? {
+        get { self[DefaultMinListRowHeightKey.self] }
+        set { self[DefaultMinListRowHeightKey.self] = newValue }
+    }
+
+    /// The minimum height of a list row (the list style's when unset: 24pt, 28pt in sidebars).
+    public var defaultMinListRowHeight: CGFloat {
+        get { self[DefaultMinListRowHeightKey.self] ?? 24 }
+        set { self[DefaultMinListRowHeightKey.self] = newValue }
+    }
+
+    public var defaultMinListHeaderHeight: CGFloat? {
+        get { self[DefaultMinListHeaderHeightKey.self] }
+        set { self[DefaultMinListHeaderHeightKey.self] = newValue }
+    }
+}
 
 /// A list style's measured macOS metrics.
 enum ResolvedListStyle: Equatable {
@@ -300,6 +321,7 @@ struct _ListRowModifier: ViewModifier {
     var outlineLevel = 0
     var disclosure: Binding<Bool>?
     @Environment(\.tableStripes) private var stripes
+    @Environment(\._defaultMinListRowHeight) private var minRowHeight
 
     /// Row index for alternating backgrounds (headers count; a leading header shifts by one).
     private var stripeIndex: Int { position.index + (position.first == .header ? 1 : 0) }
@@ -337,7 +359,7 @@ struct _ListRowModifier: ViewModifier {
             content
                 .tint(itemTint)
                 .padding(insets)
-                .frame(maxWidth: .infinity, minHeight: style.minRowHeight, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: minRowHeight ?? style.minRowHeight, alignment: .leading)
                 .overlay(alignment: .leading) {
                     if let disclosure {
                         _OutlineDisclosureButton(isExpanded: disclosure).padding(.leading, insets.leading - (style == .plain ? 26 : 13))

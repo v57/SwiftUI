@@ -94,10 +94,15 @@ public struct TimelineView<Schedule: TimelineSchedule, Content: View>: View {
 public struct GraphicsContext {
     public enum Shading {
         case color(Color)
-        case style(AnyShapeStyle)
+        case _style(AnyShapeStyle)
+
+        public static func style<S: ShapeStyle>(_ style: S) -> Shading {
+            if let erased = style as? AnyShapeStyle { return ._style(erased) }
+            return ._style(AnyShapeStyle(style))
+        }
 
         public static func linearGradient(_ gradient: Gradient, startPoint: CGPoint, endPoint: CGPoint) -> Shading {
-            .style(AnyShapeStyle(LinearGradient(gradient: gradient, startPoint: .top, endPoint: .bottom)))
+            .style(LinearGradient(gradient: gradient, startPoint: .top, endPoint: .bottom))
         }
     }
 
@@ -116,7 +121,7 @@ public struct GraphicsContext {
             var resolved = color.resolve(in: environment)
             resolved.opacity *= Float(opacity)
             return .color(resolved)
-        case .style(let style):
+        case ._style(let style):
             return style._resolvePaint(in: environment)
         }
     }

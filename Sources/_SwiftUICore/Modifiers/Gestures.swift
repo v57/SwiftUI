@@ -227,6 +227,28 @@ public struct DragGesture: Gesture {
     }
 }
 
+/// Moves the window when dragged (a custom title bar's empty space). The backend runs the
+/// platform's own window drag from the mouse-down, so the gesture itself reports nothing.
+public struct WindowDragGesture: Gesture {
+    public typealias Value = Void
+    public init() {}
+
+    public func _makeRecognizer() -> _TypedRecognizer<Void> { WindowDragRecognizer() }
+
+    final class WindowDragRecognizer: _TypedRecognizer<Void> {
+        override func handle(_ event: PointerEvent) {
+            switch event.phase {
+            case .began:
+                state = .active
+                AppRuntime.performWindowDrag?()
+            case .moved: break
+            case .ended: emitEnded(())
+            case .cancelled: finish(.failed)
+            }
+        }
+    }
+}
+
 /// Pinch / rotation need multi-touch input; on pointer-only platforms they never fire.
 public struct MagnifyGesture: Gesture {
     public struct Value: Equatable, Sendable { public var magnification: CGFloat; public var startLocation: CGPoint }

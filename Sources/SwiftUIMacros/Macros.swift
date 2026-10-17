@@ -55,7 +55,12 @@ public struct PreviewMacro: DeclarationMacro {
     public static func expansion(of node: some FreestandingMacroExpansionSyntax, in context: some MacroExpansionContext) throws -> [DeclSyntax] { [] }
 }
 
+/// `@Previewable` marks dynamic properties declared inside `#Preview`; it adds nothing.
+public struct PreviewableMacro: PeerMacro {
+    public static func expansion(of node: AttributeSyntax, providingPeersOf declaration: some DeclSyntaxProtocol, in context: some MacroExpansionContext) throws -> [DeclSyntax] { [] }
+}
+
 @main
 struct SwiftUIMacrosPlugin: CompilerPlugin {
-    let providingMacros: [Macro.Type] = [EntryMacro.self, PreviewMacro.self]
+    let providingMacros: [Macro.Type] = [EntryMacro.self, PreviewMacro.self, PreviewableMacro.self]
 }

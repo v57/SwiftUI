@@ -302,7 +302,8 @@ public struct _CoordinateSpaceModifier: ViewModifier {
         let name = AnyAttribute.withoutDependencies { modifier.attribute.value.name }
         let geometry = inputs.geometry
         let origin = Attribute<CGPoint>(inputs.subgraph, isEqual: { $0 == $1 }) { geometry.value.origin }
-        childInputs.coordinateSpaces = CoordinateSpaces(name: name, origin: origin, parent: inputs.coordinateSpaces)
+        let size = Attribute<CGSize>(inputs.subgraph, isEqual: { $0 == $1 }) { geometry.value.size }
+        childInputs.coordinateSpaces = CoordinateSpaces(name: name, origin: origin, size: size, parent: inputs.coordinateSpaces)
         return body(childInputs)
     }
 }
@@ -317,12 +318,15 @@ final class CoordinateSpaces {
     /// space around the scroll view (scroll view origin minus content offset).
     let scrollTransform: Attribute<CGPoint>?
     let parent: CoordinateSpaces?
+    /// A named space's size (`GeometryProxy.bounds(of:)`): the view's, or a scroll view's visible size.
+    let size: Attribute<CGSize>?
 
-    init(name: AnyHashable, origin: Attribute<CGPoint>, parent: CoordinateSpaces?) {
+    init(name: AnyHashable, origin: Attribute<CGPoint>, size: Attribute<CGSize>? = nil, parent: CoordinateSpaces?) {
         self.name = name
         self.origin = origin
         self.scrollTransform = nil
         self.parent = parent
+        self.size = size
     }
 
     init(scrollTransform: Attribute<CGPoint>, parent: CoordinateSpaces?) {
@@ -330,6 +334,27 @@ final class CoordinateSpaces {
         self.origin = nil
         self.scrollTransform = scrollTransform
         self.parent = parent
+        self.size = nil
+    }
+
+    /// The named space's bounds in the current space (nil: unknown name or no size).
+    func bounds(of name: AnyHashable) -> CGRect? {
+        var total = CGPoint.zero
+        var current: CoordinateSpaces? = self
+        while let space = current {
+            if let spaceName = space.name, spaceName == name, let origin = space.origin {
+                guard let size = space.size else { return nil }
+                let point = origin.value
+                return CGRect(origin: CGPoint(x: point.x - total.x, y: point.y - total.y), size: size.value)
+            }
+            if let transform = space.scrollTransform {
+                let value = transform.value
+                total.x += value.x
+                total.y += value.y
+            }
+            current = space.parent
+        }
+        return nil
     }
 
     /// Offset converting a point in the current space to the named space (nil: unknown name).

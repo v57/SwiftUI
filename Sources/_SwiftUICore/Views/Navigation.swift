@@ -406,6 +406,23 @@ extension NavigationSplitView where Content == EmptyView {
         self.detail = detail()
         self.columnVisibility = columnVisibility
     }
+
+    /// The compact column only matters when the split view collapses into a stack (never on the Mac).
+    public init(columnVisibility: Binding<NavigationSplitViewVisibility>, preferredCompactColumn: Binding<NavigationSplitViewColumn>, @ViewBuilder sidebar: () -> Sidebar, @ViewBuilder detail: () -> Detail) {
+        self.init(columnVisibility: columnVisibility, sidebar: sidebar, detail: detail)
+    }
+
+    public init(preferredCompactColumn: Binding<NavigationSplitViewColumn>, @ViewBuilder sidebar: () -> Sidebar, @ViewBuilder detail: () -> Detail) {
+        self.init(sidebar: sidebar, detail: detail)
+    }
+}
+
+/// A column of a `NavigationSplitView` (`preferredCompactColumn`).
+public struct NavigationSplitViewColumn: Hashable, Sendable {
+    let id: Int
+    public static let sidebar = NavigationSplitViewColumn(id: 0)
+    public static let content = NavigationSplitViewColumn(id: 1)
+    public static let detail = NavigationSplitViewColumn(id: 2)
 }
 
 /// Legacy NavigationView: behaves like a NavigationStack.

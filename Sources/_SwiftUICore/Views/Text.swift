@@ -509,6 +509,7 @@ public struct Text: Equatable {
         adding(.underline(isActive ? LineStyle(pattern: pattern, color: color) : nil))
     }
     public func monospacedDigit() -> Text { adding(.monospacedDigit) }
+    public func monospaced(_ isActive: Bool = true) -> Text { isActive ? adding(.design(.monospaced)) : self }
 
     public static func + (lhs: Text, rhs: Text) -> Text {
         Text(storage: .concatenated([lhs, rhs]))

@@ -22,7 +22,8 @@ public struct Path: Equatable, Sendable {
         addRect(rect)
     }
 
-    public init(roundedRect rect: CGRect, cornerRadius: CGFloat) {
+    public init(roundedRect rect: CGRect, cornerRadius: CGFloat, style: RoundedCornerStyle = .continuous) {
+        // Corners are circular whatever the style (like RoundedRectangle here).
         addRoundedRect(in: rect, cornerSize: CGSize(width: cornerRadius, height: cornerRadius))
     }
 
@@ -56,6 +57,10 @@ public struct Path: Equatable, Sendable {
         addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
         addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
         closeSubpath()
+    }
+
+    public mutating func addRoundedRect(in rect: CGRect, cornerSize: CGSize, style: RoundedCornerStyle, transform: CGAffineTransform = .identity) {
+        addRoundedRect(in: rect, cornerSize: cornerSize)
     }
 
     public mutating func addRoundedRect(in rect: CGRect, cornerSize: CGSize) {

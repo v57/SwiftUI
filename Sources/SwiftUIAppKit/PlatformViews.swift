@@ -1418,6 +1418,15 @@ extension EffectNodeView: NSDraggingSource {
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         context == .outsideApplication ? .copy : [.copy, .move, .generic]
     }
+
+    func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) {
+        DragSessions.update(.active)
+    }
+
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        let result: DropOperation = operation.contains(.move) ? .move : operation.isEmpty ? .cancel : .copy
+        DragSessions.update(.ended(result))
+    }
 }
 
 /// Supplies pasteboard data for a drag from an `NSItemProvider` (loaded on demand).
