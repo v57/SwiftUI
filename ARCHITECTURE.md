@@ -147,7 +147,20 @@ structural overlay changes and color changes; SwiftUI confines all of these).
   platform nodes with children; children's frames are relative to them.
 * `Renderer.commit()` runs after the graph settled: creates views for new nodes (top-down), syncs
   child lists of changed containers, then applies content and frame changes. Each operation is
-  counted in `UpdateTracer`.
+  counted in `UpdateTracer`. A container's child list goes to the backend as the changed range only
+  (`replaceChildren`), and a commit or animation frame is one batch for the backend
+  (`willCommit`/`didCommit`: on AppKit one Core Animation transaction).
+* **Item spaces.** Each item of a lazy stack, and of a stack with 16 or more children, starts its own
+  geometry space: a container node (`.effect(.group)`) at the item's placement, the item laid out
+  from origin zero inside it (coordinate spaces, `spaceOrigin` and the scroll viewport translate).
+  When a view above grows or is built, the items below move as a whole; nothing inside them is
+  placed or framed again. The container gets a platform view only while it holds views (a lazy
+  item's placeholder costs the backend nothing), and transitions/matched geometry of the view just
+  inside it apply to it.
+* **Hover** (`HoverTracker`, for every backend): hosts report the pointer; hover regions (nodes with
+  hover actions, indexed by the renderer) are hit-tested only once the pointer has rested and nothing
+  has scrolled for 0.1 s, or at once on a click. Hovered views follow the pointer and leave as soon
+  as it leaves them. AppKit hosts use one tracking area.
 
 `RenderContent` is a closed, platform-independent enum (`text`, `color`, `shape`, `image`,
 `button`, `toggle`, `textField`, `slider`, `scrollView`, `effect`). Event handlers live in
@@ -199,6 +212,13 @@ Inside a `ScrollView`, `LazyVStack`/`LazyHStack`/`List` instantiate only element
 viewport (a source attribute updated from backend scroll events), using measured sizes and an
 average-size estimate for the rest — matching Apple SwiftUI's row counts (`lazy-list` parity
 scenario). `ScrollViewReader` resolves ids through the scroll view's `ScrollTargets`.
+
+Scrolling is O(visible): offsets, the stack's length and the visible range come from prefix sums
+(Fenwick trees) of measured sizes and gaps plus the estimate for the rest, the flattened list is kept
+in its own attribute (it changes with the list, not the viewport), and rows are items with their own
+space (§4). `ScalingTests` asserts the work per scroll step is the same for 1,000 and 100,000 rows.
+The scroll view owns its offset: the graph only sends explicit requests (`scrollTo`), each applied
+once.
 
 ## 9. Backends
 
