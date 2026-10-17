@@ -91,9 +91,10 @@ struct ScalingTests {
         #expect(host.tracer.counters.spacingComputations < 40)
     }
 
-    /// Building one item of a long page sends the backend that item's views only: the renderer
-    /// diffs a container's children and replaces the changed range, not the whole list.
-    @Test func buildingOneItemTouchesOnlyItsViews() {
+    /// Building one item of a long page touches that item: each item of a long stack starts its own
+    /// space (a container view), so the items below move as a whole instead of every view in them
+    /// being placed and framed again, and the renderer sends the backend the changed range only.
+    @Test func buildingOneItemTouchesOnlyThatItem() {
         let rows = makeScalingRows(500)
         let states = (0..<500).map { ScalingItemState(isBuilt: $0 % 2 == 0) }
         let host = TestHost(ScrollView {
@@ -103,24 +104,41 @@ struct ScalingTests {
         }, size: CGSize(width: 600, height: 800))
         host.tracer.isRecording = false
         let scroll = host.allViews.first { if case .scrollView = $0.content { true } else { false } }!
-        let builtViews = scroll.children.count
+        let builtViews = scroll.allDescendants.count
         #expect(builtViews > 2000)
 
         host.tracer.resetCounters()
+        let evaluationsBefore = host.graph.graph.evaluationCount
         states[251].isBuilt = true
         host.flush()
-        let added = scroll.children.count - builtViews
-        #expect(added > 0)
+        let c = host.tracer.counters
+        let evaluations = host.graph.graph.evaluationCount - evaluationsBefore
+        print("build one item: evaluations \(evaluations) body \(c[.body]) sizeThatFits \(c[.sizeThatFits]) placement \(c[.placement]) geometry \(c[.geometry]) renderFrame \(c[.renderFrame]) renderInsert \(c[.renderInsert])")
+        let added = scroll.allDescendants.count - builtViews
+        #expect(added == c[.renderInsert])
         #expect(host.tracer.counters.childOperations == added)
-        // The backend's list is the render tree's, in order.
-        let expected = scroll.node!.platformChildren.map { ObjectIdentifier($0.handle!) }
-        #expect(scroll.children.map(ObjectIdentifier.init) == expected)
+        // Below the item: 248 items move (one frame each); nothing inside them is placed again.
+        #expect(c[.placement] < 40)
+        #expect(c[.renderFrame] < 300)
+        #expect(evaluations < 1500)
+        // Every view still sits where an unisolated layout puts it: the built card right below its
+        // neighbour, and the last card at the end of the content.
+        let card = host.view(withText: "Repository 251")!
+        let previous = host.view(withText: "Repository 250")!
+        #expect(card.absoluteFrame.minY > previous.absoluteFrame.maxY)
+        // The backend's lists are the render tree's, in order.
+        func matchesRenderTree(_ view: HeadlessView) -> Bool {
+            guard let node = view.node else { return true }
+            let expected = node.platformChildren.compactMap { $0.handle.map(ObjectIdentifier.init) }
+            return view.children.map(ObjectIdentifier.init) == expected && view.children.allSatisfy(matchesRenderTree)
+        }
+        #expect(matchesRenderTree(scroll))
 
         host.tracer.resetCounters()
         states[100].isBuilt = false
         host.flush()
         #expect(host.tracer.counters.childOperations < 40)
-        #expect(scroll.children.map(ObjectIdentifier.init) == scroll.node!.platformChildren.map { ObjectIdentifier($0.handle!) })
+        #expect(matchesRenderTree(scroll))
     }
 
     /// Work per scroll step of a lazy stack, from the middle of `rows` rows.

@@ -116,6 +116,7 @@ public struct ScrollView<Content: View>: View {
         }
         let targets = ScrollTargets(axes: AnyAttribute.withoutDependencies { axes.value })
         contentInputs.scrollTargets = targets
+        contentInputs.spaceOrigin = nil
         targets.scroll = { target, anchor in
             AnyAttribute.withoutDependencies {
                 let viewport = geometry.value.size

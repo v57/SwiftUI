@@ -402,9 +402,12 @@ extension _ViewInputs {
             return index < all.count ? all[index] : .zero
         }
         if let targets = scrollTargets {
+            let spaceOrigin = self.spaceOrigin
             targets.addResolver(state, enumerate: { state.ids.compactMap(\.lastExplicit) }) { id in
                 guard let index = state.position(ofExplicit: id) else { return nil }
-                let origin = geometry.peekValue?.origin ?? .zero
+                let space = spaceOrigin?.peekValue ?? .zero
+                let local = geometry.peekValue?.origin ?? .zero
+                let origin = CGPoint(x: local.x + space.x, y: local.y + space.y)
                 var frame = CGRect(origin: origin, size: geometry.peekValue?.size ?? .zero)
                 frame.origin[axis] += state.offset(at: index)
                 if axis == .vertical { frame.size.height = state.size(at: index) } else { frame.size.width = state.size(at: index) }

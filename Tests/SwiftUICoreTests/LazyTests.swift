@@ -35,7 +35,7 @@ struct LazyTests {
         #expect(Counter["LazyRow"] < 40)
         // Rows are placed at their real offsets in the scroll content.
         let row = host.view(withText: "row 500")!
-        #expect(row.frame.midY == 10_010)
+        #expect(row.absoluteFrame.midY == 10_010)
     }
 
     @Test func eagerVStackBuildsEverything() {

@@ -131,6 +131,10 @@ public struct _ViewInputs {
     var scrollViewport: Attribute<CGRect>?
     /// Scroll targets of the enclosing scroll view (`.id` views, lazy stacks) for ScrollViewReader.
     var scrollTargets: ScrollTargets?
+    /// Where this view's geometry space starts in the enclosing scroll content (or root) space:
+    /// nil there, the item's origin inside an item that starts its own space (see
+    /// `ViewListContainer.isolatesItems`).
+    var spaceOrigin: Attribute<CGPoint>?
     /// Position of a container child among its siblings (set by list containers).
     var listItemPosition: Attribute<ListItemPosition>?
     /// Accessibility properties waiting for the next platform node (consumed once).

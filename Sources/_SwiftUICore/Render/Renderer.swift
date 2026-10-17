@@ -70,6 +70,9 @@ public final class RenderNode {
     var transition: AnyTransition?
     /// Set on group nodes created by `.matchedGeometryEffect`.
     var matchKey: AnyHashable?
+    /// A container standing in for its content (a list item's own space): transitions and matched
+    /// geometry of the views just inside it apply to it.
+    var forwardsTransitions = false
     var isRemoved = false
     var needsContent = false
     var needsFrame = false
@@ -108,12 +111,7 @@ public final class RenderNode {
     }
 
     var effectiveMatchKey: AnyHashable? {
-        var node = parent
-        while let current = node, current.kind == .group {
-            if let key = current.matchKey { return key }
-            node = current.parent
-        }
-        return nil
+        effectiveGroup(where: { $0.matchKey != nil })?.matchKey
     }
 
     /// Frame in host coordinates (sum of platform ancestors' frames).
@@ -128,12 +126,38 @@ public final class RenderNode {
         return CGRect(origin: origin, size: frame.size)
     }
 
-    /// Transition of the nearest `.transition` group between this node and its platform ancestor.
+    /// Transition of the nearest `.transition` group between this node and its platform ancestor
+    /// (or, for a forwarding container, the first one inside it).
     var effectiveTransition: AnyTransition? {
+        effectiveGroup(where: { $0.transition != nil })?.transition
+    }
+
+    /// The group between this node and its platform ancestor matching `test` (nearest first), or for
+    /// a forwarding container the first inside it. A view whose group its container forwards
+    /// leaves it to the container.
+    private func effectiveGroup(where test: (RenderNode) -> Bool) -> RenderNode? {
         var node = parent
         while let current = node, current.kind == .group {
-            if let transition = current.transition { return transition }
+            if test(current) {
+                if let container = current.parent?.platformAncestorOrSelf, container.forwardsTransitions,
+                   container.innerGroup(where: test) === current { return nil }
+                return current
+            }
             node = current.parent
+        }
+        return forwardsTransitions ? innerGroup(where: test) : nil
+    }
+
+    /// This node if it is a platform node, else its platform ancestor.
+    private var platformAncestorOrSelf: RenderNode? { kind == .group ? platformAncestor : self }
+
+    /// The first group inside this node (groups only, not past platform nodes) matching `test`.
+    fileprivate func innerGroup(where test: (RenderNode) -> Bool) -> RenderNode? {
+        var stack = Array(children.reversed())
+        while let next = stack.popLast() {
+            guard next.kind == .group else { continue }
+            if test(next) { return next }
+            stack.append(contentsOf: next.children.reversed())
         }
         return nil
     }
