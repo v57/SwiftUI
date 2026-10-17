@@ -133,7 +133,9 @@ struct ScalingTests {
         #expect(c[.placement] < 40)
         #expect(c[.renderFrame] < 140)
         #expect(scroll.children.count == 251)
-        #expect(evaluations < 1500)
+        // Building the card is all the attribute work: the container's placer moves the 249 items
+        // below it (their origins are sources it sets) without evaluating anything per item.
+        #expect(evaluations < 300)
         // Every view still sits where an unisolated layout puts it: the built card right below its
         // neighbour, and the last card at the end of the content.
         let card = host.view(withText: "Repository 251")!

@@ -179,9 +179,33 @@ final class ViewListContainer {
         let id: ViewListID
         let subgraph: Subgraph
         let outputs: _ViewOutputs
-        let geometry: Attribute<ViewGeometry>
+        /// The item's placement (nil for an item with its own space: `space` holds it).
+        let geometry: Attribute<ViewGeometry>?
         let group: RenderNode
         let traits: ViewTraits
+        let space: ItemSpace?
+    }
+
+    /// An item that starts its own geometry space (see `isolate`). Its size and origin are sources
+    /// the container's placer sets, and the placer moves its container view: when a view above
+    /// grows or is built, moving the items below costs no attribute evaluations (a build in a
+    /// 500-item page evaluated two attributes for every item below it).
+    @MainActor final class ItemSpace {
+        let node: RenderNode
+        /// Placement inside the space: origin zero, the item's size and proposal.
+        let size: Attribute<ViewGeometry>
+        /// The item's origin in its parent's space.
+        let origin: Attribute<CGPoint>
+        let path: ViewPath
+
+        init(node: RenderNode, size: Attribute<ViewGeometry>, origin: Attribute<CGPoint>, path: ViewPath) {
+            self.node = node
+            self.size = size
+            self.origin = origin
+            self.path = path
+        }
+
+        var frame: CGRect { CGRect(origin: origin.peekValue ?? .zero, size: size.peekValue?.size ?? .zero) }
     }
 
     let inputs: _ViewInputs
@@ -195,6 +219,8 @@ final class ViewListContainer {
     var ownsRenderMembership = false
     /// Lazy containers isolate every item; eager ones once they have this many children.
     let isolationThreshold: Int
+    /// Places the items with their own space (created with the first one).
+    private var placer: Attribute<Int>?
     static let eagerIsolationThreshold = 16
 
     init(list: ViewList, inputs: _ViewInputs, childAxis: Axis?, filter: (@MainActor (FlatViewList) -> [(ViewListID, ViewListElement)])? = nil) {
@@ -305,10 +331,16 @@ final class ViewListContainer {
         childInputs.depth += 1
         childInputs.stackAxis = childAxis
         childInputs.render = _RenderInputs(parent: itemGroup, origin: inputs.render.origin)
-        let geometry = Attribute<ViewGeometry>(subgraph, isEqual: { $0 == $1 })
-        geometry.setLabel("geometry \(id)")
-        childInputs.geometry = geometry
-        if isolated { isolate(&childInputs, placed: geometry, group: itemGroup) }
+        var geometry: Attribute<ViewGeometry>?
+        var space: ItemSpace?
+        if isolated {
+            space = isolate(&childInputs, id: id)
+        } else {
+            let placed = Attribute<ViewGeometry>(subgraph, isEqual: { $0 == $1 })
+            placed.setLabel("geometry \(id)")
+            childInputs.geometry = placed
+            geometry = placed
+        }
         childInputs.listItemPosition = Attribute<ListItemPosition>(subgraph, isEqual: { $0 == $1 }) { [unowned self] in
             let items = self.items.value
             guard let index = self.indexByID[id] else { return ListItemPosition() }
@@ -318,24 +350,26 @@ final class ViewListContainer {
             return ListItemPosition(index: index, count: items.count, previous: role(index - 1), next: role(index + 1), first: role(0))
         }
         let outputs = element.make(childInputs)
-        let tracer = inputs.tracer
-        let pathBox = PathBox()
-        geometry.setRule { [unowned self] in
-            guard let index = self.index(of: id), let placement = self.placement else { return geometry.peekValue ?? .zero }
-            return placement(index)
+        if let geometry {
+            let tracer = inputs.tracer
+            let pathBox = PathBox()
+            geometry.setRule { [unowned self] in
+                guard let index = self.index(of: id), let placement = self.placement else { return geometry.peekValue ?? .zero }
+                return placement(index)
+            }
+            geometry.onChange = { _ in tracer.record(.geometry, pathBox.path) }
+            pathBox.path = inputs.path.appending(id.description)
         }
-        geometry.onChange = { _ in tracer.record(.geometry, pathBox.path) }
         if let targets = inputs.scrollTargets, let key = id.lastExplicit {
             let spaceOrigin = inputs.spaceOrigin
-            targets.register(key) { [weak geometry] in
-                guard let frame = geometry?.peekValue?.frame else { return nil }
+            targets.register(key) { [weak geometry, weak space] in
+                guard let frame = space?.frame ?? geometry?.peekValue?.frame else { return nil }
                 let origin = spaceOrigin?.peekValue ?? .zero
                 return frame.offsetBy(dx: origin.x, dy: origin.y)
             }
             subgraph.onDestroy { [weak targets] in targets?.unregister(key) }
         }
-        pathBox.path = inputs.path.appending(id.description)
-        return Item(id: id, subgraph: subgraph, outputs: outputs, geometry: geometry, group: itemGroup, traits: element.traits)
+        return Item(id: id, subgraph: subgraph, outputs: outputs, geometry: geometry, group: itemGroup, traits: element.traits, space: space)
     }
 
     /// Makes an item start its own geometry space: a platform container node at the item's
@@ -343,19 +377,16 @@ final class ViewListContainer {
     /// view above it was built or grew), its container moves and nothing inside it is placed,
     /// framed or rendered again; without this a build in a long page shifted every built view
     /// below it, one by one.
-    private func isolate(_ childInputs: inout _ViewInputs, placed: Attribute<ViewGeometry>, group: RenderNode) {
+    private func isolate(_ childInputs: inout _ViewInputs, id: ViewListID) -> ItemSpace {
         let subgraph = childInputs.subgraph
         var nodeInputs = childInputs
         nodeInputs.accessibility = nil
-        let zero = nodeInputs.constant(CGPoint.zero)
-        let render = nodeInputs.makePlatformNode(content: nodeInputs.constant(RenderContent.effect(.group)), childOrigin: zero)
-        render.parent.forwardsTransitions = true
-        childInputs.render = render
-        childInputs.geometry = Attribute<ViewGeometry>(subgraph, isEqual: { $0 == $1 }) {
-            let item = placed.value
-            return ViewGeometry(origin: .zero, size: item.size, proposal: item.proposal)
-        }
-        let origin = Attribute<CGPoint>(subgraph, isEqual: { $0 == $1 }) { placed.value.origin }
+        let node = nodeInputs.makePlatformNodeWithoutSink()
+        node.forwardsTransitions = true
+        childInputs.render = _RenderInputs(parent: node, origin: nodeInputs.constant(CGPoint.zero))
+        let size = Attribute<ViewGeometry>(subgraph, value: .zero, isEqual: { $0 == $1 })
+        let origin = Attribute<CGPoint>(subgraph, value: .zero, isEqual: { $0 == $1 })
+        childInputs.geometry = size
         // Global and named coordinate spaces see the item's origin as a translation.
         childInputs.coordinateSpaces = CoordinateSpaces(scrollTransform: origin, parent: childInputs.coordinateSpaces)
         let outer = childInputs.spaceOrigin
@@ -370,6 +401,40 @@ final class ViewListContainer {
                 return viewport.value.offsetBy(dx: -point.x, dy: -point.y)
             }
         }
+        if placer == nil { makePlacer() }
+        return ItemSpace(node: node, size: size, origin: origin, path: inputs.path.appending(id.description))
+    }
+
+    /// The attribute that places items with their own space: it reads the container's placements
+    /// once and sets each item's size and origin (sources: only items whose own placement changed
+    /// are invalidated) and the frame of its container view.
+    private func makePlacer() {
+        let renderer = inputs.host.renderer
+        let tracer = inputs.tracer
+        let parentOrigin = inputs.render.origin
+        let placer = Attribute<Int>(inputs.subgraph, isEqual: { _, _ in false })
+        placer.setLabel("placer \(inputs.path)")
+        placer.order = inputs.depth
+        placer.setRule { [unowned self] in
+            let current = self.items.value
+            guard let placement = self.placement else { return 0 }
+            let base = parentOrigin?.value ?? .zero
+            for index in current.indices {
+                guard let space = current[index].space else { continue }
+                let placed = placement(index)
+                let size = ViewGeometry(origin: .zero, size: placed.size, proposal: placed.proposal)
+                let moved = space.origin.peekValue != placed.origin
+                if moved || space.size.peekValue != size {
+                    tracer.record(.geometry, space.path)
+                    space.size.setSourceValueDuringUpdate(size)
+                    space.origin.setSourceValueDuringUpdate(placed.origin)
+                }
+                renderer.update(space.node, frame: CGRect(origin: placed.origin - base, size: placed.size), content: .effect(.group))
+            }
+            return 0
+        }
+        placer.isEager = true
+        self.placer = placer
     }
 
     /// Current index of a child (reads the item list, so geometry follows structural changes).

@@ -381,6 +381,18 @@ public final class Attribute<Value>: AnyAttribute {
         graph.setNeedsUpdate()
     }
 
+    /// Sets a source value from a rule (an attribute that distributes values, such as a stack
+    /// placing its items): like `setValue`, without reporting a change from outside the graph.
+    public func setSourceValueDuringUpdate(_ newValue: Value) {
+        precondition(rule == nil, "setValue on a computed attribute")
+        if isDestroyed { return }
+        if let storage, isSame(storage, newValue) { return }
+        storage = newValue
+        changedRevision = graph.nextRevision()
+        propagateDirtyToOutputs()
+        graph.setNeedsUpdate()
+    }
+
     override func runRule() -> Bool {
         guard let rule else { return false }
         let newValue = rule()

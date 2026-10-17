@@ -22,18 +22,7 @@ extension _ViewInputs {
         childOrigin: Attribute<CGPoint>? = nil
     ) -> _RenderInputs {
         let renderer = host.renderer
-        let node = renderer.makePlatformNode(path: path)
-        node.animationScope = animationScope
-        renderer.setActions(node, actions)
-        renderer.append(node, to: render.parent)
-        subgraph.onDestroy { renderer.remove(node) }
-        if let attachment = accessibility, !attachment.isConsumed {
-            attachment.isConsumed = true
-            let properties = attachment.properties
-            let sink = Attribute<AccessibilityProperties>(subgraph, isEqual: { $0 == $1 }) { properties.value }
-            sink.onChange = { renderer.setAccessibility(node, $0) }
-            sink.isEager = true
-        }
+        let node = makePlatformNodeWithoutSink(actions: actions)
 
         let geometry = self.geometry
         let origin = render.origin
@@ -51,6 +40,25 @@ extension _ViewInputs {
 
         let ownOrigin = childOrigin ?? Attribute<CGPoint>(subgraph, isEqual: { $0 == $1 }) { geometry.value.origin }
         return _RenderInputs(parent: node, origin: ownOrigin)
+    }
+
+    /// Creates a platform render node for this view whose frame and content someone else pushes to
+    /// the renderer (`makePlatformNode` adds the sink attribute that does).
+    func makePlatformNodeWithoutSink(actions: RenderActions = RenderActions()) -> RenderNode {
+        let renderer = host.renderer
+        let node = renderer.makePlatformNode(path: path)
+        node.animationScope = animationScope
+        renderer.setActions(node, actions)
+        renderer.append(node, to: render.parent)
+        subgraph.onDestroy { renderer.remove(node) }
+        if let attachment = accessibility, !attachment.isConsumed {
+            attachment.isConsumed = true
+            let properties = attachment.properties
+            let sink = Attribute<AccessibilityProperties>(subgraph, isEqual: { $0 == $1 }) { properties.value }
+            sink.onChange = { renderer.setAccessibility(node, $0) }
+            sink.isEager = true
+        }
+        return node
     }
 
     /// A constant attribute in this view's subgraph.
