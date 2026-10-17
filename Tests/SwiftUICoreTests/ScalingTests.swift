@@ -68,6 +68,22 @@ struct ScalingLazyItem: View {
     }
 }
 
+#if canImport(Darwin)
+@_silgen_name("thread_selfcounts") private func thread_selfcounts(_ type: Int32, _ buffer: UnsafeMutableRawPointer, _ size: Int) -> Int32
+#endif
+
+/// Instructions the calling thread has retired (0 where the counters aren't available): unlike
+/// time, the same on any core and under any load.
+func threadInstructions() -> UInt64 {
+    #if canImport(Darwin)
+    var counts: (instructions: UInt64, cycles: UInt64) = (0, 0)
+    guard withUnsafeMutableBytes(of: &counts, { thread_selfcounts(1, $0.baseAddress!, $0.count) }) == 0 else { return 0 }
+    return counts.instructions
+    #else
+    return 0
+    #endif
+}
+
 /// CPU time the calling thread has used, in seconds.
 func threadCPUTime() -> Double {
     var time = timespec()
@@ -288,14 +304,17 @@ struct ScalingTests {
         let histogram = ProcessInfo.processInfo.environment["BUILD_BENCH_HISTOGRAM"] != nil ? EvaluationHistogram() : nil
         host.graph.graph.tracer = histogram
         var built = 0.0, evaluations = 0, attributes = 0
+        var instructions: UInt64 = 0
         for _ in 0..<rounds {
             let before = host.graph.graph.evaluationCount
             let attributesBefore = host.graph.graph.liveAttributeCount
             // CPU time of this thread: other processes on the machine don't count.
             let start = threadCPUTime()
+            let startInstructions = threadInstructions()
             for state in states { state.isBuilt = true }
             host.flush()
             built += threadCPUTime() - start
+            instructions += threadInstructions() - startInstructions
             evaluations += host.graph.graph.evaluationCount - before
             attributes += host.graph.graph.liveAttributeCount - attributesBefore
             for state in states { state.isBuilt = false }
@@ -304,6 +323,6 @@ struct ScalingTests {
         if let histogram {
             print("evaluations per card:", histogram.counts.sorted { $0.value > $1.value }.map { "\($0.key) \($0.value / (rounds * 60))" }.joined(separator: ", "))
         }
-        print(String(format: "build bench: %.3f ms per card, %.2f µs per evaluation, %d evaluations and %d attributes per card", built / Double(rounds * 60) * 1000, built / Double(evaluations) * 1e6, evaluations / (rounds * 60), attributes / (rounds * 60)))
+        print(String(format: "build bench: %.3f ms per card, %.2f µs per evaluation, %d evaluations and %d attributes per card, %.0fk instructions per card", built / Double(rounds * 60) * 1000, built / Double(evaluations) * 1e6, evaluations / (rounds * 60), attributes / (rounds * 60), Double(instructions) / Double(rounds * 60) / 1000))
     }
 }
