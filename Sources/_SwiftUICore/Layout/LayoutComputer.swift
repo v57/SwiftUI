@@ -11,7 +11,7 @@ import CoreGraphics
 public class LayoutComputer {
     let path: ViewPath?
     unowned let tracer: UpdateTracer
-    private var sizeCache: [(ProposedViewSize, CGSize)] = []
+    @exclusivity(unchecked) private var sizeCache: [(ProposedViewSize, CGSize)] = []
 
     init(path: ViewPath?, tracer: UpdateTracer) {
         self.path = path
@@ -19,7 +19,12 @@ public class LayoutComputer {
     }
 
     public final func sizeThatFits(_ proposal: ProposedViewSize) -> CGSize {
-        for (cachedProposal, size) in sizeCache where cachedProposal == proposal { return size }
+        // Most recent first: a layout pass asks for the sizes it just computed.
+        var index = sizeCache.count - 1
+        while index >= 0 {
+            if sizeCache[index].0 == proposal { return sizeCache[index].1 }
+            index -= 1
+        }
         let size = computeSize(proposal)
         tracer.record(.sizeThatFits, path)
         if sizeCache.count >= 32 { sizeCache.removeFirst() }

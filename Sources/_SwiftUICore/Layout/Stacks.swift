@@ -78,7 +78,11 @@ nonisolated struct StackAlgorithm {
             for index in spacers { spacerReserve += mins[index] }
             var left = views.count
             for index in views {
-                let share = max(0, (available - spacerReserve) / CGFloat(left))
+                // A child as long along the axis whatever it is offered (its minimum and maximum
+                // probes agree) is offered that length: the same size as its share, but a proposal
+                // that stays the same when space shifts elsewhere in the stack (one view growing
+                // in a long stack offered every view below a new share, measured anew).
+                let share = mins[index] == maxs[index] ? mins[index] : max(0, (available - spacerReserve) / CGFloat(left))
                 let size = subviews[index].sizeThatFits(ProposedViewSize(main: share, cross: cross, axis: axis))
                 sizes[index] = size
                 available -= size[axis]
