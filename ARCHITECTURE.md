@@ -59,9 +59,13 @@ Like SwiftUI, the graph is built from **types**, once per identity, via two stat
 * `static func _makeView(view: _GraphValue<Self>, inputs: _ViewInputs) -> _ViewOutputs` — unary context.
 * `static func _makeViewList(view:inputs:) -> _ViewListOutputs` — list context (stack children).
 
-`_GraphValue<V>` is the view value as an attribute; children get **projection attributes**
-(`view.project { $0.content }`) with structural equality cut-off. View values themselves are never
-stored outside attributes.
+`_GraphValue<V>` is the view value in the graph; children get **projections**
+(`view.project { $0.content }`). A projection makes no attribute until a consumer asks for one
+(`.attribute`: a body, a primitive's rules, a layout), which then has structural equality cut-off;
+values that are only projected further (a stack's content, a tuple's elements, a modifier's content)
+are read through the value they come from, like SwiftUI's offset attributes. Primitive modifiers read
+their parameters the same way (`.value`) where their own rule compares its result. View values
+themselves are never stored outside attributes.
 
 * **Composite views** (`body` is a view): `makeBodyAttribute` creates one attribute whose rule reads
   the view value, installs dynamic properties, and evaluates `body` inside
@@ -88,6 +92,10 @@ modifiers wrap each element (like SwiftUI).
 diffs identities, creates a child subgraph for new identities and destroys removed ones. Existing
 children are untouched by insertions/removals/moves — only their geometry may change.
 
+A keyed list (if/else, switch, Optional, `.id`, AnyView) where one view is expected (a body, an
+overlay) needs no container: `makeKeyedUnary` builds the current key's content in place, measured and
+placed as the view itself, and builds it anew when the key changes.
+
 ### Dynamic properties
 
 `DynamicPropertyBuffer` finds dynamic-property fields by reflected field offsets (once per type)
@@ -108,7 +116,8 @@ into and then `update()`d.
 
 ## 3. Layout (`Sources/_SwiftUICore/Layout`)
 
-Two attribute kinds per view:
+Two attribute kinds per view (leaves fold their render content into their sink, and unary layout
+modifiers whose equivalence is sameness of placement use one layout attribute):
 
 * **Layout attribute** → `LayoutComputer`: answers `sizeThatFits(proposal)` (cached per proposal
   inside the computer instance), explicit alignment guides, spacing, layout priority, layout
@@ -117,6 +126,11 @@ Two attribute kinds per view:
 * **Geometry attribute** (`ViewGeometry`: origin, size, proposal), *assigned by the parent*: a
   container's `placements` attribute runs `placeSubviews` and each child's geometry is a projection
   of it with equality cut-off.
+
+Stacks keep what they measured of each child (minimum, maximum and ideal lengths, the size at a
+fixed length, spacing, priority, alignment) in their layout cache (`_StackLayoutCache`), valid while
+the child keeps its computer, and offer a child that is as long whatever it is offered its fixed
+length rather than its share: one changed child in a long stack doesn't measure the others again.
 
 `LayoutComputer.isEquivalent(to:)` decides whether replacing a view's computer is visible to its
 parent. This is how **layout boundaries** are expressed:
@@ -154,7 +168,9 @@ structural overlay changes and color changes; SwiftUI confines all of these).
   geometry space: a container node (`.effect(.group)`) at the item's placement, the item laid out
   from origin zero inside it (coordinate spaces, `spaceOrigin` and the scroll viewport translate).
   When a view above grows or is built, the items below move as a whole; nothing inside them is
-  placed or framed again. The container gets a platform view only while it holds views (a lazy
+  placed or framed again. The container's placer (one attribute) sets each item's size and origin
+  (sources: only an item whose own placement changed is invalidated) and moves its container view,
+  so moving the items below a build evaluates nothing per item. The container gets a platform view only while it holds views (a lazy
   item's placeholder costs the backend nothing), and transitions/matched geometry of the view just
   inside it apply to it.
 * **Hover** (`HoverTracker`, for every backend): hosts report the pointer; hover regions (nodes with
@@ -202,7 +218,9 @@ run-loop turn, like SwiftUI/Core Animation. Resizes lay out synchronously.
 
 * Sheets/alerts/dialogs/popovers/menus register in a per-host `PresentationRegistry` and render in
   a separate presentation tree above the root (pure SwiftUI views, backend-independent).
-* Preferences are outputs: only keys some ancestor requested are produced and combined.
+* Preferences are outputs: only keys some ancestor requested are produced and combined. A container
+  combines all requested keys in one attribute (a bag of the values its children produce); readers
+  make a typed attribute from it.
 * View traits (`.tag`, `.zIndex`, `.tabItem`, grid cell spans, row backgrounds) ride on list
   elements; Picker/List/TabView/Grid read them.
 
