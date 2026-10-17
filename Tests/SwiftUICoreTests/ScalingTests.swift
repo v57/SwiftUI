@@ -122,4 +122,52 @@ struct ScalingTests {
         #expect(host.tracer.counters.childOperations < 40)
         #expect(scroll.children.map(ObjectIdentifier.init) == scroll.node!.platformChildren.map { ObjectIdentifier($0.handle!) })
     }
+
+    /// Work per scroll step of a lazy stack, from the middle of `rows` rows.
+    struct ScrollWork {
+        var evaluations = 0
+        var listVisits = 0
+        var layout = 0
+        var render = 0
+    }
+
+    func lazyScrollWork(rows: Int, steps: Int = Int(ProcessInfo.processInfo.environment["LAZY_STEPS"] ?? "40")!) -> ScrollWork {
+        let host = TestHost(ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(0..<rows, id: \.self) { LazyRow(index: $0) }
+            }
+        }, size: CGSize(width: 300, height: 400))
+        host.tracer.isRecording = false
+        // Start mid-list: every row above is unmeasured (estimated) and every row below too.
+        host.scroll(to: CGPoint(x: 0, y: CGFloat(rows) * 10))
+        host.tracer.resetCounters()
+        let before = host.graph.graph.evaluationCount
+        let scroll = host.allViews.first { if case .scrollView = $0.content { true } else { false } }!
+        let start = Date()
+        for _ in 0..<steps {
+            let offset = scroll.node!.contentOffset
+            scroll.node!.actions.scrolled?(CGPoint(x: 0, y: offset.y + 7))
+            host.flush()
+        }
+        print("lazy scroll \(rows) rows: \(String(format: "%.3f", Date().timeIntervalSince(start) / Double(steps) * 1000)) ms per step")
+        let counters = host.tracer.counters
+        return ScrollWork(
+            evaluations: (host.graph.graph.evaluationCount - before) / steps,
+            listVisits: counters.listElementVisits / steps,
+            layout: (counters[.sizeThatFits] + counters[.placement] + counters[.geometry]) / steps,
+            render: (counters[.renderInsert] + counters[.renderRemove] + counters[.renderFrame] + counters[.renderContent]) / steps)
+    }
+
+    /// Scrolling a lazy stack costs the same with 1,000 rows as with 100,000: offsets come from
+    /// prefix sums, the flattened list is kept between steps, and only rows that show are touched.
+    @Test func lazyStackScrollWorkIsIndependentOfRowCount() {
+        let small = lazyScrollWork(rows: 1_000)
+        let large = lazyScrollWork(rows: 100_000)
+        print("lazy scroll work per step: 1k \(small), 100k \(large)")
+        #expect(large.listVisits <= small.listVisits + 10)
+        #expect(large.listVisits < 60)
+        #expect(large.evaluations <= small.evaluations + small.evaluations / 10 + 5)
+        #expect(large.layout <= small.layout + 2)
+        #expect(large.render <= small.render + 2)
+    }
 }

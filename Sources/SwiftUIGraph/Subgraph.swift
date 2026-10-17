@@ -5,7 +5,13 @@
 public final class Subgraph {
     public let graph: AttributeGraph
     public private(set) weak var parent: Subgraph?
-    private var children: [Subgraph] = []
+    /// Children in creation order; a destroyed child leaves a hole (its slot is nil) so removing one
+    /// costs O(1) however many siblings it has (a lazy stack's rows sit next to every `ForEach`
+    /// element). Holes are compacted once they are half of the array.
+    private var children: [Subgraph?] = []
+    private var holes = 0
+    /// This subgraph's index in its parent's `children`.
+    private var slot = 0
     private var attributes: [AnyAttribute] = []
     private var cleanups: [() -> Void] = []
     public private(set) var isValid = true
@@ -21,8 +27,20 @@ public final class Subgraph {
 
     public func makeChild() -> Subgraph {
         let child = Subgraph(parent: self)
+        child.slot = children.count
         children.append(child)
         return child
+    }
+
+    private func removeChild(_ child: Subgraph) {
+        guard child.slot < children.count, children[child.slot] === child else { return }
+        children[child.slot] = nil
+        holes += 1
+        if holes > 16, holes * 2 > children.count {
+            children.removeAll { $0 == nil }
+            for (index, remaining) in children.enumerated() { remaining?.slot = index }
+            holes = 0
+        }
     }
 
     func register(_ attribute: AnyAttribute) {
@@ -40,16 +58,15 @@ public final class Subgraph {
     public func destroy() {
         guard isValid else { return }
         isValid = false
-        for child in children.reversed() { child.destroyFromParent() }
+        for child in children.reversed() { child?.destroyFromParent() }
         children.removeAll()
+        holes = 0
         for attribute in attributes { attribute.destroy() }
         attributes.removeAll()
         let pending = cleanups
         cleanups.removeAll()
         for cleanup in pending.reversed() { cleanup() }
-        if let parent {
-            parent.children.removeAll { $0 === self }
-        }
+        parent?.removeChild(self)
     }
 
     private func destroyFromParent() {

@@ -109,82 +109,185 @@ extension ViewListID {
 
 // MARK: - Lazy stacks
 
+/// Sums of a sequence with point updates, both O(log n) (a Fenwick tree).
+struct PrefixSums {
+    private var tree: [CGFloat]
+
+    init(_ values: [CGFloat]) {
+        tree = [0] + values
+        for index in 1..<max(tree.count, 1) {
+            let parent = index + (index & -index)
+            if parent < tree.count { tree[parent] += tree[index] }
+        }
+    }
+
+    var count: Int { tree.count - 1 }
+
+    /// Adds `delta` to the value at `index`.
+    mutating func add(_ delta: CGFloat, at index: Int) {
+        var position = index + 1
+        while position < tree.count {
+            tree[position] += delta
+            position += position & -position
+        }
+    }
+
+    /// The sum of the first `count` values.
+    func prefix(_ count: Int) -> CGFloat {
+        var position = min(count, tree.count - 1)
+        var sum: CGFloat = 0
+        while position > 0 {
+            sum += tree[position]
+            position -= position & -position
+        }
+        return sum
+    }
+}
+
 /// Sizes measured so far and estimates for the rest; shared by a lazy stack's layout computers.
+/// Offsets come from prefix sums of the measured sizes (and gaps) plus the estimate for the
+/// unmeasured ones, so placing what shows, the stack's length and the visible range cost
+/// O(log n), whatever the number of rows.
 @MainActor
 final class LazyStackState {
     let axis: Axis
     /// Explicit spacing; nil uses the views' own spacing (measured between built neighbours).
     let fixedSpacing: CGFloat?
-    var ids: [ViewListID] = []
-    var index: [ViewListID: Int] = [:]
-    var sizes: [ViewListID: CGFloat] = [:]
+    private(set) var ids: [ViewListID] = []
+    private(set) var index: [ViewListID: Int] = [:]
+    /// Measured sizes by identity (kept for rows that leave the list or scroll away).
+    private(set) var sizes: [ViewListID: CGFloat] = [:]
     /// Spacing before an element (from its previous neighbour), once both were built.
-    var gaps: [ViewListID: CGFloat] = [:]
+    private(set) var gaps: [ViewListID: CGFloat] = [:]
+    /// Running totals over `sizes` and `gaps` (the estimates are their averages).
+    private var sizeTotal: CGFloat = 0
+    private var gapTotal: CGFloat = 0
+    /// Per position: measured sizes and how many are measured, measured gaps and their count.
+    private var sizeSums = PrefixSums([])
+    private var sizeCounts = PrefixSums([])
+    private var gapSums = PrefixSums([])
+    private var gapCounts = PrefixSums([])
+    /// Explicit ids (`ForEach` ids, `.id`) to positions, for scroll targets (built on demand).
+    private var explicitIndex: [AnyHashable: Int]?
+    unowned let tracer: UpdateTracer
 
-    init(axis: Axis, spacing: CGFloat?) {
+    init(axis: Axis, spacing: CGFloat?, tracer: UpdateTracer) {
         self.axis = axis
         self.fixedSpacing = spacing
+        self.tracer = tracer
+    }
+
+    private weak var flatList: FlatViewList?
+
+    /// The list changed: positions are rebuilt (O(n), once per list change).
+    func setList(_ flat: FlatViewList) {
+        guard flat !== flatList else { return }
+        flatList = flat
+        let newIDs = flat.ids
+        guard newIDs != ids else { return }
+        ids = newIDs
+        index = Dictionary(newIDs.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        explicitIndex = nil
+        var sizeValues = [CGFloat](repeating: 0, count: newIDs.count)
+        var sizeKnown = [CGFloat](repeating: 0, count: newIDs.count)
+        var gapValues = [CGFloat](repeating: 0, count: newIDs.count)
+        var gapKnown = [CGFloat](repeating: 0, count: newIDs.count)
+        for (position, id) in newIDs.enumerated() {
+            if let size = sizes[id] { sizeValues[position] = size; sizeKnown[position] = 1 }
+            if position == 0 { gapKnown[position] = 1 } else if let gap = gaps[id] { gapValues[position] = gap; gapKnown[position] = 1 }
+        }
+        sizeSums = PrefixSums(sizeValues)
+        sizeCounts = PrefixSums(sizeKnown)
+        gapSums = PrefixSums(gapValues)
+        gapCounts = PrefixSums(gapKnown)
+    }
+
+    func setSize(_ size: CGFloat, for id: ViewListID) {
+        let old = sizes[id]
+        guard old != size else { return }
+        sizes[id] = size
+        sizeTotal += size - (old ?? 0)
+        guard let position = index[id] else { return }
+        sizeSums.add(size - (old ?? 0), at: position)
+        if old == nil { sizeCounts.add(1, at: position) }
+    }
+
+    func setGap(_ gap: CGFloat, before id: ViewListID) {
+        let old = gaps[id]
+        guard old != gap else { return }
+        gaps[id] = gap
+        gapTotal += gap - (old ?? 0)
+        guard let position = index[id], position > 0 else { return }
+        gapSums.add(gap - (old ?? 0), at: position)
+        if old == nil { gapCounts.add(1, at: position) }
     }
 
     private var estimatedGap: CGFloat {
         guard !gaps.isEmpty else { return 8 }
-        return gaps.values.reduce(0, +) / CGFloat(gaps.count)
-    }
-
-    /// Spacing between element `index - 1` and `index`.
-    func gap(before index: Int) -> CGFloat {
-        if let fixedSpacing { return fixedSpacing }
-        return gaps[ids[index]] ?? estimatedGap
+        return gapTotal / CGFloat(gaps.count)
     }
 
     var estimate: CGFloat {
         guard !sizes.isEmpty else { return 28 }
-        return sizes.values.reduce(0, +) / CGFloat(sizes.count)
+        return sizeTotal / CGFloat(sizes.count)
     }
 
-    func size(at index: Int) -> CGFloat { sizes[ids[index]] ?? estimate }
+    func size(at position: Int) -> CGFloat { sizes[ids[position]] ?? estimate }
 
-    /// Leading offset of every element along the axis.
-    func offsets() -> [CGFloat] {
-        var result: [CGFloat] = []
-        result.reserveCapacity(ids.count)
-        var position: CGFloat = 0
-        let estimate = self.estimate
-        for (index, id) in ids.enumerated() {
-            if index > 0 { position += gap(before: index) }
-            result.append(position)
-            position += sizes[id] ?? estimate
+    /// Leading offset of an element along the axis.
+    func offset(at position: Int) -> CGFloat {
+        let sizesBefore = sizeSums.prefix(position) + (CGFloat(position) - sizeCounts.prefix(position)) * estimate
+        let gapsThrough: CGFloat
+        if let fixedSpacing {
+            gapsThrough = CGFloat(position) * fixedSpacing
+        } else {
+            gapsThrough = gapSums.prefix(position + 1) + (CGFloat(position + 1) - gapCounts.prefix(position + 1)) * estimatedGap
         }
-        return result
+        return sizesBefore + gapsThrough
     }
 
     var totalLength: CGFloat {
         guard !ids.isEmpty else { return 0 }
-        let estimate = self.estimate
-        var total: CGFloat = 0
-        for (index, id) in ids.enumerated() {
-            if index > 0 { total += gap(before: index) }
-            total += sizes[id] ?? estimate
-        }
-        return total
+        return offset(at: ids.count - 1) + size(at: ids.count - 1)
     }
 
     /// Indices intersecting `range` (stack-local coordinates along the axis).
     func visibleIndices(in range: ClosedRange<CGFloat>) -> [Int] {
-        let offsets = offsets()
+        guard !ids.isEmpty else { return [] }
+        // The first element ending past the range's start (ends grow with the index).
+        var low = 0, high = ids.count
+        while low < high {
+            let middle = (low + high) / 2
+            tracer.counters.listElementVisits += 1
+            if offset(at: middle) + size(at: middle) > range.lowerBound { high = middle } else { low = middle + 1 }
+        }
         var result: [Int] = []
-        for index in ids.indices {
-            let start = offsets[index]
-            let end = start + size(at: index)
-            if end > range.lowerBound && start < range.upperBound {
-                result.append(index)
+        var position = low
+        while position < ids.count {
+            tracer.counters.listElementVisits += 1
+            let start = offset(at: position)
+            if start >= range.upperBound { break }
+            if start + size(at: position) > range.lowerBound {
+                result.append(position)
                 // Nothing measured yet: build one row first so the estimate is real before filling
                 // the viewport (avoids building rows that turn out to be off-screen).
                 if sizes.isEmpty { break }
             }
-            if start >= range.upperBound { break }
+            position += 1
         }
         return result
+    }
+
+    /// Position of an explicit id (scroll targets).
+    func position(ofExplicit id: AnyHashable) -> Int? {
+        if explicitIndex == nil {
+            var map: [AnyHashable: Int] = [:]
+            for (position, element) in ids.enumerated() {
+                if let explicit = element.lastExplicit, map[explicit] == nil { map[explicit] = position }
+            }
+            explicitIndex = map
+        }
+        return explicitIndex?[id]
     }
 }
 
@@ -204,12 +307,12 @@ final class LazyStackComputer: LayoutComputer {
         let axis = state.axis
         let sizes = children.map { child in
             let size = child.computer.sizeThatFits(ProposedViewSize(main: nil, cross: cross, axis: axis))
-            state.sizes[child.id] = size[axis]
+            state.setSize(size[axis], for: child.id)
             return size
         }
         if state.fixedSpacing == nil {
             for (previous, child) in zip(children, children.dropFirst()) where child.index == previous.index + 1 {
-                state.gaps[child.id] = previous.computer.spacing.distance(to: child.computer.spacing, along: axis)
+                state.setGap(previous.computer.spacing.distance(to: child.computer.spacing, along: axis), before: child.id)
             }
         }
         return sizes
@@ -227,14 +330,14 @@ final class LazyStackComputer: LayoutComputer {
     func place(in geometry: ViewGeometry) -> Placements {
         let axis = state.axis
         let sizes = measure(cross: geometry.size[axis.other])
-        let offsets = state.offsets()
         let alignments = children.indices.map { children[$0].computer.dimensions(size: sizes[$0])[crossGuide.0, crossGuide.1] }
         let containerLine = geometry.size[axis.other] * (crossGuide.1 == HCenterAlignment.self || crossGuide.1 == VCenterAlignment.self ? 0.5 : crossGuide.1 == TrailingAlignment.self || crossGuide.1 == BottomAlignment.self ? 1 : 0)
         var geometries: [ViewGeometry] = []
+        geometries.reserveCapacity(children.count)
         for (position, child) in children.enumerated() {
             let size = sizes[position]
             var origin = geometry.origin
-            origin[axis] += offsets[child.index]
+            origin[axis] += state.offset(at: child.index)
             origin[axis.other] += containerLine - alignments[position]
             geometries.append(ViewGeometry(origin: origin, size: size, proposal: ProposedViewSize(main: nil, cross: geometry.size[axis.other], axis: axis)))
         }
@@ -254,7 +357,7 @@ extension _ViewInputs {
         guard let viewport = scrollViewport else {
             return makeLayoutContainer(layout: eagerLayout, list: list)
         }
-        let state = LazyStackState(axis: axis, spacing: spacing)
+        let state = LazyStackState(axis: axis, spacing: spacing, tracer: tracer)
         let geometry = self.geometry
         let host = self.host
         func range(_ viewport: CGRect) -> ClosedRange<CGFloat> {
@@ -264,8 +367,7 @@ extension _ViewInputs {
             return start...(start + viewport.size[axis])
         }
         let container = ViewListContainer(list: list, inputs: self, childAxis: axis) { flat in
-            state.ids = flat.map(\.0)
-            state.index = Dictionary(flat.enumerated().map { ($1.0, $0) }, uniquingKeysWith: { first, _ in first })
+            state.setList(flat)
             // Peek (no dependency): the viewport's size depends on this stack's layout. Viewport
             // changes re-run this filter through the observer below.
             // Until the viewport is known (first pass) nothing is built; the viewport observer
@@ -289,8 +391,8 @@ extension _ViewInputs {
             tracer.record(.placement, path)
             let result = engine.place(in: geometry.value)
             // Measured sizes may change which rows should be visible: re-filter after this pass.
-            let wanted = state.visibleIndices(in: range(viewport.peekValue ?? .zero)).map { state.ids[$0] }
-            if wanted != engine.children.map(\.id) {
+            let wanted = state.visibleIndices(in: range(viewport.peekValue ?? .zero))
+            if wanted.count != engine.children.count || zip(wanted, engine.children).contains(where: { $0 != $1.index }) {
                 host.enqueueAfterUpdate { items.invalidate() }
             }
             return result
@@ -301,10 +403,10 @@ extension _ViewInputs {
         }
         if let targets = scrollTargets {
             targets.addResolver(state, enumerate: { state.ids.compactMap(\.lastExplicit) }) { id in
-                guard let index = state.ids.firstIndex(where: { $0.lastExplicit == id }) else { return nil }
+                guard let index = state.position(ofExplicit: id) else { return nil }
                 let origin = geometry.peekValue?.origin ?? .zero
                 var frame = CGRect(origin: origin, size: geometry.peekValue?.size ?? .zero)
-                frame.origin[axis] += state.offsets()[index]
+                frame.origin[axis] += state.offset(at: index)
                 if axis == .vertical { frame.size.height = state.size(at: index) } else { frame.size.width = state.size(at: index) }
                 return frame
             }

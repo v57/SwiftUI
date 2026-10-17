@@ -154,6 +154,22 @@ public struct ViewList {
     }
 }
 
+/// A flattened view list: identities and element factories in order (lazy containers keep it
+/// while only the visible part changes).
+@MainActor
+final class FlatViewList {
+    let ids: [ViewListID]
+    let elements: [ViewListElement]
+
+    init(_ flat: [(ViewListID, ViewListElement)]) {
+        ids = flat.map(\.0)
+        elements = flat.map(\.1)
+    }
+
+    var count: Int { ids.count }
+    subscript(index: Int) -> (ViewListID, ViewListElement) { (ids[index], elements[index]) }
+}
+
 /// Instantiates the elements of a `ViewList` as unary child views, keyed by identity.
 /// Children appear/disappear (with their own subgraph, state and render nodes) only when their
 /// identity enters or leaves the list.
@@ -178,7 +194,7 @@ final class ViewListContainer {
     /// Set when the owning layout decides which children are rendered (hidden subviews).
     var ownsRenderMembership = false
 
-    init(list: ViewList, inputs: _ViewInputs, childAxis: Axis?, filter: (@MainActor ([(ViewListID, ViewListElement)]) -> [(ViewListID, ViewListElement)])? = nil) {
+    init(list: ViewList, inputs: _ViewInputs, childAxis: Axis?, filter: (@MainActor (FlatViewList) -> [(ViewListID, ViewListElement)])? = nil) {
         self.inputs = inputs
         self.group = inputs.host.renderer.makeGroup(path: inputs.path)
         inputs.host.renderer.append(group, to: inputs.render.parent)
@@ -197,12 +213,29 @@ final class ViewListContainer {
         items.order = inputs.depth
         self.items = items
         let isStatic = list.isStatic
-        items.setRule { [unowned self] in
-            var flat: [(ViewListID, ViewListElement)] = []
-            list.flatten(into: &flat)
-            if !isStatic { self.inputs.tracer.record(.listUpdate, self.inputs.path) }
-            if let filter { flat = filter(flat) }
-            return self.reconcile(flat, childAxis: childAxis)
+        if let filter {
+            // A filtered (lazy) container keeps the flattened list in its own attribute: it changes
+            // with the list only, while the filter (the viewport) changes on every scroll step.
+            let flatList = Attribute<FlatViewList>(inputs.subgraph, isEqual: { $0.ids == $1.ids }) {
+                var flat: [(ViewListID, ViewListElement)] = []
+                list.flatten(into: &flat)
+                inputs.tracer.counters.listElementVisits += flat.count
+                return FlatViewList(flat)
+            }
+            flatList.label = "flat list \(inputs.path)"
+            items.setRule { [unowned self] in
+                let flat = flatList.value
+                if !isStatic { self.inputs.tracer.record(.listUpdate, self.inputs.path) }
+                return self.reconcile(filter(flat), childAxis: childAxis)
+            }
+        } else {
+            items.setRule { [unowned self] in
+                var flat: [(ViewListID, ViewListElement)] = []
+                list.flatten(into: &flat)
+                self.inputs.tracer.counters.listElementVisits += flat.count
+                if !isStatic { self.inputs.tracer.record(.listUpdate, self.inputs.path) }
+                return self.reconcile(flat, childAxis: childAxis)
+            }
         }
         items.isEager = true
     }
