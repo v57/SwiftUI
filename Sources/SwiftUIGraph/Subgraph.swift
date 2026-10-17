@@ -68,7 +68,13 @@ public final class Subgraph {
         for child in children.reversed() { child?.destroyFromParent() }
         children.removeAll()
         holes = 0
-        for attribute in attributes { attribute.destroy() }
+        // Newest first: an attribute is usually the latest output of its inputs, so taking it off
+        // their output lists finds it at the end.
+        var index = attributes.count - 1
+        while index >= 0 {
+            attributes[index].destroy()
+            index -= 1
+        }
         attributes.removeAll()
         let pending = cleanups
         cleanups.removeAll()

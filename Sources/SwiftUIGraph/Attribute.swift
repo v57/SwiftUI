@@ -295,8 +295,10 @@ public class AnyAttribute {
         if flags.contains(.destroyed) { return }
         flags.insert(.destroyed)
         flags.remove([.dirty, .forced])
-        for edge in inputs { edge.attribute.removeOutput(self) }
+        // An input destroyed already (in a child subgraph, destroyed first) keeps no outputs.
+        for edge in inputs where !edge.attribute.flags.contains(.destroyed) { edge.attribute.removeOutput(self) }
         inputs.removeAll()
+        outputs.removeAll()
         didDestroy()
     }
 }
