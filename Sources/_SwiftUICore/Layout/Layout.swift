@@ -164,9 +164,9 @@ final class LayoutEngineComputer<L: Layout>: LayoutComputer {
         super.init(path: path, tracer: tracer)
     }
 
-    var subviews: LayoutSubviews {
-        LayoutSubviews(elements: children.enumerated().map { LayoutSubview(computer: $1, index: $0, recorder: nil, traits: traits[$0]) })
-    }
+    private(set) lazy var subviews = LayoutSubviews(elements: children.enumerated().map {
+        LayoutSubview(computer: $1, index: $0, recorder: nil, traits: traits[$0])
+    })
 
     /// The proposal of the layout's latest `sizeThatFits` call (sizes are memoized per proposal).
     private var sizedProposal: ProposedViewSize?
@@ -206,7 +206,7 @@ final class LayoutEngineComputer<L: Layout>: LayoutComputer {
         }
     }
 
-    override var spacing: ViewSpacing {
+    override var computedSpacing: ViewSpacing {
         if forwardsSingleChild { return children[0].spacing }
         return layout.spacing(subviews: subviews, cache: &cacheBox.cache!)
     }

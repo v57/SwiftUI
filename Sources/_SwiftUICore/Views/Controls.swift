@@ -401,7 +401,7 @@ final class ButtonComputer: UnaryLayoutComputer {
     }
 
     /// Bezel-less buttons (no metrics) space like their label; bordered ones like controls.
-    override var spacing: ViewSpacing { metrics.minSize.height == 0 && metrics.contentInsets == EdgeInsets() ? child.spacing : .default }
+    override var computedSpacing: ViewSpacing { metrics.minSize.height == 0 && metrics.contentInsets == EdgeInsets() ? child.spacing : .default }
 
     override func explicitAlignment(_ key: AlignmentKey, in size: CGSize) -> CGFloat? {
         guard key.axis == .vertical else { return nil }

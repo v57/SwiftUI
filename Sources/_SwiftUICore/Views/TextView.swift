@@ -66,7 +66,7 @@ final class TextLayoutComputer: LayoutComputer {
         return services.measureText(limited, proposal: proposal)
     }
 
-    override var spacing: ViewSpacing {
+    override var computedSpacing: ViewSpacing {
         services.textSpacing(text.font).map(ViewSpacing.text) ?? .default
     }
 

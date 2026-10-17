@@ -355,7 +355,7 @@ final class SpacerComputer: LayoutComputer {
         }
     }
 
-    override var spacing: ViewSpacing { .spacer }
+    override var computedSpacing: ViewSpacing { .spacer }
 
     override func isEquivalent(to other: LayoutComputer) -> Bool {
         guard let other = other as? SpacerComputer else { return false }

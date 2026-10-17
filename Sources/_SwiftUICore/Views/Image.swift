@@ -177,7 +177,7 @@ final class ImageLayoutComputer: LayoutComputer {
         super.init(path: path, tracer: tracer)
     }
 
-    override var spacing: ViewSpacing { textSpacing.map(ViewSpacing.text) ?? .default }
+    override var computedSpacing: ViewSpacing { textSpacing.map(ViewSpacing.text) ?? .default }
 
     override func computeSize(_ proposal: ProposedViewSize) -> CGSize {
         image.isResizable ? proposal.replacingUnspecifiedDimensions(by: intrinsic) : intrinsic

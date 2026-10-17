@@ -32,7 +32,7 @@ struct _ControlSpacingLayout: UnaryLayoutModifier, Equatable {
 }
 
 final class ControlSpacingComputer: UnaryLayoutComputer {
-    override var spacing: ViewSpacing { .default }
+    override var computedSpacing: ViewSpacing { .default }
     override func hasSameParameters(as other: LayoutComputer) -> Bool { other is ControlSpacingComputer }
 }
 
@@ -72,7 +72,7 @@ final class PaddingComputer: UnaryLayoutComputer {
 
     /// Padded edges prefer the default spacing; unpadded ones keep the child's (measured:
     /// `.padding(.horizontal, 5)` or zero padding leave text spacing above and below intact).
-    override var spacing: ViewSpacing {
+    override var computedSpacing: ViewSpacing {
         var spacing = child.spacing
         let padded = ViewSpacing.default
         if insets.top != 0 { spacing.topEdge = padded.topEdge }

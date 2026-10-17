@@ -44,7 +44,18 @@ public class LayoutComputer {
         ViewDimensions(size: size) { [self] key in explicitAlignment(key, in: size) }
     }
 
-    var spacing: ViewSpacing { .default }
+    /// The view's spacing preferences, computed once per computer (computers are immutable
+    /// snapshots; a container's spacing is the union of its children's, so recomputing it on
+    /// every query walked whole subtrees).
+    final var spacing: ViewSpacing {
+        if let spacingCache { return spacingCache }
+        let value = computedSpacing
+        tracer.counters.spacingComputations += 1
+        spacingCache = value
+        return value
+    }
+    private var spacingCache: ViewSpacing?
+    var computedSpacing: ViewSpacing { .default }
     var layoutPriority: Double { 0 }
     func layoutValue(_ key: ObjectIdentifier) -> Any? { nil }
 
@@ -60,7 +71,7 @@ public class LayoutComputer {
 /// Zero-size, used by EmptyView.
 final class EmptyLayoutComputer: LayoutComputer {
     override func computeSize(_ proposal: ProposedViewSize) -> CGSize { .zero }
-    override var spacing: ViewSpacing { .zero }
+    override var computedSpacing: ViewSpacing { .zero }
     override func isEquivalent(to other: LayoutComputer) -> Bool { other is EmptyLayoutComputer }
 }
 
@@ -83,7 +94,7 @@ class UnaryLayoutComputer: LayoutComputer {
 
     override func computeSize(_ proposal: ProposedViewSize) -> CGSize { child.sizeThatFits(proposal) }
     override func explicitAlignment(_ key: AlignmentKey, in size: CGSize) -> CGFloat? { child.explicitAlignment(key, in: size) }
-    override var spacing: ViewSpacing { child.spacing }
+    override var computedSpacing: ViewSpacing { child.spacing }
     override var layoutPriority: Double { child.layoutPriority }
     override func layoutValue(_ key: ObjectIdentifier) -> Any? { child.layoutValue(key) }
 
