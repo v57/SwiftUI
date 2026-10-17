@@ -135,6 +135,13 @@ public struct LayoutSubview: Equatable {
 
     nonisolated var isSpacer: Bool { _onMainActor { computer.spacing.isSpacer } }
 
+    /// Places the subview with a size its computer gave for `proposal` (no lookup).
+    nonisolated func place(at position: CGPoint, size: CGSize, proposal: ProposedViewSize) {
+        _onMainActor {
+            recorder?.geometries[index] = ViewGeometry(origin: position, size: size, proposal: proposal)
+        }
+    }
+
     /// The value of the guide `key` for this subview at `size`.
     nonisolated func alignment(_ key: AlignmentKey, size: CGSize) -> CGFloat {
         _onMainActor { computer.alignmentValue(key, in: size) }

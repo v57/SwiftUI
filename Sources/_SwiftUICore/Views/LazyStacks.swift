@@ -539,19 +539,23 @@ public enum ScrollDismissesKeyboardMode: Sendable { case automatic, immediately,
 
 /// A lazy stack outside a scroll view (laid out eagerly). Like SwiftUI's, it takes the proposed
 /// cross-axis size and has standard spacing around it (it is a container, not its children).
-struct _LazyEagerStackLayout<Base: Layout>: Layout where Base.Cache == Void {
+struct _LazyEagerStackLayout<Base: Layout>: Layout {
     let base: Base
     let axis: Axis
 
-    func spacing(subviews: Subviews, cache: inout Void) -> ViewSpacing { .default }
+    typealias Cache = Base.Cache
+    func makeCache(subviews: Subviews) -> Base.Cache { base.makeCache(subviews: subviews) }
+    func updateCache(_ cache: inout Base.Cache, subviews: Subviews) { base.updateCache(&cache, subviews: subviews) }
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
+    func spacing(subviews: Subviews, cache: inout Base.Cache) -> ViewSpacing { .default }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Base.Cache) -> CGSize {
         var size = base.sizeThatFits(proposal: proposal, subviews: subviews, cache: &cache)
         if let cross = proposal[axis.other], cross.isFinite { size[axis.other] = cross }
         return size
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Base.Cache) {
         base.placeSubviews(in: bounds, proposal: proposal, subviews: subviews, cache: &cache)
     }
 }
