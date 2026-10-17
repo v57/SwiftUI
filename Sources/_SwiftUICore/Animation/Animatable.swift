@@ -191,6 +191,6 @@ private func makeAnimator<A: Animatable>(_ source: Attribute<A>, host: ViewGraph
         value.animatableData = presented
         return value
     }
-    attribute.label = "animator \(A.self)"
+    attribute.setLabel("animator \(A.self)")
     return attribute
 }

@@ -153,7 +153,7 @@ extension State: _DynamicPropertyInstallable {
             return
         }
         let attribute = Attribute<Value>(context.subgraph, value: _value)
-        attribute.label = "state \(context.path)"
+        attribute.setLabel("state \(context.path)")
         let location = StoredLocation(attribute: attribute)
         slot = location
         _location = location

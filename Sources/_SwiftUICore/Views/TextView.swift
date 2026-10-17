@@ -24,7 +24,7 @@ extension Text: View {
             _ = clock?.value
             return view.attribute.value.resolve(in: environment.value)
         }
-        resolved.label = "resolved \(inputs.path)"
+        resolved.setLabel("resolved \(inputs.path)")
         let content = Attribute<RenderContent>(inputs.subgraph, isEqual: { $0 == $1 }) { .text(resolved.value) }
         var actions = RenderActions()
         actions.openURL = { url in AnyAttribute.withoutDependencies { environment.value.openURL(url) } }

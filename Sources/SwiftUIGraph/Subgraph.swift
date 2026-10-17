@@ -4,17 +4,20 @@
 @MainActor
 public final class Subgraph {
     public let graph: AttributeGraph
-    public private(set) weak var parent: Subgraph?
+    /// Not `weak`: a weak reference gives the parent a side table, which makes every retain and
+    /// release of it slow. A parent clears its children's back references when it goes away.
+    public var parent: Subgraph? { parentReference?.takeUnretainedValue() }
+    @exclusivity(unchecked) private var parentReference: Unmanaged<Subgraph>?
     /// Children in creation order; a destroyed child leaves a hole (its slot is nil) so removing one
     /// costs O(1) however many siblings it has (a lazy stack's rows sit next to every `ForEach`
     /// element). Holes are compacted once they are half of the array.
-    private var children: [Subgraph?] = []
-    private var holes = 0
+    @exclusivity(unchecked) private var children: [Subgraph?] = []
+    @exclusivity(unchecked) private var holes = 0
     /// This subgraph's index in its parent's `children`.
-    private var slot = 0
-    private var attributes: [AnyAttribute] = []
-    private var cleanups: [() -> Void] = []
-    public private(set) var isValid = true
+    @exclusivity(unchecked) private var slot = 0
+    @exclusivity(unchecked) private var attributes: [AnyAttribute] = []
+    @exclusivity(unchecked) private var cleanups: [() -> Void] = []
+    @exclusivity(unchecked) public private(set) var isValid = true
 
     public init(graph: AttributeGraph) {
         self.graph = graph
@@ -22,7 +25,11 @@ public final class Subgraph {
 
     private init(parent: Subgraph) {
         self.graph = parent.graph
-        self.parent = parent
+        self.parentReference = .passUnretained(parent)
+    }
+
+    deinit {
+        _assumeMainActor { for child in children { child?.parentReference = nil } }
     }
 
     public func makeChild() -> Subgraph {
@@ -70,9 +77,9 @@ public final class Subgraph {
     }
 
     private func destroyFromParent() {
-        let saved = parent
-        parent = nil
+        let saved = parentReference
+        parentReference = nil
         destroy()
-        parent = saved
+        parentReference = saved
     }
 }

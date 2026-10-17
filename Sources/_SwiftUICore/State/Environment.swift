@@ -125,7 +125,7 @@ extension Environment: _DynamicPropertyInstallable {
         let environment = context.environment
         // Per-property projection with equality cut-off: body only depends on *this* key.
         let attribute = Attribute<Value>(context.subgraph) { reader(environment.value) }
-        attribute.label = "environment \(context.path)"
+        attribute.setLabel("environment \(context.path)")
         slot = EnvironmentStorage(attribute: attribute)
         content = .installed(attribute)
     }

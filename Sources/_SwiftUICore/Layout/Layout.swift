@@ -267,14 +267,14 @@ extension _ViewInputs {
             }
             return LayoutEngineComputer(layout: layout, children: children, traits: traits, cacheBox: cacheBox, path: path, tracer: tracer)
         }
-        computer.label = "layout \(path)"
+        computer.setLabel("layout \(path)")
         let geometry = inputs.geometry
         let placements = Attribute<Placements>(inputs.subgraph, isEqual: { $0 == $1 }) {
             let engine = computer.value as! LayoutEngineComputer<L>
             tracer.record(.placement, path)
             return engine.place(in: geometry.value)
         }
-        placements.label = "placements \(path)"
+        placements.setLabel("placements \(path)")
         container.placement = { index in
             let all = placements.value.geometries
             return index < all.count ? all[index] : .zero

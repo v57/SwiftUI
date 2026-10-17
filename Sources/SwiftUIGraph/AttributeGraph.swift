@@ -1,3 +1,5 @@
+import Foundation
+
 @MainActor
 public protocol AttributeGraphDelegate: AnyObject {
     /// Called once when the graph goes from "clean" to "has pending work". The host should schedule
@@ -13,21 +15,31 @@ public protocol AttributeGraphTracer: AnyObject {
 @MainActor
 public final class AttributeGraph {
     public weak var delegate: AttributeGraphDelegate?
-    public weak var tracer: AttributeGraphTracer?
+    /// Setting a tracer makes the graph record labels (`AnyAttribute.setLabel`).
+    public weak var tracer: AttributeGraphTracer? {
+        didSet { if tracer != nil { recordsLabels = true } }
+    }
+    /// Whether `AnyAttribute.setLabel` builds labels (off by default: views label their
+    /// attributes with their paths, and building those strings was a twentieth of a build).
+    /// `SWIFTUI_ATTRIBUTE_LABELS=1` turns it on for every graph.
+    public var recordsLabels = AttributeGraph.labelsByDefault
+    nonisolated static let labelsByDefault = ProcessInfo.processInfo.environment["SWIFTUI_ATTRIBUTE_LABELS"] != nil
     /// Called whenever a source changes or an attribute is invalidated from outside (used by the
     /// view layer to capture the transaction of the change).
     public var willChangeSource: (() -> Void)?
 
-    public private(set) var revision: UInt64 = 0
-    private var stamp: UInt64 = 0
-    private var queueSequence: UInt64 = 0
+    @exclusivity(unchecked) public private(set) var revision: UInt64 = 0
+    @exclusivity(unchecked) private var stamp: UInt64 = 0
+    @exclusivity(unchecked) private var queueSequence: UInt64 = 0
+    /// Reads recorded by the rules running now, innermost last (see `AnyAttribute.evaluate`).
+    @exclusivity(unchecked) var readStack = ContiguousArray<AnyAttribute.Edge>()
     public private(set) var isUpdating = false
     private var updateRequested = false
-    private var queue = EagerQueue()
+    @exclusivity(unchecked) private var queue = EagerQueue()
 
     /// Total number of rule evaluations; handy for performance tests.
-    public internal(set) var evaluationCount = 0
-    public internal(set) var liveAttributeCount = 0
+    @exclusivity(unchecked) public internal(set) var evaluationCount = 0
+    @exclusivity(unchecked) public internal(set) var liveAttributeCount = 0
 
     public init() {}
 

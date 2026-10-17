@@ -24,7 +24,7 @@ func makeBodyAttribute<V, Body>(
     let buffer = DynamicPropertyBuffer(for: V.self)
     let view = animatedIfNeeded(view, host: inputs.host, scope: inputs.animationScope, subgraph: inputs.subgraph)
     let attribute = Attribute<Body>(inputs.subgraph)
-    attribute.label = "body \(path)"
+    attribute.setLabel("body \(path)")
     context.owner = attribute
     let tracer = inputs.host.tracer
     attribute.setRule { [unowned attribute] in
@@ -70,7 +70,7 @@ nonisolated var isOnMainQueue: Bool {
 /// An attribute whose rule runs with Observation tracking (for rules that call user closures or
 /// read bindings that may be backed by `@Observable` models).
 @MainActor
-func makeObservedAttribute<T>(_ subgraph: Subgraph, of type: T.Type = T.self, isEqual: @escaping (T, T) -> Bool = GraphComparison.isIdentical, _ rule: @escaping @MainActor () -> T) -> Attribute<T> {
+func makeObservedAttribute<T>(_ subgraph: Subgraph, of type: T.Type = T.self, isEqual: ((T, T) -> Bool)? = nil, _ rule: @escaping @MainActor () -> T) -> Attribute<T> {
     let attribute = Attribute<T>(subgraph, isEqual: isEqual)
     attribute.setRule { [unowned attribute] in observingChanges(invalidating: attribute, rule) }
     return attribute

@@ -34,7 +34,7 @@ func makeKeyedList<Key: Hashable>(
         }
         return ViewList(nodes: [.nested(component(current), state.list!)])
     }
-    attribute.label = "keyed list \(inputs.path)"
+    attribute.setLabel("keyed list \(inputs.path)")
     return ViewList(nodes: [.dynamic(nil, attribute)])
 }
 
@@ -299,7 +299,7 @@ extension ForEach: View where Content: View {
                 for id in ids where state.elements[id] == nil {
                     let subgraph = parent.makeChild()
                     let item = Attribute<Content>(subgraph)
-                    item.label = "ForEach item \(id)"
+                    item.setLabel("ForEach item \(id)")
                     item.setRule { [unowned item] in
                         let forEach = view.attribute.value
                         guard let position = state.index[id] else { return item.peekValue! }
@@ -326,7 +326,7 @@ extension ForEach: View where Content: View {
             }
             return ViewList(nodes: ids.map { .nested(.explicit(AnyHashable($0)), state.elements[$0]!.list) })
         }
-        attribute.label = "ForEach \(inputs.path)"
+        attribute.setLabel("ForEach \(inputs.path)")
         return _ViewListOutputs(list: ViewList(nodes: [.dynamic(nil, attribute)]))
     }
 

@@ -60,6 +60,15 @@ struct ScalingLazyItem: View {
     }
 }
 
+/// Counts rule evaluations by the first word of the attribute's label.
+@MainActor
+final class EvaluationHistogram: AttributeGraphTracer {
+    var counts: [String: Int] = [:]
+    func attributeDidEvaluate(_ attribute: AnyAttribute, changed: Bool) {
+        counts[attribute.label.map { String($0.prefix { $0 != " " }) } ?? "<unlabeled>", default: 0] += 1
+    }
+}
+
 @MainActor
 func makeScalingRows(_ count: Int) -> [ScalingRow] {
     (0..<count).map { ScalingRow("Repository \($0)") }
@@ -221,6 +230,9 @@ struct ScalingTests {
             }
         }, size: CGSize(width: 600, height: 800))
         host.tracer.isRecording = false
+        // BUILD_BENCH_HISTOGRAM=1: evaluations per card (building and tearing down) by the first word of the attribute's label.
+        let histogram = ProcessInfo.processInfo.environment["BUILD_BENCH_HISTOGRAM"] != nil ? EvaluationHistogram() : nil
+        host.graph.graph.tracer = histogram
         var built = 0.0, evaluations = 0, attributes = 0
         for _ in 0..<rounds {
             let before = host.graph.graph.evaluationCount
@@ -233,6 +245,9 @@ struct ScalingTests {
             attributes += host.graph.graph.liveAttributeCount - attributesBefore
             for state in states { state.isBuilt = false }
             host.flush()
+        }
+        if let histogram {
+            print("evaluations per card:", histogram.counts.sorted { $0.value > $1.value }.map { "\($0.key) \($0.value / (rounds * 60))" }.joined(separator: ", "))
         }
         print(String(format: "build bench: %.3f ms per card, %.2f µs per evaluation, %d evaluations and %d attributes per card", built / Double(rounds * 60) * 1000, built / Double(evaluations) * 1e6, evaluations / (rounds * 60), attributes / (rounds * 60)))
     }

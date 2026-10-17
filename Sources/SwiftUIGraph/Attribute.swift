@@ -35,18 +35,24 @@ public class AnyAttribute {
         var revision: UInt64
     }
 
+    // The graph's hot state skips dynamic exclusivity checks (a `swift_beginAccess` per access
+    // was a tenth of building a view): attributes are main-actor objects, and no access to these
+    // fields overlaps another (reads of an attribute during its own rule go through other fields).
     public let graph: AttributeGraph
-    final var flags: Flags
-    final var inputs: ContiguousArray<Edge> = []
-    final var outputs: ContiguousArray<Unmanaged<AnyAttribute>> = []
+    @exclusivity(unchecked) final var flags: Flags
+    @exclusivity(unchecked) final var inputs: ContiguousArray<Edge> = []
+    @exclusivity(unchecked) final var outputs: ContiguousArray<Unmanaged<AnyAttribute>> = []
     /// Revision at which the value last changed.
-    public final internal(set) var changedRevision: UInt64 = 0
-    final var readStamp: UInt64 = 0
-    final var queueSequence: UInt64 = 0
+    @exclusivity(unchecked) public final internal(set) var changedRevision: UInt64 = 0
+    @exclusivity(unchecked) final var readStamp: UInt64 = 0
+    /// Scratch stamp for reconciling edges (set membership without allocating sets).
+    @exclusivity(unchecked) final var mark: UInt64 = 0
+    @exclusivity(unchecked) final var queueSequence: UInt64 = 0
     /// Ordering key for eager attributes. Lower orders are updated first (parents before children).
-    public final var order: Int = 0
-    /// Free-form debug label; also used by tracers.
-    public final var label: String?
+    @exclusivity(unchecked) public final var order: Int = 0
+    /// Free-form debug label; also used by tracers. Views label their attributes with
+    /// `setLabel`, which builds the string only while the graph records labels.
+    @exclusivity(unchecked) public final var label: String?
 
     init(graph: AttributeGraph, flags: Flags) {
         self.graph = graph
@@ -54,9 +60,19 @@ public class AnyAttribute {
         graph.liveAttributeCount += 1
     }
 
-    isolated deinit {
-        graph.liveAttributeCount -= 1
-        for edge in inputs { edge.attribute.removeOutput(self) }
+    // Not `isolated`: hopping to the main executor in every deinit (to check it) cost more than
+    // the deinit. Attributes are only ever released on the main actor.
+    deinit {
+        _assumeMainActor {
+            graph.liveAttributeCount -= 1
+            for edge in inputs { edge.attribute.removeOutput(self) }
+        }
+    }
+
+    /// Sets `label` when the graph records labels (`AttributeGraph.recordsLabels`); the string
+    /// (usually a view path) is not built otherwise.
+    public final func setLabel(_ make: @autoclosure () -> String) {
+        if graph.recordsLabels { label = make() }
     }
 
     public final var isDestroyed: Bool { flags.contains(.destroyed) }
@@ -114,8 +130,10 @@ public class AnyAttribute {
 
     final func evaluate() {
         flags.insert(.computing)
-        let oldInputs = inputs
-        inputs.removeAll(keepingCapacity: true)
+        // Reads are recorded on the graph's read stack (above the reads of the attributes whose
+        // rules are running further out), then adopted as this attribute's inputs: re-evaluating
+        // with the same inputs allocates nothing.
+        let base = graph.readStack.count
 
         let savedReader = AnyAttribute.currentReader
         let savedStamp = AnyAttribute.currentStamp
@@ -129,7 +147,7 @@ public class AnyAttribute {
 
         flags.remove([.computing, .dirty, .forced])
         graph.evaluationCount += 1
-        reconcileEdges(old: oldInputs)
+        adoptReads(from: base)
         // An input dirtied during this evaluation (possibly before the edge existed) must keep this
         // attribute dirty too.
         for edge in inputs where edge.attribute.flags.contains(.dirty) {
@@ -153,27 +171,47 @@ public class AnyAttribute {
         }
     }
 
-    private final func reconcileEdges(old: ContiguousArray<Edge>) {
-        if old.count == inputs.count {
+    /// Makes the reads above `base` on the graph's read stack this attribute's inputs, and pops them.
+    private final func adoptReads(from base: Int) {
+        let graph = self.graph
+        let count = graph.readStack.count - base
+        if count == inputs.count {
             var same = true
-            for i in 0..<old.count where old[i].attribute !== inputs[i].attribute {
-                same = false
-                break
+            var index = 0
+            while index < count {
+                if graph.readStack[base + index].attribute !== inputs[index].attribute {
+                    same = false
+                    break
+                }
+                index += 1
             }
-            if same { return }
-        }
-        var oldSet = Set<ObjectIdentifier>(minimumCapacity: old.count)
-        for edge in old { oldSet.insert(ObjectIdentifier(edge.attribute)) }
-        var newSet = Set<ObjectIdentifier>(minimumCapacity: inputs.count)
-        for edge in inputs {
-            let id = ObjectIdentifier(edge.attribute)
-            if newSet.insert(id).inserted, !oldSet.contains(id) {
-                edge.attribute.outputs.append(.passUnretained(self))
+            if same {
+                index = 0
+                while index < count {
+                    inputs[index].revision = graph.readStack[base + index].revision
+                    index += 1
+                }
+                graph.readStack.removeLast(count)
+                return
             }
         }
-        for edge in old where !newSet.contains(ObjectIdentifier(edge.attribute)) {
+        let old = inputs
+        inputs = ContiguousArray(graph.readStack[base...])
+        graph.readStack.removeLast(count)
+        // New inputs that were not inputs before gain this output (once, even when read twice).
+        let oldMark = graph.nextStamp()
+        for edge in old { edge.attribute.mark = oldMark }
+        for edge in inputs where edge.attribute.mark != oldMark {
+            edge.attribute.mark = oldMark
+            edge.attribute.outputs.append(.passUnretained(self))
+        }
+        // Old inputs that are no longer read lose it.
+        if old.isEmpty { return }
+        let newMark = graph.nextStamp()
+        for edge in inputs { edge.attribute.mark = newMark }
+        for edge in old where edge.attribute.mark != newMark {
+            edge.attribute.mark = newMark
             edge.attribute.removeOutput(self)
-            newSet.insert(ObjectIdentifier(edge.attribute)) // avoid double removal of duplicates
         }
     }
 
@@ -187,14 +225,14 @@ public class AnyAttribute {
 
     // MARK: Dependency tracking
 
-    static var currentReader: AnyAttribute?
-    static var currentStamp: UInt64 = 0
+    @exclusivity(unchecked) static var currentReader: AnyAttribute?
+    @exclusivity(unchecked) static var currentStamp: UInt64 = 0
 
     final func recordRead() {
-        guard let reader = AnyAttribute.currentReader else { return }
+        guard AnyAttribute.currentReader != nil else { return }
         if readStamp == AnyAttribute.currentStamp { return }
         readStamp = AnyAttribute.currentStamp
-        reader.inputs.append(Edge(attribute: self, revision: changedRevision))
+        graph.readStack.append(Edge(attribute: self, revision: changedRevision))
     }
 
     /// Runs `body` without recording dependencies for the attribute currently being computed.
@@ -261,33 +299,39 @@ public class AnyAttribute {
 public final class Attribute<Value>: AnyAttribute {
     public typealias Comparator = (Value, Value) -> Bool
 
-    private var storage: Value?
-    private var rule: (() -> Value)?
-    private let isEqual: Comparator
+    @exclusivity(unchecked) private var storage: Value?
+    @exclusivity(unchecked) private var rule: (() -> Value)?
+    /// The comparator given, or nil for `GraphComparison.isIdentical` (resolved once per type:
+    /// `rawIsEqual`).
+    private let isEqual: Comparator?
+    private let rawIsEqual: GraphComparison.RawComparator?
     /// Called after the value changed as the result of a rule evaluation (not for sources).
-    public var onChange: ((Value) -> Void)?
+    @exclusivity(unchecked) public var onChange: ((Value) -> Void)?
 
     /// Source attribute.
-    public init(_ subgraph: Subgraph, value: Value, isEqual: @escaping Comparator = GraphComparison.isIdentical) {
+    public init(_ subgraph: Subgraph, value: Value, isEqual: Comparator? = nil) {
         self.storage = value
         self.isEqual = isEqual
+        self.rawIsEqual = isEqual == nil ? GraphComparison.mainActorComparator(for: Value.self) : nil
         super.init(graph: subgraph.graph, flags: [])
         self.changedRevision = graph.nextRevision()
         subgraph.register(self)
     }
 
     /// Computed attribute. The rule runs lazily on first read.
-    public init(_ subgraph: Subgraph, isEqual: @escaping Comparator = GraphComparison.isIdentical, rule: @escaping () -> Value) {
+    public init(_ subgraph: Subgraph, isEqual: Comparator? = nil, rule: @escaping () -> Value) {
         self.rule = rule
         self.isEqual = isEqual
+        self.rawIsEqual = isEqual == nil ? GraphComparison.mainActorComparator(for: Value.self) : nil
         super.init(graph: subgraph.graph, flags: [.dirty, .forced])
         subgraph.register(self)
     }
 
     /// Computed attribute whose rule is supplied later via `setRule` (for late-bound graphs, e.g. a
     /// child's geometry that depends on the child's own layout outputs).
-    public init(_ subgraph: Subgraph, isEqual: @escaping Comparator = GraphComparison.isIdentical) {
+    public init(_ subgraph: Subgraph, isEqual: Comparator? = nil) {
         self.isEqual = isEqual
+        self.rawIsEqual = isEqual == nil ? GraphComparison.mainActorComparator(for: Value.self) : nil
         super.init(graph: subgraph.graph, flags: [.dirty, .forced])
         subgraph.register(self)
     }
@@ -322,7 +366,7 @@ public final class Attribute<Value>: AnyAttribute {
     public func setValue(_ newValue: Value) {
         precondition(rule == nil, "setValue on a computed attribute")
         if isDestroyed { return }
-        if let storage, isEqual(storage, newValue) { return }
+        if let storage, isSame(storage, newValue) { return }
         graph.willChangeSource?()
         storage = newValue
         changedRevision = graph.nextRevision()
@@ -333,10 +377,17 @@ public final class Attribute<Value>: AnyAttribute {
     override func runRule() -> Bool {
         guard let rule else { return false }
         let newValue = rule()
-        if let old = storage, isEqual(old, newValue) { return false }
+        if let old = storage, isSame(old, newValue) { return false }
         storage = newValue
         if let onChange { onChange(newValue) }
         return true
+    }
+
+    private func isSame(_ lhs: Value, _ rhs: Value) -> Bool {
+        if let rawIsEqual {
+            return withUnsafePointer(to: lhs) { l in withUnsafePointer(to: rhs) { r in rawIsEqual(l, r) } }
+        }
+        return isEqual!(lhs, rhs)
     }
 
     override func didDestroy() {
@@ -344,7 +395,7 @@ public final class Attribute<Value>: AnyAttribute {
         onChange = nil
     }
 
-    public func map<T>(_ subgraph: Subgraph, isEqual: @escaping (T, T) -> Bool = GraphComparison.isIdentical, _ transform: @escaping (Value) -> T) -> Attribute<T> {
+    public func map<T>(_ subgraph: Subgraph, isEqual: ((T, T) -> Bool)? = nil, _ transform: @escaping (Value) -> T) -> Attribute<T> {
         Attribute<T>(subgraph, isEqual: isEqual) { transform(self.value) }
     }
 }
@@ -352,5 +403,14 @@ public final class Attribute<Value>: AnyAttribute {
 extension Attribute where Value: Equatable {
     public convenience init(_ subgraph: Subgraph, equatable value: Value) {
         self.init(subgraph, value: value, isEqual: { $0 == $1 })
+    }
+}
+
+/// Runs main-actor code from a nonisolated context that runs on the main actor (deinits of
+/// attributes), without the runtime check of `MainActor.assumeIsolated`.
+@inline(__always)
+nonisolated func _assumeMainActor<T>(_ body: @MainActor () -> T) -> T {
+    withoutActuallyEscaping(body) { body in
+        unsafeBitCast(body, to: (() -> T).self)()
     }
 }

@@ -213,7 +213,7 @@ final class ViewListContainer {
         let items = Attribute<[Item]>(inputs.subgraph, isEqual: { lhs, rhs in
             lhs.count == rhs.count && zip(lhs, rhs).allSatisfy { $0.id == $1.id }
         })
-        items.label = "items \(inputs.path)"
+        items.setLabel("items \(inputs.path)")
         items.order = inputs.depth
         self.items = items
         let isStatic = list.isStatic
@@ -226,7 +226,7 @@ final class ViewListContainer {
                 inputs.tracer.counters.listElementVisits += flat.count
                 return FlatViewList(flat)
             }
-            flatList.label = "flat list \(inputs.path)"
+            flatList.setLabel("flat list \(inputs.path)")
             items.setRule { [unowned self] in
                 let flat = flatList.value
                 if !isStatic { self.inputs.tracer.record(.listUpdate, self.inputs.path) }
@@ -289,7 +289,7 @@ final class ViewListContainer {
         childInputs.stackAxis = childAxis
         childInputs.render = _RenderInputs(parent: itemGroup, origin: inputs.render.origin)
         let geometry = Attribute<ViewGeometry>(subgraph, isEqual: { $0 == $1 })
-        geometry.label = "geometry \(id)"
+        geometry.setLabel("geometry \(id)")
         childInputs.geometry = geometry
         if isolated { isolate(&childInputs, placed: geometry, group: itemGroup) }
         childInputs.listItemPosition = Attribute<ListItemPosition>(subgraph, isEqual: { $0 == $1 }) { [unowned self] in

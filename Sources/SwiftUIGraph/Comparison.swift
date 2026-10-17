@@ -41,6 +41,19 @@ public enum GraphComparison {
         }
     }
 
+    /// The comparator for `type`, from a cache only the main actor uses (no lock): attributes
+    /// resolve theirs once, when they are created.
+    @MainActor
+    public static func mainActorComparator(for type: Any.Type) -> RawComparator {
+        let key = ObjectIdentifier(type)
+        if let cached = mainActorCache[key] { return cached }
+        let made = comparator(for: type)
+        mainActorCache[key] = made
+        return made
+    }
+
+    @MainActor private static var mainActorCache: [ObjectIdentifier: RawComparator] = [:]
+
     public static func never<T>(_: T, _: T) -> Bool { false }
 
     public static func comparator(for type: Any.Type) -> RawComparator {
@@ -161,6 +174,23 @@ public enum GraphComparison {
 }
 
 /// Minimal lock-protected box (`Synchronization.Mutex` needs macOS 15; we support 14).
+#if canImport(os)
+import os
+
+final class LockedValue<Value>: @unchecked Sendable {
+    // An unfair lock: comparisons look their comparator up thousands of times per update.
+    private let lock = OSAllocatedUnfairLock()
+    private var value: Value
+
+    init(_ value: Value) { self.value = value }
+
+    func withLock<R>(_ body: (inout Value) -> R) -> R {
+        lock.lock()
+        defer { lock.unlock() }
+        return body(&value)
+    }
+}
+#else
 final class LockedValue<Value>: @unchecked Sendable {
     private let lock = NSLock()
     private var value: Value
@@ -173,3 +203,4 @@ final class LockedValue<Value>: @unchecked Sendable {
         return body(&value)
     }
 }
+#endif

@@ -151,9 +151,9 @@ extension _ViewInputs {
         let current = Attribute<LayoutComputer>(subgraph, isEqual: { ($1 as! UnaryLayoutComputer).isSamePlacement(as: $0) }) {
             makeComputer(childLayout.value, modifierPath)
         }
-        current.label = "current layout \(modifierPath)"
+        current.setLabel("current layout \(modifierPath)")
         let layout = Attribute<LayoutComputer>(subgraph, isEqual: LayoutComputer.equivalence) { current.value }
-        layout.label = "layout \(modifierPath)"
+        layout.setLabel("layout \(modifierPath)")
         let geometry = self.geometry
         let tracer = self.tracer
         childGeometry.setRule {
@@ -168,7 +168,7 @@ extension _ViewInputs {
 
     func makeLayoutAttribute(_ make: @escaping @MainActor () -> LayoutComputer) -> Attribute<LayoutComputer> {
         let attribute = Attribute<LayoutComputer>(subgraph, isEqual: LayoutComputer.equivalence, rule: make)
-        attribute.label = "layout \(path)"
+        attribute.setLabel("layout \(path)")
         return attribute
     }
 }

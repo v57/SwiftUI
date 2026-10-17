@@ -43,7 +43,7 @@ extension ViewModifier {
     public static func _makeViewList(modifier: _GraphValue<Self>, inputs: _ViewListInputs, body: @escaping @MainActor (_ViewListInputs) -> _ViewListOutputs) -> _ViewListOutputs {
         let outer = inputs.environment
         let proxy = Attribute<EnvironmentValues>(inputs.subgraph)
-        proxy.label = "modifier content environment \(inputs.path)"
+        proxy.setLabel("modifier content environment \(inputs.path)")
         proxy.setRule { outer.value }
         let binding = _ContentEnvironmentBinding(outer: outer)
         var contentListInputs = inputs

@@ -164,9 +164,9 @@ public struct _ViewInputs {
     }
 
     /// Creates a late-bound geometry attribute for a child of this view.
-    func makeChildGeometry(label: String? = nil) -> Attribute<ViewGeometry> {
+    func makeChildGeometry(label: @autoclosure () -> String? = nil) -> Attribute<ViewGeometry> {
         let attribute = Attribute<ViewGeometry>(subgraph, isEqual: { $0 == $1 })
-        attribute.label = label
+        if host.graph.recordsLabels { attribute.label = label() }
         return attribute
     }
 }

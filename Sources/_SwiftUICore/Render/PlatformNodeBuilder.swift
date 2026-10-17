@@ -42,7 +42,7 @@ extension _ViewInputs {
             let base = origin?.value ?? .zero
             return RenderSnapshot(frame: CGRect(origin: placed.origin - base, size: placed.size), content: content.value)
         }
-        sink.label = "render \(path)"
+        sink.setLabel("render \(path)")
         sink.order = depth
         sink.onChange = { snapshot in
             renderer.update(node, frame: snapshot.frame, content: snapshot.content)
