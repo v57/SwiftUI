@@ -133,7 +133,12 @@ public struct LayoutSubview: Equatable {
         }
     }
 
-    var isSpacer: Bool { computer.spacing.isSpacer }
+    nonisolated var isSpacer: Bool { _onMainActor { computer.spacing.isSpacer } }
+
+    /// The value of the guide `key` for this subview at `size`.
+    nonisolated func alignment(_ key: AlignmentKey, size: CGSize) -> CGFloat {
+        _onMainActor { computer.alignmentValue(key, in: size) }
+    }
 
     public nonisolated static func == (lhs: LayoutSubview, rhs: LayoutSubview) -> Bool {
         lhs.computer === rhs.computer && lhs.index == rhs.index
@@ -170,9 +175,16 @@ final class LayoutEngineComputer<L: Layout>: LayoutComputer {
         super.init(path: path, tracer: tracer)
     }
 
-    private(set) lazy var subviews = LayoutSubviews(elements: children.enumerated().map {
-        LayoutSubview(computer: $1, index: $0, recorder: nil, traits: traits[$0])
-    })
+    private(set) lazy var subviews = makeSubviews(recorder: nil)
+
+    private func makeSubviews(recorder: PlacementRecorder?) -> LayoutSubviews {
+        var elements: [LayoutSubview] = []
+        elements.reserveCapacity(children.count)
+        for index in children.indices {
+            elements.append(LayoutSubview(computer: children[index], index: index, recorder: recorder, traits: traits[index]))
+        }
+        return LayoutSubviews(elements: elements)
+    }
 
     /// The proposal of the layout's latest `sizeThatFits` call (sizes are memoized per proposal).
     private var sizedProposal: ProposedViewSize?
@@ -191,9 +203,7 @@ final class LayoutEngineComputer<L: Layout>: LayoutComputer {
             _ = layout.sizeThatFits(proposal: geometry.proposal, subviews: subviews, cache: &cacheBox.cache!)
         }
         let recorder = PlacementRecorder(count: children.count)
-        let recordingSubviews = LayoutSubviews(elements: children.enumerated().map {
-            LayoutSubview(computer: $1, index: $0, recorder: recorder, traits: traits[$0])
-        })
+        let recordingSubviews = makeSubviews(recorder: recorder)
         // SwiftUI places with the proposal the view was given; stacks re-derive from bounds.
         layout.placeSubviews(in: geometry.frame, proposal: geometry.proposal, subviews: recordingSubviews, cache: &cacheBox.cache!)
         return Placements(geometries: recorder.geometries, hidden: recorder.hidden)
@@ -256,10 +266,21 @@ extension _ViewInputs {
         let items = container.items!
         let computer = Attribute<LayoutComputer>(inputs.subgraph, isEqual: LayoutComputer.equivalence) {
             let currentItems = items.value
-            let children = currentItems.map { $0.outputs.layout.value }
-            let traits = currentItems.map(\.traits)
+            var children: [LayoutComputer] = []
+            var traits: [ViewTraits] = []
+            children.reserveCapacity(currentItems.count)
+            traits.reserveCapacity(currentItems.count)
+            for item in currentItems {
+                children.append(item.outputs.layout.value)
+                traits.append(item.traits)
+            }
             let layout = layoutAttribute.value
-            let subviews = LayoutSubviews(elements: children.enumerated().map { LayoutSubview(computer: $1, index: $0, recorder: nil, traits: traits[$0]) })
+            var elements: [LayoutSubview] = []
+            elements.reserveCapacity(children.count)
+            for index in children.indices {
+                elements.append(LayoutSubview(computer: children[index], index: index, recorder: nil, traits: traits[index]))
+            }
+            let subviews = LayoutSubviews(elements: elements)
             if cacheBox.cache == nil {
                 cacheBox.cache = layout.makeCache(subviews: subviews)
             } else {

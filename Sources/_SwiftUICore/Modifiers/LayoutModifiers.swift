@@ -57,10 +57,9 @@ final class PaddingComputer: UnaryLayoutComputer {
     }
 
     override func computeSize(_ proposal: ProposedViewSize) -> CGSize {
-        let inner = ProposedViewSize(
-            width: proposal.width.map { max(0, $0 - insets.horizontal) },
-            height: proposal.height.map { max(0, $0 - insets.vertical) }
-        )
+        var inner = proposal
+        if let width = inner.width { inner.width = max(0, width - insets.horizontal) }
+        if let height = inner.height { inner.height = max(0, height - insets.vertical) }
         let size = child.sizeThatFits(inner)
         return CGSize(width: size.width + insets.horizontal, height: size.height + insets.vertical)
     }

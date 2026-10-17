@@ -216,10 +216,17 @@ public class AnyAttribute {
     }
 
     final func removeOutput(_ attribute: AnyAttribute) {
+        // A loop, not `firstIndex(where:)`: a main-actor closure passed to the standard library
+        // checks the executor on every call.
         let target = Unmanaged.passUnretained(attribute).toOpaque()
-        if let index = outputs.firstIndex(where: { $0.toOpaque() == target }) {
-            outputs.swapAt(index, outputs.count - 1)
-            outputs.removeLast()
+        var index = outputs.count - 1
+        while index >= 0 {
+            if outputs[index].toOpaque() == target {
+                outputs.swapAt(index, outputs.count - 1)
+                outputs.removeLast()
+                return
+            }
+            index -= 1
         }
     }
 

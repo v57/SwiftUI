@@ -209,14 +209,27 @@ public struct Alignment: Equatable, Sendable {
     public static let bottomTrailing = Alignment(horizontal: .trailing, vertical: .bottom)
 }
 
-enum LeadingAlignment: AlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { 0 } }
-enum HCenterAlignment: AlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d.width / 2 } }
-enum TrailingAlignment: AlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d.width } }
-enum TopAlignment: AlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { 0 } }
-enum VCenterAlignment: AlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d.height / 2 } }
-enum BottomAlignment: AlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d.height } }
-enum FirstTextBaselineAlignment: AlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d.height } }
-enum LastTextBaselineAlignment: AlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d.height } }
+/// Alignments whose default value depends on the size alone (not on other guides).
+protocol _BuiltinAlignmentID: AlignmentID {}
+
+extension LayoutComputer {
+    /// The value of the guide `key` for a view of `size`: its explicit value, or the guide's
+    /// default (built-in guides compute it without dimensions that look explicit guides up).
+    final func alignmentValue(_ key: AlignmentKey, in size: CGSize) -> CGFloat {
+        if let value = explicitAlignment(key, in: size) { return value }
+        if key.id is any _BuiltinAlignmentID.Type { return key.id.defaultValue(in: ViewDimensions(size: size)) }
+        return key.id.defaultValue(in: dimensions(size: size))
+    }
+}
+
+enum LeadingAlignment: _BuiltinAlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { 0 } }
+enum HCenterAlignment: _BuiltinAlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d.width / 2 } }
+enum TrailingAlignment: _BuiltinAlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d.width } }
+enum TopAlignment: _BuiltinAlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { 0 } }
+enum VCenterAlignment: _BuiltinAlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d.height / 2 } }
+enum BottomAlignment: _BuiltinAlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d.height } }
+enum FirstTextBaselineAlignment: _BuiltinAlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d.height } }
+enum LastTextBaselineAlignment: _BuiltinAlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d.height } }
 
 public struct ViewDimensions: Equatable, @unchecked Sendable {
     public let width: CGFloat

@@ -58,7 +58,7 @@ final class TextLayoutComputer: LayoutComputer {
     private var natural: [(width: CGFloat?, size: CGSize)] = []
 
     private func naturalSize(width: CGFloat?) -> CGSize {
-        if let hit = natural.first(where: { $0.width == width }) { return hit.size }
+        for entry in natural where entry.width == width { return entry.size }
         let size = services.measureText(text, proposal: ProposedViewSize(width: width, height: nil))
         if natural.count >= 8 { natural.removeFirst() }
         natural.append((width, size))
@@ -73,7 +73,7 @@ final class TextLayoutComputer: LayoutComputer {
     private func lineHeight(width proposedWidth: CGFloat?) -> CGFloat {
         // One line is as tall at any width, unless the font shrinks to fit it.
         let width = text.minimumScaleFactor < 1 ? proposedWidth : nil
-        if let hit = lineHeights.first(where: { $0.width == width }) { return hit.height }
+        for entry in lineHeights where entry.width == width { return entry.height }
         var line = text
         line.lineLimit = 1
         let height = services.measureText(line, proposal: ProposedViewSize(width: width, height: nil)).height
@@ -83,7 +83,7 @@ final class TextLayoutComputer: LayoutComputer {
     }
 
     private func limitedSize(width: CGFloat?, lines: Int) -> CGSize {
-        if let hit = limitedSizes.first(where: { $0.width == width && $0.lines == lines }) { return hit.size }
+        for entry in limitedSizes where entry.width == width && entry.lines == lines { return entry.size }
         var limited = text
         limited.lineLimit = lines
         let size = services.measureText(limited, proposal: ProposedViewSize(width: width, height: nil))

@@ -5,46 +5,77 @@ import CoreGraphics
 
 /// Shared HStack/VStack algorithm (mirrors SwiftUI's): children are offered space in order of
 /// descending layout priority and, within a priority, ascending flexibility.
-@MainActor
-struct StackAlgorithm {
+///
+/// Nonisolated, with loops rather than closures: a main-actor closure passed to the standard
+/// library checks the executor on every call, and stacks call them per child and per probe.
+nonisolated struct StackAlgorithm {
     let axis: Axis
     let spacing: CGFloat?
 
     func spacings(_ subviews: LayoutSubviews) -> [CGFloat] {
         guard subviews.count > 1 else { return [] }
-        return (0..<(subviews.count - 1)).map { index in
-            if let spacing {
-                // Explicit spacing still collapses around spacers? No: SwiftUI applies it everywhere.
-                return spacing
-            }
-            return subviews[index].spacing.distance(to: subviews[index + 1].spacing, along: axis)
+        var result: [CGFloat] = []
+        result.reserveCapacity(subviews.count - 1)
+        // Explicit spacing applies everywhere (SwiftUI doesn't collapse it around spacers).
+        if let spacing {
+            for _ in 0..<(subviews.count - 1) { result.append(spacing) }
+            return result
         }
+        var previous = subviews[0].spacing
+        for index in 1..<subviews.count {
+            let next = subviews[index].spacing
+            result.append(previous.distance(to: next, along: axis))
+            previous = next
+        }
+        return result
     }
 
     func childSizes(_ proposal: ProposedViewSize, _ subviews: LayoutSubviews, spacings: [CGFloat]) -> [CGSize] {
         let cross = proposal[axis.other]
-        guard let main = proposal[axis], main.isFinite else {
-            let mainProposal = proposal[axis]
-            return subviews.map { $0.sizeThatFits(ProposedViewSize(main: mainProposal, cross: cross, axis: axis)) }
-        }
-        var remaining = max(0, main - spacings.reduce(0, +))
         let count = subviews.count
-        let mins = subviews.map { $0.sizeThatFits(ProposedViewSize(main: 0, cross: cross, axis: axis))[axis] }
-        let maxs = subviews.map { $0.sizeThatFits(ProposedViewSize(main: .infinity, cross: cross, axis: axis))[axis] }
-        var sizes = Array(repeating: CGSize.zero, count: count)
-        let priorities = Array(Set(subviews.map(\.priority))).sorted(by: >)
-        for priority in priorities {
-            let group = (0..<count).filter { subviews[$0].priority == priority }
-            let lowerMinimums = (0..<count).reduce(CGFloat(0)) { sum, index in
-                subviews[index].priority < priority ? sum + mins[index] : sum
+        var sizes = [CGSize](repeating: .zero, count: count)
+        guard let main = proposal[axis], main.isFinite else {
+            let childProposal = ProposedViewSize(main: proposal[axis], cross: cross, axis: axis)
+            for index in 0..<count { sizes[index] = subviews[index].sizeThatFits(childProposal) }
+            return sizes
+        }
+        var spacingTotal: CGFloat = 0
+        for value in spacings { spacingTotal += value }
+        var remaining = max(0, main - spacingTotal)
+        var mins = [CGFloat](repeating: 0, count: count)
+        var maxs = [CGFloat](repeating: 0, count: count)
+        var priorities = [Double](repeating: 0, count: count)
+        var isSpacer = [Bool](repeating: false, count: count)
+        let minProposal = ProposedViewSize(main: 0, cross: cross, axis: axis)
+        let maxProposal = ProposedViewSize(main: .infinity, cross: cross, axis: axis)
+        for index in 0..<count { mins[index] = subviews[index].sizeThatFits(minProposal)[axis] }
+        for index in 0..<count { maxs[index] = subviews[index].sizeThatFits(maxProposal)[axis] }
+        var uniform = true
+        for index in 0..<count {
+            priorities[index] = subviews[index].priority
+            isSpacer[index] = subviews[index].isSpacer
+            if priorities[index] != priorities[0] { uniform = false }
+        }
+        let distinctPriorities = uniform ? (count > 0 ? [priorities[0]] : []) : Array(Set(priorities)).sorted(by: >)
+        var views: [Int] = []
+        var spacers: [Int] = []
+        views.reserveCapacity(count)
+        for priority in distinctPriorities {
+            var lowerMinimums: CGFloat = 0
+            views.removeAll(keepingCapacity: true)
+            spacers.removeAll(keepingCapacity: true)
+            for index in 0..<count {
+                if priorities[index] < priority { lowerMinimums += mins[index] }
+                guard priorities[index] == priority else { continue }
+                if isSpacer[index] { spacers.append(index) } else { views.append(index) }
             }
             var available = remaining - lowerMinimums
             var used: CGFloat = 0
             // Views are offered space before spacers (least flexible first); spacers take what is
             // left, so `Text` + `Spacer` gives the text everything but the spacer's minimum.
-            let views = group.filter { !subviews[$0].isSpacer }.sorted { (maxs[$0] - mins[$0], $0) < (maxs[$1] - mins[$1], $1) }
-            let spacers = group.filter { subviews[$0].isSpacer }
-            var spacerReserve = spacers.reduce(CGFloat(0)) { $0 + mins[$1] }
+            views.sort { (maxs[$0] - mins[$0], $0) < (maxs[$1] - mins[$1], $1) }
+            var spacerReserve: CGFloat = 0
+            for index in spacers { spacerReserve += mins[index] }
             var left = views.count
             for index in views {
                 let share = max(0, (available - spacerReserve) / CGFloat(left))
@@ -69,19 +100,24 @@ struct StackAlgorithm {
         return sizes
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, _ subviews: LayoutSubviews, crossGuide: (AlignmentKey, any AlignmentID.Type)? = nil) -> CGSize {
+    func sizeThatFits(_ proposal: ProposedViewSize, _ subviews: LayoutSubviews, crossGuide: AlignmentKey? = nil) -> CGSize {
         guard !subviews.isEmpty else { return .zero }
         let spacings = spacings(subviews)
         let sizes = childSizes(proposal, subviews, spacings: spacings)
-        let main = sizes.reduce(0) { $0 + $1[axis] } + spacings.reduce(0, +)
-        var cross = sizes.reduce(0) { max($0, $1[axis.other]) }
+        var main: CGFloat = 0
+        var cross: CGFloat = 0
+        for size in sizes {
+            main += size[axis]
+            cross = max(cross, size[axis.other])
+        }
+        for value in spacings { main += value }
         if let crossGuide, subviews.count > 1 {
             // Children are aligned on the guide: the stack spans the union of their extents
             // (alignment guides can make it larger than any child).
             var above: CGFloat = 0
             var below: CGFloat = 0
-            for index in subviews.indices {
-                let value = subviews[index].computer.dimensions(size: sizes[index])[crossGuide.0, crossGuide.1]
+            for index in 0..<subviews.count {
+                let value = subviews[index].alignment(crossGuide, size: sizes[index])
                 above = max(above, value)
                 below = max(below, sizes[index][axis.other] - value)
             }
@@ -90,7 +126,7 @@ struct StackAlgorithm {
         return CGSize(main: main, cross: cross, axis: axis)
     }
 
-    func place(in bounds: CGRect, proposal original: ProposedViewSize, _ subviews: LayoutSubviews, crossGuide: (AlignmentKey, any AlignmentID.Type)) {
+    func place(in bounds: CGRect, proposal original: ProposedViewSize, _ subviews: LayoutSubviews, crossGuide: AlignmentKey) {
         guard !subviews.isEmpty else { return }
         let spacings = spacings(subviews)
         // Re-run the allocation with the proposal the stack was sized for (not its bounds), so
@@ -98,13 +134,16 @@ struct StackAlgorithm {
         var proposal = original
         if proposal[axis.other] == nil { proposal[axis.other] = bounds.size[axis.other] }
         let sizes = childSizes(proposal, subviews, spacings: spacings)
-        let alignmentValues = subviews.indices.map { index -> CGFloat in
-            subviews[index].computer.dimensions(size: sizes[index])[crossGuide.0, crossGuide.1]
+        var alignmentValues = [CGFloat](repeating: 0, count: subviews.count)
+        var line: CGFloat = 0
+        for index in 0..<subviews.count {
+            let value = subviews[index].alignment(crossGuide, size: sizes[index])
+            alignmentValues[index] = value
+            line = index == 0 ? value : max(line, value)
         }
-        let line = alignmentValues.max() ?? 0
         var position = bounds.origin[axis]
         let crossOrigin = bounds.origin[axis.other]
-        for index in subviews.indices {
+        for index in 0..<subviews.count {
             let size = sizes[index]
             let point = axis == .horizontal
                 ? CGPoint(x: position, y: crossOrigin + line - alignmentValues[index])
@@ -131,11 +170,11 @@ public struct _VStackLayout: Layout, Equatable {
     }
 
     public func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
-        StackAlgorithm(axis: .vertical, spacing: spacing).sizeThatFits(proposal, subviews, crossGuide: (alignment.key, alignment.id))
+        StackAlgorithm(axis: .vertical, spacing: spacing).sizeThatFits(proposal, subviews, crossGuide: alignment.key)
     }
 
     public func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
-        StackAlgorithm(axis: .vertical, spacing: spacing).place(in: bounds, proposal: proposal, subviews, crossGuide: (alignment.key, alignment.id))
+        StackAlgorithm(axis: .vertical, spacing: spacing).place(in: bounds, proposal: proposal, subviews, crossGuide: alignment.key)
     }
 
     public func spacing(subviews: Subviews, cache: inout Void) -> ViewSpacing {
@@ -180,11 +219,11 @@ public struct _HStackLayout: Layout, Equatable {
     }
 
     public func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
-        StackAlgorithm(axis: .horizontal, spacing: spacing).sizeThatFits(proposal, subviews, crossGuide: (alignment.key, alignment.id))
+        StackAlgorithm(axis: .horizontal, spacing: spacing).sizeThatFits(proposal, subviews, crossGuide: alignment.key)
     }
 
     public func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
-        StackAlgorithm(axis: .horizontal, spacing: spacing).place(in: bounds, proposal: proposal, subviews, crossGuide: (alignment.key, alignment.id))
+        StackAlgorithm(axis: .horizontal, spacing: spacing).place(in: bounds, proposal: proposal, subviews, crossGuide: alignment.key)
     }
 
     public func spacing(subviews: Subviews, cache: inout Void) -> ViewSpacing {
@@ -214,23 +253,31 @@ public struct _ZStackLayout: Layout, Equatable {
     /// Children's frames with their alignment guides at the origin (SwiftUI sizes a ZStack to
     /// the union of these, so alignment guides can make it larger than any child).
     private func alignedFrames(_ subviews: Subviews, proposal: ProposedViewSize) -> [CGRect] {
-        subviews.map { subview in
+        var frames: [CGRect] = []
+        frames.reserveCapacity(subviews.count)
+        let horizontal = alignment.horizontal.key, vertical = alignment.vertical.key
+        for subview in subviews {
             let size = subview.sizeThatFits(proposal)
-            let dimensions = subview.computer.dimensions(size: size)
-            return CGRect(x: -dimensions[alignment.horizontal], y: -dimensions[alignment.vertical], width: size.width, height: size.height)
+            frames.append(CGRect(x: -subview.alignment(horizontal, size: size), y: -subview.alignment(vertical, size: size), width: size.width, height: size.height))
         }
+        return frames
+    }
+
+    private static func union(_ frames: [CGRect]) -> CGRect? {
+        guard var result = frames.first else { return nil }
+        for frame in frames.dropFirst() { result = result.union(frame) }
+        return result
     }
 
     public func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
-        guard let union = alignedFrames(subviews, proposal: proposal).reduce(nil, { (result: CGRect?, frame) in result?.union(frame) ?? frame }) else { return .zero }
-        return union.size
+        Self.union(alignedFrames(subviews, proposal: proposal))?.size ?? .zero
     }
 
     public func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
         // Children are proposed the stack's size (a flexible child fills it).
         let placement = ProposedViewSize(bounds.size)
         let frames = alignedFrames(subviews, proposal: placement)
-        guard let union = frames.reduce(nil, { (result: CGRect?, frame) in result?.union(frame) ?? frame }) else { return }
+        guard let union = Self.union(frames) else { return }
         let fx = _LazyGridLayout.fraction(alignment.horizontal), fy = _LazyGridLayout.fraction(alignment.vertical)
         let origin = CGPoint(x: bounds.minX + (bounds.width - union.width) * fx - union.minX, y: bounds.minY + (bounds.height - union.height) * fy - union.minY)
         for (subview, frame) in zip(subviews, frames) {

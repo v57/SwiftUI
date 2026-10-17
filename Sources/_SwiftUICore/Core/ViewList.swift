@@ -265,18 +265,35 @@ final class ViewListContainer {
         for (id, item) in live where !seen.contains(id) {
             item.subgraph.destroy()
         }
-        live = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0) })
+        var newLive: [ViewListID: Item] = [:]
+        newLive.reserveCapacity(result.count)
+        var zIndices: [Double] = []
+        zIndices.reserveCapacity(result.count)
+        var hasZIndex = false
+        var groups: [RenderNode] = []
+        groups.reserveCapacity(result.count)
+        for item in result {
+            newLive[item.id] = item
+            let zIndex = item.traits.value(ZIndexTraitKey.self)
+            zIndices.append(zIndex)
+            if zIndex != 0 { hasZIndex = true }
+            groups.append(item.group)
+        }
+        live = newLive
         indexByID = newIndex
-        let zIndices = result.map { $0.traits.value(ZIndexTraitKey.self) }
         if ownsRenderMembership {
             // membership attribute updates the render group
-        } else if zIndices.contains(where: { $0 != 0 }) {
-            let ordered = result.indices.sorted { (zIndices[$0], $0) < (zIndices[$1], $1) }.map { result[$0].group }
+        } else if hasZIndex {
+            let ordered = sortedByZIndex(groups, zIndices)
             inputs.host.renderer.setChildren(of: group, ordered)
         } else {
-            inputs.host.renderer.setChildren(of: group, result.map(\.group))
+            inputs.host.renderer.setChildren(of: group, groups)
         }
         return result
+    }
+
+    private nonisolated func sortedByZIndex(_ groups: [RenderNode], _ zIndices: [Double]) -> [RenderNode] {
+        groups.indices.sorted { (zIndices[$0], $0) < (zIndices[$1], $1) }.map { groups[$0] }
     }
 
     private func makeItem(id: ViewListID, element: ViewListElement, childAxis: Axis?, isolated: Bool) -> Item {
