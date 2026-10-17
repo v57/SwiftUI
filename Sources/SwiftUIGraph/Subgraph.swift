@@ -28,8 +28,13 @@ public final class Subgraph {
         self.parentReference = .passUnretained(parent)
     }
 
+    // A destroyed subgraph has no children left: nothing shared is touched, whatever thread
+    // releases it last.
     deinit {
-        _assumeMainActor { for child in children { child?.parentReference = nil } }
+        _assumeMainActor {
+            guard !children.isEmpty else { return }
+            for child in children { child?.parentReference = nil }
+        }
     }
 
     public func makeChild() -> Subgraph {

@@ -61,9 +61,12 @@ public class AnyAttribute {
     }
 
     // Not `isolated`: hopping to the main executor in every deinit (to check it) cost more than
-    // the deinit. Attributes are only ever released on the main actor.
+    // the deinit. A destroyed attribute (the usual case: its subgraph went away) left the graph in
+    // `destroy`, so its deinit touches nothing shared, on whatever thread releases it last. Only
+    // one never destroyed (a whole graph released) leaves its inputs here, on the main thread.
     deinit {
         _assumeMainActor {
+            guard !flags.contains(.destroyed) else { return }
             graph.liveAttributeCount -= 1
             for edge in inputs { edge.attribute.removeOutput(self) }
         }
@@ -295,6 +298,7 @@ public class AnyAttribute {
     public final func destroy() {
         if flags.contains(.destroyed) { return }
         flags.insert(.destroyed)
+        graph.liveAttributeCount -= 1
         flags.remove([.dirty, .forced])
         // An input destroyed already (in a child subgraph, destroyed first) keeps no outputs.
         for edge in inputs where !edge.attribute.flags.contains(.destroyed) { edge.attribute.removeOutput(self) }
