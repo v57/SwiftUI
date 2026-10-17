@@ -212,8 +212,29 @@ enum LocalizedTextResolver {
     /// Translates the key (bundle lookup; the key itself when there is no translation) and
     /// formats the arguments into it.
     static func pieces(for key: LocalizedStringKey, tableName: String?, bundle: Bundle?) -> [Piece] {
-        let translated = (bundle ?? .main).localizedString(forKey: key.key, value: key.key, table: tableName)
+        let translated = translation(of: key.key, tableName: tableName, bundle: bundle ?? .main)
         return pieces(format: translated, arguments: key.arguments, hasFormatting: key.hasFormatting)
+    }
+
+    private struct TranslationKey: Hashable {
+        let bundle: ObjectIdentifier
+        let table: String?
+        let key: String
+    }
+
+    /// Bundle lookups, remembered (every text resolved looked its key up in the bundle again).
+    @MainActor private static var translations: [TranslationKey: String] = [:]
+
+    private static func translation(of key: String, tableName: String?, bundle: Bundle) -> String {
+        guard isOnMainQueue else { return bundle.localizedString(forKey: key, value: key, table: tableName) }
+        return _onMainActor {
+            let cacheKey = TranslationKey(bundle: ObjectIdentifier(bundle), table: tableName, key: key)
+            if let cached = translations[cacheKey] { return cached }
+            let translated = bundle.localizedString(forKey: key, value: key, table: tableName)
+            if translations.count >= 4096 { translations.removeAll(keepingCapacity: true) }
+            translations[cacheKey] = translated
+            return translated
+        }
     }
 
     /// Fills `%@`, `%lld`, `%llu` and `%%` in order; nil for any other specifier (positional
