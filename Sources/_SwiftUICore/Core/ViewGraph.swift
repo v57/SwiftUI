@@ -110,14 +110,14 @@ public final class ViewGraph: AttributeGraphDelegate {
         )
         presentations = PresentationRegistry(subgraph: rootSubgraph)
         rootOutputs = Root._makeView(view: _GraphValue(root), inputs: inputs.requesting(NavigationTitleKey.self).requesting(NavigationSubtitleKey.self).requesting(ToolbarItemsKey.self).requesting(NavigationChromeKey.self).requesting(WindowConfigurationKey.self))
-        let titleAttribute = rootOutputs.preferences[NavigationTitleKey.self]
+        let titleAttribute = rootOutputs.preferences.attribute(for: NavigationTitleKey.self, in: rootSubgraph)
         let titleObserver = Attribute<String?>(rootSubgraph, isEqual: { $0 == $1 }) { titleAttribute?.value?.plainString }
         titleObserver.onChange = { [unowned self] title in
             enqueueAfterUpdate { [unowned self] in navigationTitle = title }
         }
         titleObserver.isEager = true
 
-        let subtitleAttribute = rootOutputs.preferences[NavigationSubtitleKey.self]
+        let subtitleAttribute = rootOutputs.preferences.attribute(for: NavigationSubtitleKey.self, in: rootSubgraph)
         let subtitleObserver = Attribute<String?>(rootSubgraph, isEqual: { $0 == $1 }) { subtitleAttribute?.value }
         subtitleObserver.onChange = { [unowned self] subtitle in
             enqueueAfterUpdate { [unowned self] in navigationSubtitle = subtitle }
@@ -125,8 +125,8 @@ public final class ViewGraph: AttributeGraphDelegate {
         subtitleObserver.isEager = true
 
         // Window toolbar (items from `.toolbar`, chrome from navigation containers).
-        let itemsAttribute = rootOutputs.preferences[ToolbarItemsKey.self]
-        let chromeAttribute = rootOutputs.preferences[NavigationChromeKey.self]
+        let itemsAttribute = rootOutputs.preferences.attribute(for: ToolbarItemsKey.self, in: rootSubgraph)
+        let chromeAttribute = rootOutputs.preferences.attribute(for: NavigationChromeKey.self, in: rootSubgraph)
         let toolbarObserver = Attribute<WindowToolbar>(rootSubgraph, isEqual: { $0 == $1 }) {
             WindowToolbar(items: itemsAttribute?.value ?? [], chrome: chromeAttribute?.value ?? NavigationChrome())
         }
@@ -136,7 +136,7 @@ public final class ViewGraph: AttributeGraphDelegate {
         toolbarObserver.isEager = true
 
         // Window behavior set by views (`windowResizeBehavior`, `navigationDocument`, ...).
-        let windowAttribute = rootOutputs.preferences[WindowConfigurationKey.self]
+        let windowAttribute = rootOutputs.preferences.attribute(for: WindowConfigurationKey.self, in: rootSubgraph)
         let windowObserver = Attribute<WindowConfiguration>(rootSubgraph, isEqual: { $0 == $1 }) { windowAttribute?.value ?? WindowConfiguration() }
         windowObserver.onChange = { [unowned self] configuration in
             enqueueAfterUpdate { [unowned self] in windowConfiguration = configuration }

@@ -169,7 +169,7 @@ struct _PresentationContent: View {
     static func _makeView(view: _GraphValue<Self>, inputs: _ViewInputs) -> _ViewOutputs {
         let entry = AnyAttribute.withoutDependencies { view.attribute.value.entry }
         let outputs = entry.make(inputs.requesting(PresentationAppearanceKey.self))
-        if let appearance = outputs.preferences[PresentationAppearanceKey.self] {
+        if let appearance = outputs.preferences.attribute(for: PresentationAppearanceKey.self, in: inputs.subgraph) {
             let host = inputs.host
             let observer = Attribute<PresentationAppearance>(inputs.subgraph, isEqual: { $0 == $1 }) { appearance.value }
             observer.onChange = { value in host.enqueueAfterUpdate { entry.appearanceBox.appearance = value } }

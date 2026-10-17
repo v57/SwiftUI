@@ -415,11 +415,10 @@ extension _ViewInputs {
             }
             subgraph.onDestroy { [weak targets] in targets?.removeResolver(state) }
         }
-        var preferences = PreferenceOutputs()
-        for key in preferenceKeys {
-            preferences.values[key.id] = key.combine(dynamic: {
-                items.value.compactMap { $0.outputs.preferences.values[key.id] }
-            }, subgraph: subgraph)
+        let preferences = PreferenceOutputs.combined(keys: preferenceKeys, subgraph: subgraph) {
+            var parts: [PreferenceOutputs] = []
+            for item in items.value where !item.outputs.preferences.isEmpty { parts.append(item.outputs.preferences) }
+            return parts
         }
         return _ViewOutputs(layout: computer, preferences: preferences)
     }

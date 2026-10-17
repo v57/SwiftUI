@@ -18,58 +18,122 @@ extension PreferenceKey where Value: ExpressibleByNilLiteral {
 @MainActor
 protocol AnyPreferenceKeyBox {
     var id: ObjectIdentifier { get }
-    /// Combines `parts` (in view order) into one attribute.
-    func combine(_ parts: [AnyAttribute], subgraph: Subgraph) -> AnyAttribute
-    /// Combines a dynamic list of contributors.
-    func combine(dynamic: @escaping @MainActor () -> [AnyAttribute], subgraph: Subgraph) -> AnyAttribute
+    /// The value of `attribute` (an `Attribute<Value>` of this key), type-erased.
+    func value(of attribute: AnyAttribute) -> Any
+    /// `next` reduced into `accumulated` (the first contribution is taken as it is).
+    func reduce(_ accumulated: Any?, _ next: Any) -> Any
+    /// A typed attribute with this key's value in `bag` (the default value when it has none).
+    func attribute(from bag: Attribute<PreferenceBag>, subgraph: Subgraph) -> AnyAttribute
 }
 
 struct PreferenceKeyBox<K: PreferenceKey>: AnyPreferenceKeyBox {
     var id: ObjectIdentifier { ObjectIdentifier(K.self) }
 
-    func combine(_ parts: [AnyAttribute], subgraph: Subgraph) -> AnyAttribute {
-        if parts.count == 1 { return parts[0] }
-        return combine(dynamic: { parts }, subgraph: subgraph)
+    func value(of attribute: AnyAttribute) -> Any {
+        (attribute as! Attribute<K.Value>).value
     }
 
-    func combine(dynamic: @escaping @MainActor () -> [AnyAttribute], subgraph: Subgraph) -> AnyAttribute {
-        Attribute<K.Value>(subgraph) {
-            var result = K.defaultValue
-            var first = true
-            for part in dynamic() {
-                let next = (part as! Attribute<K.Value>).value
-                if first {
-                    result = next
-                    first = false
-                } else {
-                    K.reduce(value: &result) { next }
-                }
-            }
-            return result
-        }
+    func reduce(_ accumulated: Any?, _ next: Any) -> Any {
+        guard var result = accumulated as! K.Value? else { return next }
+        let value = next as! K.Value
+        K.reduce(value: &result) { value }
+        return result
+    }
+
+    func attribute(from bag: Attribute<PreferenceBag>, subgraph: Subgraph) -> AnyAttribute {
+        let id = self.id
+        return Attribute<K.Value>(subgraph) { bag.value[id].map { $0 as! K.Value } ?? K.defaultValue }
     }
 }
 
-/// Preference values produced by a view, keyed by preference key type.
-public struct PreferenceOutputs {
-    var values: [ObjectIdentifier: AnyAttribute] = [:]
+/// The values of the requested preference keys that a container's children produce, combined in
+/// view order (one attribute per container for every key: a combiner per key and container was
+/// most of the attributes a deep page built for keys that nothing wrote).
+struct PreferenceBag {
+    var entries: [(id: ObjectIdentifier, value: Any)] = []
 
-    subscript<K: PreferenceKey>(key: K.Type) -> Attribute<K.Value>? {
-        get { values[ObjectIdentifier(key)] as? Attribute<K.Value> }
-        set { values[ObjectIdentifier(key)] = newValue }
+    subscript(id: ObjectIdentifier) -> Any? {
+        for entry in entries where entry.id == id { return entry.value }
+        return nil
     }
 
-    var isEmpty: Bool { values.isEmpty }
+    static func isSame(_ lhs: PreferenceBag, _ rhs: PreferenceBag) -> Bool {
+        guard lhs.entries.count == rhs.entries.count else { return false }
+        for index in lhs.entries.indices {
+            guard lhs.entries[index].id == rhs.entries[index].id,
+                  GraphComparison.compareAny(lhs.entries[index].value, rhs.entries[index].value) else { return false }
+        }
+        return true
+    }
+}
+
+/// Preference values produced by a view: typed attributes by key (writers), and the bag of a
+/// container (or of overlay and background content combined with their view).
+public struct PreferenceOutputs {
+    var values: [ObjectIdentifier: AnyAttribute] = [:]
+    /// Combined values of the requested keys (only those some descendant produced).
+    var bag: Attribute<PreferenceBag>?
+    /// Keys whose value in `values` replaces the bag's (a modifier transformed the bag's value).
+    var replaced: [ObjectIdentifier] = []
+
+    /// Typed value of a key set by a writer; reading a key also look in the bag: `attribute(for:in:)`.
+    subscript<K: PreferenceKey>(key: K.Type) -> Attribute<K.Value>? {
+        get { values[ObjectIdentifier(key)] as? Attribute<K.Value> }
+        set {
+            let id = ObjectIdentifier(key)
+            values[id] = newValue
+            if bag != nil, !replaced.contains(id) { replaced.append(id) }
+        }
+    }
+
+    var isEmpty: Bool { values.isEmpty && bag == nil }
+
+    /// The attribute with this view's value for `key`, nil when the view produces none.
+    @MainActor
+    func attribute<K: PreferenceKey>(for key: K.Type, in subgraph: Subgraph) -> Attribute<K.Value>? {
+        if let value = self[key] { return value }
+        guard let bag else { return nil }
+        return PreferenceKeyBox<K>().attribute(from: bag, subgraph: subgraph) as? Attribute<K.Value>
+    }
+
+    /// Adds this view's contributions to `bag`, for `keys`, after the ones already in it.
+    @MainActor
+    func contribute(to accumulated: inout [Any?], keys: [any AnyPreferenceKeyBox]) {
+        if values.isEmpty, bag == nil { return }
+        let inner = bag?.value
+        for (index, key) in keys.enumerated() {
+            var next: Any?
+            if let value = values[key.id] {
+                next = key.value(of: value)
+            } else if let inner, !replaced.contains(key.id) {
+                next = inner[key.id]
+            }
+            if let next { accumulated[index] = key.reduce(accumulated[index], next) }
+        }
+    }
+
+    /// One attribute combining the outputs `parts` returns (in view order) for `keys`.
+    @MainActor
+    static func combined(keys: [any AnyPreferenceKeyBox], subgraph: Subgraph, _ parts: @escaping @MainActor () -> [PreferenceOutputs]) -> PreferenceOutputs {
+        guard !keys.isEmpty else { return PreferenceOutputs() }
+        let bag = Attribute<PreferenceBag>(subgraph, isEqual: PreferenceBag.isSame) {
+            var accumulated = [Any?](repeating: nil, count: keys.count)
+            for part in parts() { part.contribute(to: &accumulated, keys: keys) }
+            var result = PreferenceBag()
+            for (index, key) in keys.enumerated() {
+                if let value = accumulated[index] { result.entries.append((key.id, value)) }
+            }
+            return result
+        }
+        return PreferenceOutputs(bag: bag)
+    }
 
     /// Combines outputs of several views (in view order) for the requested keys.
     @MainActor
     static func combine(_ outputs: [PreferenceOutputs], keys: [any AnyPreferenceKeyBox], subgraph: Subgraph) -> PreferenceOutputs {
-        var result = PreferenceOutputs()
-        for key in keys {
-            let parts = outputs.compactMap { $0.values[key.id] }
-            if !parts.isEmpty { result.values[key.id] = key.combine(parts, subgraph: subgraph) }
-        }
-        return result
+        let producing = outputs.filter { !$0.isEmpty }
+        if producing.count <= 1 { return producing.first ?? PreferenceOutputs() }
+        return combined(keys: keys, subgraph: subgraph) { producing }
     }
 }
 
@@ -109,7 +173,7 @@ public struct _PreferenceTransformModifier<Key: PreferenceKey>: ViewModifier {
         var outputs = body(inputs)
         if inputs.requests(Key.self) {
             let source = modifier.attribute
-            let child = outputs.preferences[Key.self]
+            let child = outputs.preferences.attribute(for: Key.self, in: inputs.subgraph)
             outputs.preferences[Key.self] = Attribute<Key.Value>(inputs.subgraph) {
                 var value = child?.value ?? Key.defaultValue
                 source.value.transform(&value)
@@ -128,7 +192,7 @@ public struct _PreferenceActionModifier<Key: PreferenceKey>: ViewModifier where 
         let outputs = body(inputs.requesting(Key.self))
         let host = inputs.host
         let source = modifier.attribute
-        let child = outputs.preferences[Key.self]
+        let child = outputs.preferences.attribute(for: Key.self, in: inputs.subgraph)
         let observer = Attribute<Key.Value>(inputs.subgraph, isEqual: { $0 == $1 }) { child?.value ?? Key.defaultValue }
         observer.order = inputs.depth
         observer.onChange = { [weak source] value in
@@ -185,7 +249,7 @@ public struct _PreferenceSecondaryModifier<Key: PreferenceKey, Secondary: View>:
         let placement = AnyAttribute.withoutDependencies { modifier.attribute.value.placement }
         return makeSecondaryLayer(secondary: _GraphValue(secondary), alignment: alignment, placement: placement, inputs: inputs) { primaryInputs in
             let outputs = body(primaryInputs.requesting(Key.self))
-            primaryPreferences.value = outputs.preferences[Key.self]
+            primaryPreferences.value = outputs.preferences.attribute(for: Key.self, in: primaryInputs.subgraph)
             return outputs
         }
     }

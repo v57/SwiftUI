@@ -315,11 +315,10 @@ extension _ViewInputs {
             membership.order = inputs.depth
             membership.isEager = true
         }
-        var preferences = PreferenceOutputs()
-        for key in inputs.preferenceKeys {
-            preferences.values[key.id] = key.combine(dynamic: {
-                items.value.compactMap { $0.outputs.preferences.values[key.id] }
-            }, subgraph: inputs.subgraph)
+        let preferences = PreferenceOutputs.combined(keys: inputs.preferenceKeys, subgraph: inputs.subgraph) {
+            var parts: [PreferenceOutputs] = []
+            for item in items.value where !item.outputs.preferences.isEmpty { parts.append(item.outputs.preferences) }
+            return parts
         }
         return _ViewOutputs(layout: computer, preferences: preferences)
     }

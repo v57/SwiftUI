@@ -343,4 +343,28 @@ struct InteractionTests {
         let host = TestHost(Screen())
         #expect(host.texts.contains("max 39")) // 6 chars × 6.5pt, rounded up
     }
+
+    /// A container combines every requested preference key in one attribute: requesting more
+    /// keys costs the readers' attributes, not an attribute per key in every container below.
+    @Test func containersCombineRequestedKeysTogether() {
+        struct K1: PreferenceKey { static let defaultValue = 0; static func reduce(value: inout Int, nextValue: () -> Int) { value += nextValue() } }
+        struct K2: PreferenceKey { static let defaultValue = 0; static func reduce(value: inout Int, nextValue: () -> Int) { value += nextValue() } }
+        struct K3: PreferenceKey { static let defaultValue = 0; static func reduce(value: inout Int, nextValue: () -> Int) { value += nextValue() } }
+        struct Content: View {
+            var body: some View {
+                VStack {
+                    ForEach(0..<20, id: \.self) { row in
+                        HStack { Text("a"); VStack { Text("b"); Text("c") } }.preference(key: K1.self, value: row)
+                    }
+                }
+            }
+        }
+        @MainActor func attributes(_ view: some View) -> Int { TestHost(view).graph.graph.liveAttributeCount }
+        var total = 0
+        let one = attributes(Content().onPreferenceChange(K1.self) { total = $0 })
+        let three = attributes(Content().onPreferenceChange(K1.self) { total = $0 }.onPreferenceChange(K2.self) { _ in }.onPreferenceChange(K3.self) { _ in })
+        // Two more readers (an observer, a modifier projection and a typed value each).
+        #expect(three - one < 10)
+        #expect(total == 190)
+    }
 }

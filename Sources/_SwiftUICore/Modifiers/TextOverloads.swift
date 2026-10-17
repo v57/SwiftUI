@@ -63,7 +63,7 @@ public struct _AnchorPreferenceTransformModifier<A, Key: PreferenceKey>: ViewMod
         if inputs.requests(Key.self) {
             let geometry = inputs.geometry
             let source = modifier.attribute
-            let inner = outputs.preferences[Key.self]
+            let inner = outputs.preferences.attribute(for: Key.self, in: inputs.subgraph)
             outputs.preferences[Key.self] = Attribute<Key.Value>(inputs.subgraph) {
                 let current = source.value
                 var value = inner?.value ?? Key.defaultValue
