@@ -31,7 +31,7 @@ struct _SplitView<Content: View>: View {
             list.mapElements(in: inputs.subgraph) { element in
                 var copy = element
                 copy.make = { placement in
-                    let position = placement.listItemPosition
+                    let position = placement.listItem?.position(in: placement.subgraph)
                     let modifier = Attribute<_SplitPaneModifier>(placement.subgraph) {
                         let current = position?.value ?? ListItemPosition()
                         return _SplitPaneModifier(axis: axis, index: current.index, isLast: current.next == nil, sizes: sizes)

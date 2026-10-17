@@ -184,7 +184,7 @@ public struct _ViewInputs {
     /// `ViewListContainer.isolatesItems`).
     var spaceOrigin: Attribute<CGPoint>?
     /// Position of a container child among its siblings (set by list containers).
-    var listItemPosition: Attribute<ListItemPosition>?
+    var listItem: ListItemReference?
     /// Accessibility properties waiting for the next platform node (consumed once).
     var accessibility: AccessibilityAttachment?
 

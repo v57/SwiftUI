@@ -543,7 +543,7 @@ extension ViewList {
         mapElements(in: subgraph) { element in
             var copy = element
             copy.make = { placement in
-                let position = placement.listItemPosition
+                let position = placement.listItem?.position(in: placement.subgraph)
                 let modifier = makeObservedAttribute(placement.subgraph, of: _ListRowModifier.self) {
                     var row = makeListRowModifier(traits: element.traits, environment: environment.value)
                     row.role = element.traits.value(ListElementRoleKey.self)

@@ -341,14 +341,7 @@ final class ViewListContainer {
             childInputs.geometry = placed
             geometry = placed
         }
-        childInputs.listItemPosition = Attribute<ListItemPosition>(subgraph, isEqual: { $0 == $1 }) { [unowned self] in
-            let items = self.items.value
-            guard let index = self.indexByID[id] else { return ListItemPosition() }
-            @MainActor func role(_ i: Int) -> ListElementRole? {
-                items.indices.contains(i) ? items[i].traits.value(ListElementRoleKey.self) : nil
-            }
-            return ListItemPosition(index: index, count: items.count, previous: role(index - 1), next: role(index + 1), first: role(0))
-        }
+        childInputs.listItem = ListItemReference(container: self, id: id)
         let outputs = element.make(childInputs)
         if let geometry {
             let tracer = inputs.tracer
@@ -437,6 +430,16 @@ final class ViewListContainer {
         self.placer = placer
     }
 
+    /// Where the child `id` sits among its siblings (reads the item list).
+    func position(of id: ViewListID) -> ListItemPosition {
+        let items = self.items.value
+        guard let index = indexByID[id] else { return ListItemPosition() }
+        @MainActor func role(_ i: Int) -> ListElementRole? {
+            items.indices.contains(i) ? items[i].traits.value(ListElementRoleKey.self) : nil
+        }
+        return ListItemPosition(index: index, count: items.count, previous: role(index - 1), next: role(index + 1), first: role(0))
+    }
+
     /// Current index of a child (reads the item list, so geometry follows structural changes).
     func index(of id: ViewListID) -> Int? {
         _ = items.value
@@ -463,6 +466,25 @@ struct ListItemPosition: Equatable {
     var next: ListElementRole?
     /// The container's first element (list stripes count from a leading header).
     var first: ListElementRole?
+}
+
+/// A container child, for views that depend on where it sits (list rows, split panes): they make
+/// the attribute; every item of every container used to.
+@MainActor
+final class ListItemReference {
+    unowned let container: ViewListContainer
+    let id: ViewListID
+
+    init(container: ViewListContainer, id: ViewListID) {
+        self.container = container
+        self.id = id
+    }
+
+    func position(in subgraph: Subgraph) -> Attribute<ListItemPosition> {
+        let container = self.container
+        let id = self.id
+        return Attribute<ListItemPosition>(subgraph, isEqual: { $0 == $1 }) { container.position(of: id) }
+    }
 }
 
 @MainActor
