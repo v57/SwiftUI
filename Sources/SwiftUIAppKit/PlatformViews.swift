@@ -79,6 +79,14 @@ class FlippedView: NSView {
         autoresizingMask = []
     }
 
+    /// Whether the view draws its content in `draw(_:)` (text, images, bezels, canvases). The rest
+    /// only set layer properties or hold subviews: they use `updateLayer`, so AppKit gives them no
+    /// backing store and runs no draw pass for them (a new container view used to allocate and
+    /// clear a backing store the size of its frame).
+    class var drawsContent: Bool { false }
+    override var wantsUpdateLayer: Bool { !type(of: self).drawsContent }
+    override func updateLayer() {}
+
     // Anchored transforms depend on the size.
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
@@ -203,9 +211,19 @@ class FlippedView: NSView {
 }
 
 class TextNodeView: FlippedView, PlatformNodeView {
+    override class var drawsContent: Bool { true }
     private var string = NSAttributedString()
     private var resolved: ResolvedText?
     private var fittedWidth: CGFloat?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        // Core Animation records the drawing and rasterizes it off the main thread: a page of new
+        // text (a lazy stack building a card) no longer draws its glyphs in the frame it appears.
+        layer?.drawsAsynchronously = true
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
 
     func apply(_ content: RenderContent, backend: AppKitBackend) {
         guard case .text(let text) = content else { return }
@@ -494,6 +512,7 @@ final class ShapeNodeView: FlippedView, PlatformNodeView {
 }
 
 final class ImageNodeView: FlippedView, PlatformNodeView {
+    override class var drawsContent: Bool { true }
     private let imageView = NSImageView()
 
     override init(frame: NSRect) {
@@ -561,6 +580,7 @@ final class ImageNodeView: FlippedView, PlatformNodeView {
 
 /// Container for button labels; draws the bezel and handles clicks.
 final class ButtonNodeView: FlippedView, PlatformNodeView {
+    override class var drawsContent: Bool { true }
     private var info: ResolvedButton?
     private var isPressed = false { didSet { needsDisplay = true } }
 
@@ -1076,6 +1096,7 @@ final class ScrollNodeView: FlippedView, PlatformNodeView {
 
 /// The content of `.mask { ... }`: never shown itself, drawn into its container's layer mask.
 final class MaskSourceNodeView: FlippedView, PlatformNodeView {
+    override class var drawsContent: Bool { true }
     func apply(_ content: RenderContent, backend: AppKitBackend) {}
 }
 
@@ -1480,6 +1501,7 @@ final class RepresentableHostView: FlippedView, PlatformNodeView {
 
 /// Replays Canvas drawing commands with Core Graphics.
 final class CanvasNodeView: FlippedView, PlatformNodeView {
+    override class var drawsContent: Bool { true }
     private var commands: [DrawCommand] = []
 
     func apply(_ content: RenderContent, backend: AppKitBackend) {
