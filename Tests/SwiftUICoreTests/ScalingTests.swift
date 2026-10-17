@@ -40,6 +40,14 @@ struct ScalingCard: View {
     }
 }
 
+/// A row like `LazyTests`' (which counts its bodies in a counter that suite asserts on).
+struct ScalingRowView: View {
+    let index: Int
+    var body: some View {
+        Text("row \(index)").frame(height: 20)
+    }
+}
+
 /// A lazily built item, like ComponentKit's lazy stack items: a placeholder until built.
 @Observable @MainActor
 final class ScalingItemState {
@@ -58,6 +66,13 @@ struct ScalingLazyItem: View {
         }
         .frame(maxWidth: .infinity, minHeight: state.isBuilt ? nil : 96, alignment: .topLeading)
     }
+}
+
+/// CPU time the calling thread has used, in seconds.
+func threadCPUTime() -> Double {
+    var time = timespec()
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time)
+    return Double(time.tv_sec) + Double(time.tv_nsec) / 1e9
 }
 
 /// Counts rule evaluations by the first word of the attribute's label.
@@ -98,6 +113,17 @@ struct ScalingTests {
         rows[150].title = "Renamed repository"
         host.flush()
         #expect(host.tracer.counters.spacingComputations < 40)
+    }
+
+    /// Projections make attributes only where a consumer reads them: a modifier wrapping another
+    /// view projects its content without an attribute of its own (each `padding` makes its
+    /// parameters, its child's geometry and its two layout attributes, nothing for the content in
+    /// between; the text reads its own value through one attribute, the root's when unwrapped).
+    @Test func modifierChainsProjectContentWithoutAttributes() {
+        @MainActor func attributes(_ view: some View) -> Int { TestHost(view).graph.graph.liveAttributeCount }
+        let plain = attributes(Text("a"))
+        let padded = attributes(Text("a").padding(1).padding(2).padding(3))
+        #expect(padded - plain == 3 * 4 + 1)
     }
 
     /// Building one item of a long page touches that item: each item of a long stack starts its own
@@ -167,7 +193,7 @@ struct ScalingTests {
     func lazyScrollWork(rows: Int, steps: Int = Int(ProcessInfo.processInfo.environment["LAZY_STEPS"] ?? "40")!) -> ScrollWork {
         let host = TestHost(ScrollView {
             LazyVStack(spacing: 0) {
-                ForEach(0..<rows, id: \.self) { LazyRow(index: $0) }
+                ForEach(0..<rows, id: \.self) { ScalingRowView(index: $0) }
             }
         }, size: CGSize(width: 300, height: 400))
         host.tracer.isRecording = false
@@ -239,10 +265,11 @@ struct ScalingTests {
         for _ in 0..<rounds {
             let before = host.graph.graph.evaluationCount
             let attributesBefore = host.graph.graph.liveAttributeCount
-            let start = Date()
+            // CPU time of this thread: other processes on the machine don't count.
+            let start = threadCPUTime()
             for state in states { state.isBuilt = true }
             host.flush()
-            built += Date().timeIntervalSince(start)
+            built += threadCPUTime() - start
             evaluations += host.graph.graph.evaluationCount - before
             attributes += host.graph.graph.liveAttributeCount - attributesBefore
             for state in states { state.isBuilt = false }
