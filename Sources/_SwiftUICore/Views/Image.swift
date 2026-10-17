@@ -146,8 +146,7 @@ extension Image: View {
         let resolved = Attribute<ResolvedImage>(inputs.subgraph, isEqual: { $0 == $1 }) {
             view.attribute.value.resolve(in: environment.value)
         }
-        let content = Attribute<RenderContent>(inputs.subgraph, isEqual: { $0 == $1 }) { .image(resolved.value) }
-        inputs.makePlatformNode(content: content)
+        inputs.makeLeafPlatformNode { .image(resolved.value) }
         let services = inputs.services
         let tracer = inputs.tracer
         let path = inputs.path

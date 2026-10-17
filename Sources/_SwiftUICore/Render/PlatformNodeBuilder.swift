@@ -42,6 +42,26 @@ extension _ViewInputs {
         return _RenderInputs(parent: node, origin: ownOrigin)
     }
 
+    /// A platform render node for a view without children (text, images, shapes, colors): its
+    /// sink computes the content itself, and no origin is made for children.
+    func makeLeafPlatformNode(actions: RenderActions = RenderActions(), content: @escaping @MainActor () -> RenderContent) {
+        let renderer = host.renderer
+        let node = makePlatformNodeWithoutSink(actions: actions)
+        let geometry = self.geometry
+        let origin = render.origin
+        let sink = Attribute<RenderSnapshot>(subgraph, isEqual: { $0 == $1 }) {
+            let placed = geometry.value
+            let base = origin?.value ?? .zero
+            return RenderSnapshot(frame: CGRect(origin: placed.origin - base, size: placed.size), content: content())
+        }
+        sink.setLabel("render \(path)")
+        sink.order = depth
+        sink.onChange = { snapshot in
+            renderer.update(node, frame: snapshot.frame, content: snapshot.content)
+        }
+        sink.isEager = true
+    }
+
     /// Creates a platform render node for this view whose frame and content someone else pushes to
     /// the renderer (`makePlatformNode` adds the sink attribute that does).
     func makePlatformNodeWithoutSink(actions: RenderActions = RenderActions()) -> RenderNode {

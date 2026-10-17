@@ -25,10 +25,9 @@ extension Text: View {
             return view.attribute.value.resolve(in: environment.value)
         }
         resolved.setLabel("resolved \(inputs.path)")
-        let content = Attribute<RenderContent>(inputs.subgraph, isEqual: { $0 == $1 }) { .text(resolved.value) }
         var actions = RenderActions()
         actions.openURL = { url in AnyAttribute.withoutDependencies { environment.value.openURL(url) } }
-        inputs.makePlatformNode(content: content, actions: actions)
+        inputs.makeLeafPlatformNode(actions: actions) { .text(resolved.value) }
 
         // A new computer is created when the resolved text changes, but `isEquivalent` compares only
         // the layout-relevant part: a color change never invalidates the parent's layout.

@@ -381,8 +381,11 @@ public struct _ShapeView<S: Shape, Style: ShapeStyle>: View {
         let environment = inputs.environment
         let geometry = inputs.geometry
         // Animatable shapes (trim, custom animatableData) interpolate per frame.
-        let shape = animatedIfNeeded(Attribute<S>(inputs.subgraph) { view.attribute.value.shape }, host: inputs.host, scope: inputs.animationScope, subgraph: inputs.subgraph)
-        let content = Attribute<RenderContent>(inputs.subgraph, isEqual: { $0 == $1 }) {
+        // Layout measures the target shape; drawing uses the animated one (the same attribute when
+        // the shape doesn't animate).
+        let layoutShape = Attribute<S>(inputs.subgraph) { view.attribute.value.shape }
+        let shape = animatedIfNeeded(layoutShape, host: inputs.host, scope: inputs.animationScope, subgraph: inputs.subgraph)
+        inputs.makeLeafPlatformNode { () -> RenderContent in
             let shapeView = view.attribute.value
             let size = geometry.value.size
             let paint = shapeView.style._resolvePaint(in: environment.value)
@@ -404,10 +407,8 @@ public struct _ShapeView<S: Shape, Style: ShapeStyle>: View {
             }
             return .shape(ResolvedShape(path: path, fill: color, stroke: nil, lineWidth: 0, gradient: gradient, shadow: shadow, pathSize: size))
         }
-        inputs.makePlatformNode(content: content)
         let tracer = inputs.tracer
         let path = inputs.path
-        let layoutShape = Attribute<S>(inputs.subgraph) { view.attribute.value.shape }
         let layout = inputs.makeLayoutAttribute { ShapeLayoutComputer(shape: layoutShape.value, path: path, tracer: tracer) }
         return _ViewOutputs(layout: layout)
     }
