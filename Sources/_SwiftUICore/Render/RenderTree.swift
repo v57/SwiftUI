@@ -322,6 +322,10 @@ public protocol RenderBackend: PlatformServices {
     func setFrame(of view: AnyObject, node: RenderNode)
     /// Replaces the platform children of a container view (z-order: first is bottom-most).
     func setChildren(of view: AnyObject, node: RenderNode, to children: [AnyObject])
+    /// Replaces the children in `range` of the list last given to the container with `children`
+    /// (`all` is the whole new list). The renderer sends only the range that changed, so building
+    /// one view in a container of thousands touches that view; the default sets the whole list.
+    func replaceChildren(of view: AnyObject, node: RenderNode, range: Range<Int>, with children: [AnyObject], all: [AnyObject])
     /// Applies `node.presentation` (transition opacity / transform), relative to the view's frame.
     func setPresentation(of view: AnyObject, node: RenderNode)
     /// Opens a URL with the platform's default handler (`Link`, `openURL`).
@@ -345,6 +349,9 @@ public protocol RenderBackend: PlatformServices {
 }
 
 extension RenderBackend {
+    public func replaceChildren(of view: AnyObject, node: RenderNode, range: Range<Int>, with children: [AnyObject], all: [AnyObject]) {
+        setChildren(of: view, node: node, to: all)
+    }
     public func setPresentation(of view: AnyObject, node: RenderNode) {}
     public func openURL(_ url: URL) {}
     public func share(_ items: [Any]) {}

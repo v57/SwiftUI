@@ -58,6 +58,8 @@ public final class RenderNode {
     public internal(set) var accessibility: AccessibilityProperties?
     /// Backend view. Backends own its type.
     public var handle: AnyObject?
+    /// The children's views as last given to the backend (a container's), for incremental syncs.
+    var syncedChildren: [AnyObject] = []
 
     var targetContent: RenderContent = .empty
     var targetFrame: CGRect = .zero
@@ -292,7 +294,7 @@ public final class Renderer {
     unowned let tracer: UpdateTracer
     private var needsChildSync: [ObjectIdentifier: RenderNode] = [:]
     private var pending: [RenderNode] = []
-    private var removed: [(node: RenderNode, container: RenderNode, index: Int, transition: AnyTransition?, match: (key: AnyHashable, frame: CGRect)?)] = []
+    private var removed: [(node: RenderNode, container: RenderNode, transition: AnyTransition?, match: (key: AnyHashable, frame: CGRect)?)] = []
     private var matchedFrames: [AnyHashable: CGRect] = [:]
     private var ghosts: [ObjectIdentifier: (container: RenderNode, list: [(node: RenderNode, index: Int)])] = [:]
     private var animating: [ObjectIdentifier: RenderNode] = [:]
@@ -330,9 +332,9 @@ public final class Renderer {
     func remove(_ node: RenderNode) {
         guard !node.isRemoved else { return }
         if node.kind == .platform, node.handle != nil, let container = node.platformAncestor {
-            let index = container.platformChildren.firstIndex { $0 === node } ?? container.platformChildren.count
+            // Its index in the container is looked up at commit, only for a removal that animates.
             let match = node.effectiveMatchKey.map { (key: $0, frame: node.absoluteFrame) }
-            removed.append((node, container, index, node.effectiveTransition, match))
+            removed.append((node, container, node.effectiveTransition, match))
         }
         node.isRemoved = true
         if node.kind == .platform { tracer.record(.renderRemove, node.path) }
@@ -406,9 +408,11 @@ public final class Renderer {
             let transition = record.transition ?? .opacity
             let animation = transition.animation ?? self.animation(for: record.node)
             if let animation, let handle = record.node.handle {
-                _ = handle
+                // The container's views still are the list before this commit.
+                let synced = record.container.syncedChildren
+                let index = synced.firstIndex { $0 === handle } ?? synced.count
                 var entry = ghosts[ObjectIdentifier(record.container)] ?? (record.container, [])
-                entry.list.append((record.node, record.index))
+                entry.list.append((record.node, index))
                 ghosts[ObjectIdentifier(record.container)] = entry
                 let group = groupForCommit()
                 group?.remaining += 1
@@ -541,7 +545,27 @@ public final class Renderer {
                 list.insert(ghost.node, at: min(ghost.index, list.count))
             }
         }
-        backend.setChildren(of: handle, node: container, to: list.compactMap(\.handle))
+        let handles = list.compactMap(\.handle)
+        let old = container.syncedChildren
+        container.syncedChildren = handles
+        if old.isEmpty {
+            if !handles.isEmpty {
+                tracer.counters.childOperations += handles.count
+                backend.setChildren(of: handle, node: container, to: handles)
+            }
+            return
+        }
+        // Only the range between the unchanged head and tail goes to the backend.
+        var head = 0
+        let common = min(old.count, handles.count)
+        while head < common, old[head] === handles[head] { head += 1 }
+        var tail = 0
+        while tail < common - head, old[old.count - 1 - tail] === handles[handles.count - 1 - tail] { tail += 1 }
+        let removed = head..<(old.count - tail)
+        let inserted = Array(handles[head..<(handles.count - tail)])
+        guard !removed.isEmpty || !inserted.isEmpty else { return }
+        tracer.counters.childOperations += removed.count + inserted.count
+        backend.replaceChildren(of: handle, node: container, range: removed, with: inserted, all: handles)
     }
 
     /// Advances running animations. Returns true while animations remain.

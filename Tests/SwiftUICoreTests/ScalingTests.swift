@@ -40,6 +40,26 @@ struct ScalingCard: View {
     }
 }
 
+/// A lazily built item, like ComponentKit's lazy stack items: a placeholder until built.
+@Observable @MainActor
+final class ScalingItemState {
+    var isBuilt: Bool
+    init(isBuilt: Bool) { self.isBuilt = isBuilt }
+}
+
+struct ScalingLazyItem: View {
+    let state: ScalingItemState
+    let row: ScalingRow
+    let index: Int
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            if state.isBuilt { ScalingCard(row: row, index: index) }
+        }
+        .frame(maxWidth: .infinity, minHeight: state.isBuilt ? nil : 96, alignment: .topLeading)
+    }
+}
+
 @MainActor
 func makeScalingRows(_ count: Int) -> [ScalingRow] {
     (0..<count).map { ScalingRow("Repository \($0)") }
@@ -69,5 +89,37 @@ struct ScalingTests {
         rows[150].title = "Renamed repository"
         host.flush()
         #expect(host.tracer.counters.spacingComputations < 40)
+    }
+
+    /// Building one item of a long page sends the backend that item's views only: the renderer
+    /// diffs a container's children and replaces the changed range, not the whole list.
+    @Test func buildingOneItemTouchesOnlyItsViews() {
+        let rows = makeScalingRows(500)
+        let states = (0..<500).map { ScalingItemState(isBuilt: $0 % 2 == 0) }
+        let host = TestHost(ScrollView {
+            VStack(spacing: 8) {
+                ForEach(0..<rows.count, id: \.self) { ScalingLazyItem(state: states[$0], row: rows[$0], index: $0) }
+            }
+        }, size: CGSize(width: 600, height: 800))
+        host.tracer.isRecording = false
+        let scroll = host.allViews.first { if case .scrollView = $0.content { true } else { false } }!
+        let builtViews = scroll.children.count
+        #expect(builtViews > 2000)
+
+        host.tracer.resetCounters()
+        states[251].isBuilt = true
+        host.flush()
+        let added = scroll.children.count - builtViews
+        #expect(added > 0)
+        #expect(host.tracer.counters.childOperations == added)
+        // The backend's list is the render tree's, in order.
+        let expected = scroll.node!.platformChildren.map { ObjectIdentifier($0.handle!) }
+        #expect(scroll.children.map(ObjectIdentifier.init) == expected)
+
+        host.tracer.resetCounters()
+        states[100].isBuilt = false
+        host.flush()
+        #expect(host.tracer.counters.childOperations < 40)
+        #expect(scroll.children.map(ObjectIdentifier.init) == scroll.node!.platformChildren.map { ObjectIdentifier($0.handle!) })
     }
 }

@@ -116,9 +116,20 @@ public final class HeadlessBackend: RenderBackend {
     public func setChildren(of view: AnyObject, node: RenderNode, to children: [AnyObject]) {
         let view = view as! HeadlessView
         let newChildren = children.map { $0 as! HeadlessView }
-        for child in view.children where !newChildren.contains(where: { $0 === child }) { child.superview = nil }
+        let kept = Set(newChildren.map(ObjectIdentifier.init))
+        for child in view.children where !kept.contains(ObjectIdentifier(child)) { child.superview = nil }
         for child in newChildren { child.superview = view }
         view.children = newChildren
+    }
+
+    public func replaceChildren(of view: AnyObject, node: RenderNode, range: Range<Int>, with children: [AnyObject], all: [AnyObject]) {
+        let view = view as! HeadlessView
+        guard range.upperBound <= view.children.count else { return setChildren(of: view, node: node, to: all) }
+        let inserted = children.map { $0 as! HeadlessView }
+        let kept = Set(inserted.map(ObjectIdentifier.init))
+        for child in view.children[range] where !kept.contains(ObjectIdentifier(child)) { child.superview = nil }
+        for child in inserted { child.superview = view }
+        view.children.replaceSubrange(range, with: inserted)
     }
 
     // MARK: Metrics

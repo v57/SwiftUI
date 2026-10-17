@@ -77,6 +77,36 @@ public final class AppKitBackend: RenderBackend {
         withoutImplicitAnimations { setNodeChildren(of: view, node: node, to: children) }
     }
 
+    public func replaceChildren(of view: AnyObject, node: RenderNode, range: Range<Int>, with children: [AnyObject], all: [AnyObject]) {
+        withoutImplicitAnimations {
+            let container: NSView
+            if let scroll = view as? ScrollNodeView {
+                container = scroll.documentContainer
+            } else if view is EffectNodeView, case .effect(.mask) = node.content {
+                return setNodeChildren(of: view, node: node, to: all)
+            } else {
+                container = view as! NSView
+            }
+            let current = container.subviews
+            // Only when the view still holds the list the renderer last gave it.
+            guard current.count - range.count + children.count == all.count, range.upperBound <= current.count else {
+                return setNodeChildren(of: view, node: node, to: all)
+            }
+            let inserted = Set(children.map(ObjectIdentifier.init))
+            for child in current[range] where !inserted.contains(ObjectIdentifier(child)) { child.removeFromSuperview() }
+            // Inserted views go above their predecessor (or at the bottom), in order.
+            var previous: NSView? = range.lowerBound > 0 ? current[range.lowerBound - 1] : nil
+            for case let child as NSView in children {
+                if let previous {
+                    container.addSubview(child, positioned: .above, relativeTo: previous)
+                } else {
+                    container.addSubview(child, positioned: .below, relativeTo: nil)
+                }
+                previous = child
+            }
+        }
+    }
+
     private func setNodeChildren(of view: AnyObject, node: RenderNode, to children: [AnyObject]) {
         if let effect = view as? EffectNodeView, case .effect(.mask) = node.content {
             // The mask source stays out of the visible hierarchy; it is drawn into the layer mask.

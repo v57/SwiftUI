@@ -73,6 +73,8 @@ public final class UpdateTracer {
         public internal(set) var spacingComputations = 0
         /// Candidates tested by hover / hit testing.
         public internal(set) var hitTestVisits = 0
+        /// Platform child views the renderer added or removed (a container's changed range).
+        public internal(set) var childOperations = 0
 
         public subscript(kind: Kind) -> Int { kinds[kind.index] }
         public init() {}
