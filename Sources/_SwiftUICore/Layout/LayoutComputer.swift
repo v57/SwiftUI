@@ -22,7 +22,7 @@ public class LayoutComputer {
         for (cachedProposal, size) in sizeCache where cachedProposal == proposal { return size }
         let size = computeSize(proposal)
         tracer.record(.sizeThatFits, path)
-        if sizeCache.count >= 8 { sizeCache.removeFirst() }
+        if sizeCache.count >= 32 { sizeCache.removeFirst() }
         sizeCache.append((proposal, size))
         return size
     }

@@ -156,9 +156,27 @@ public final class AppKitBackend: RenderBackend {
         AppKitText.attributedString(text, placeholders: true).boundingRect(with: CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin]).width
     }
 
+    /// Measured text sizes by text and width: views built again (a lazy stack's item scrolled back,
+    /// a page reopened) and identical labels skip CoreText. Cleared when it grows past its limit.
+    private struct MeasureKey: Hashable {
+        let text: ResolvedText
+        let width: CGFloat
+    }
+    private var measured: [MeasureKey: CGSize] = [:]
+    private static let measuredLimit = 4096
+
     public func measureText(_ text: ResolvedText, proposal: ProposedViewSize) -> CGSize {
         // Infinite proposals (stack flexibility probes) mean "unconstrained".
         let width = proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? .greatestFiniteMagnitude
+        let key = MeasureKey(text: text, width: width)
+        if let size = measured[key] { return size }
+        let size = measureUncached(text, width: width)
+        if measured.count >= Self.measuredLimit { measured.removeAll(keepingCapacity: true) }
+        measured[key] = size
+        return size
+    }
+
+    private func measureUncached(_ text: ResolvedText, width: CGFloat) -> CGSize {
         let text = text.scaled(by: AppKitText.fittingScale(text, width: width))
         let string = AppKitText.attributedString(text, placeholders: true)
         // Like SwiftUI: line height without the font's leading, sizes rounded up to device pixels.

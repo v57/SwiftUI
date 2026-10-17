@@ -188,4 +188,21 @@ struct ScalingTests {
         #expect(large.layout <= small.layout + 2)
         #expect(large.render <= small.render + 2)
     }
+
+    /// A text is measured once per proposed width: stacks probe each width with many heights,
+    /// which don't change a text's size unless it has to drop lines.
+    @Test func textIsMeasuredOncePerWidth() {
+        let rows = makeScalingRows(40)
+        let host = TestHost(ScrollView {
+            VStack(spacing: 8) {
+                ForEach(0..<rows.count, id: \.self) { ScalingCard(row: rows[$0], index: $0).frame(minHeight: 60) }
+            }
+        }, size: CGSize(width: 600, height: 800))
+        let texts = host.allViews.filter { $0.text != nil }.count
+        #expect(texts == 40 * 7)
+        // A handful per text: its widths (0, ∞, its share, its final width), one line's height and
+        // the one-line size at a squeezed width (was 3,000 for these 280 texts: every height probe
+        // measured again).
+        #expect(host.backend.textMeasurements <= texts * 6)
+    }
 }

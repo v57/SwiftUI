@@ -148,7 +148,11 @@ public final class HeadlessBackend: RenderBackend {
     // MARK: Metrics
 
     /// Each character is `0.5 × pointSize` wide; lines are `1.2 × pointSize` tall. Words wrap.
+    /// Text measurements asked of the backend (tests assert layout doesn't re-measure text).
+    public private(set) var textMeasurements = 0
+
     public func measureText(_ text: ResolvedText, proposal: ProposedViewSize) -> CGSize {
+        textMeasurements += 1
         // `minimumScaleFactor`: the font shrinks (down to the factor) until the text fits the
         // proposed width without exceeding its line limit.
         if text.minimumScaleFactor < 1, let width = proposal.width, width.isFinite {

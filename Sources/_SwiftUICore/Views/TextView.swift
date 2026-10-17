@@ -52,18 +52,56 @@ final class TextLayoutComputer: LayoutComputer {
         super.init(path: path, tracer: tracer)
     }
 
-    override func computeSize(_ proposal: ProposedViewSize) -> CGSize {
-        let size = services.measureText(text, proposal: proposal)
-        // SwiftUI: text shows only as many lines as fit the proposed height (at least one).
-        guard let height = proposal.height, height.isFinite, size.height > height, (text.lineLimit ?? 2) > 1 else { return size }
+    /// Natural sizes by proposed width: text measures by width alone (no backend reads the proposed
+    /// height), and stacks probe each width with many heights (0, ∞, the share of each parent's
+    /// probe), so one text was measured some twenty times per build.
+    private var natural: [(width: CGFloat?, size: CGSize)] = []
+
+    private func naturalSize(width: CGFloat?) -> CGSize {
+        if let hit = natural.first(where: { $0.width == width }) { return hit.size }
+        let size = services.measureText(text, proposal: ProposedViewSize(width: width, height: nil))
+        if natural.count >= 8 { natural.removeFirst() }
+        natural.append((width, size))
+        return size
+    }
+
+    /// One line's height and line-limited sizes, by width (heights below the natural one keep
+    /// as many lines as fit).
+    private var lineHeights: [(width: CGFloat?, height: CGFloat)] = []
+    private var limitedSizes: [(width: CGFloat?, lines: Int, size: CGSize)] = []
+
+    private func lineHeight(width proposedWidth: CGFloat?) -> CGFloat {
+        // One line is as tall at any width, unless the font shrinks to fit it.
+        let width = text.minimumScaleFactor < 1 ? proposedWidth : nil
+        if let hit = lineHeights.first(where: { $0.width == width }) { return hit.height }
         var line = text
         line.lineLimit = 1
-        let lineHeight = services.measureText(line, proposal: ProposedViewSize(width: proposal.width, height: nil)).height
-        guard lineHeight > 0 else { return size }
+        let height = services.measureText(line, proposal: ProposedViewSize(width: width, height: nil)).height
+        if lineHeights.count >= 4 { lineHeights.removeFirst() }
+        lineHeights.append((width, height))
+        return height
+    }
+
+    private func limitedSize(width: CGFloat?, lines: Int) -> CGSize {
+        if let hit = limitedSizes.first(where: { $0.width == width && $0.lines == lines }) { return hit.size }
         var limited = text
+        limited.lineLimit = lines
+        let size = services.measureText(limited, proposal: ProposedViewSize(width: width, height: nil))
+        if limitedSizes.count >= 8 { limitedSizes.removeFirst() }
+        limitedSizes.append((width, lines, size))
+        return size
+    }
+
+    override func computeSize(_ proposal: ProposedViewSize) -> CGSize {
+        let size = naturalSize(width: proposal.width)
+        // SwiftUI: text shows only as many lines as fit the proposed height (at least one).
+        guard let height = proposal.height, height.isFinite, size.height > height, (text.lineLimit ?? 2) > 1 else { return size }
+        let lineHeight = lineHeight(width: proposal.width)
+        // A single line has no line to drop.
+        guard lineHeight > 0, size.height > lineHeight + 0.5 else { return size }
         // Reserved lines (`reservesSpace`, line limit ranges) are kept even when squeezed.
-        limited.lineLimit = max(text.minimumLines ?? 1, 1, Int(((height + 0.01) / lineHeight).rounded(.down)))
-        return services.measureText(limited, proposal: proposal)
+        let lines = max(text.minimumLines ?? 1, 1, Int(((height + 0.01) / lineHeight).rounded(.down)))
+        return limitedSize(width: proposal.width, lines: lines)
     }
 
     override var computedSpacing: ViewSpacing {
@@ -76,7 +114,7 @@ final class TextLayoutComputer: LayoutComputer {
             return services.firstBaseline(of: text)
         }
         if key == VerticalAlignment.lastTextBaseline.key {
-            return size.height - (services.measureText(text, proposal: .unspecified).height - services.firstBaseline(of: text))
+            return size.height - (naturalSize(width: nil).height - services.firstBaseline(of: text))
         }
         return nil
     }
