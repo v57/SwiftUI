@@ -649,7 +649,28 @@ enum AppKitText {
 
 @MainActor
 enum AppKitImages {
+    /// Symbol images by what they look like: every view showing the same symbol shares one image
+    /// (made once, and its rasterized representations with it).
+    @MainActor private static var symbols: [ResolvedImage: NSImage] = [:]
+
     static func image(_ image: ResolvedImage) -> NSImage? {
+        guard case .system = image.source, Thread.isMainThread else { return makeImage(image) }
+        var key = image
+        key.isResizable = false
+        key.redactedColor = nil
+        key.symbolEffects = []
+        key.contentTransition = .interpolate
+        if key.renderingMode != .hierarchical { key.tint = nil }
+        return MainActor.assumeIsolated {
+            if let cached = symbols[key] { return cached }
+            guard let made = makeImage(image) else { return nil }
+            if symbols.count >= 512 { symbols.removeAll(keepingCapacity: true) }
+            symbols[key] = made
+            return made
+        }
+    }
+
+    private static func makeImage(_ image: ResolvedImage) -> NSImage? {
         switch image.source {
         case .system(let name):
             let scale: NSImage.SymbolScale = image.scale == .small ? .small : image.scale == .large ? .large : .medium
