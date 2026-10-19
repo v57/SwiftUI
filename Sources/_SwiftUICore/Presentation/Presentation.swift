@@ -101,7 +101,9 @@ extension _ViewInputs {
             return env
         }
         let entry = PresentationEntry(id: id, kind: kind, environment: contentEnvironment, anchor: geometry, dismiss: dismiss, make: make)
-        let observer = Attribute<Bool>(subgraph, isEqual: { $0 == $1 }) { isPresented() }
+        // Observed: `isPresented` often reads a binding into an `@Observable` model (`$model.isShown`), which changes
+        // without the presenter's body running again.
+        let observer = makeObservedAttribute(subgraph, of: Bool.self, isEqual: { $0 == $1 }) { isPresented() }
         observer.order = depth
         var wasPresented = false
         observer.onChange = { presented in

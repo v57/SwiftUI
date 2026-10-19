@@ -87,6 +87,24 @@ struct PresentationFeatureTests {
         #expect(confirming.texts.contains("editing"))
     }
 
+    @Test func sheetBoundToAnObservableModelDismisses() {
+        // The presenter's body doesn't read the flag (only makes a binding to it), so only observing it from the
+        // presentation notices the dismissal.
+        struct Screen: View {
+            @State var window = PresentationWindowState()
+            var body: some View {
+                @Bindable var window = window
+                Text("base").sheet(isPresented: $window.isWelcomeShown) { Text("welcome") }
+            }
+        }
+        let host = TestHost(Screen())
+        host.flush()
+        #expect(host.texts.contains("welcome"))
+        host.pressEscape()
+        host.finishAnimations()
+        #expect(!host.texts.contains("welcome"))
+    }
+
     @Test func sheetAppearanceFromContent() {
         struct Screen: View {
             @State var shown = true
@@ -141,3 +159,5 @@ struct PresentationFeatureTests {
         #expect(host.texts.contains("Open notes.txt"))
     }
 }
+
+@Observable final class PresentationWindowState { var isWelcomeShown = true }
