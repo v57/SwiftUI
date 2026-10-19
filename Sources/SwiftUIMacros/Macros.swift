@@ -62,5 +62,5 @@ public struct PreviewableMacro: PeerMacro {
 
 @main
 struct SwiftUIMacrosPlugin: CompilerPlugin {
-    let providingMacros: [Macro.Type] = [EntryMacro.self, PreviewMacro.self, PreviewableMacro.self]
+    let providingMacros: [Macro.Type] = [EntryMacro.self, PreviewMacro.self, PreviewableMacro.self, ModelMacro.self, ModelMarkerMacro.self]
 }

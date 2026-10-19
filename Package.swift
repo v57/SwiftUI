@@ -91,7 +91,7 @@ let package = Package(
         // A Swift Charts subset (import SwiftUICharts instead of Charts).
         .target(name: "SwiftUICharts", dependencies: ["_SwiftUICore"]),
         // SwiftData's SwiftUI integration (@Query, .modelContainer) on Apple platforms.
-        .target(name: "SwiftUISwiftData", dependencies: ["_SwiftUICore"]),
+        .target(name: "SwiftUISwiftData", dependencies: ["_SwiftUICore"] + standIns("SwiftData")),
         .target(
             name: "SwiftUI",
             dependencies: [
@@ -100,7 +100,7 @@ let package = Package(
                 .target(name: "SwiftUIAndroid", condition: .when(platforms: [.android])),
                 .target(name: "SwiftUIGtk", condition: .when(platforms: [.linux])),
                 .target(name: "SwiftUIWinUI", condition: .when(platforms: [.windows])),
-                .target(name: "SwiftUISwiftData", condition: .when(platforms: [.macOS, .iOS])),
+                .target(name: "SwiftUISwiftData", condition: .when(platforms: [.macOS, .iOS] + (standIns ? nonApple : []))),
             ]
         ),
 
@@ -139,6 +139,7 @@ if standIns {
         .library(name: "SQLite3", targets: ["SQLite3"]),
         .library(name: "os", targets: ["os"]),
         .library(name: "Network", targets: ["Network"]),
+        .library(name: "SwiftData", targets: ["SwiftData"]),
     ]
     package.targets += [
         // CryptoKit: swift-crypto, plus SecureEnclave keys sealed to the device's user (DPAPI on Windows).
@@ -149,6 +150,8 @@ if standIns {
         .target(name: "SQLite3", dependencies: [.product(name: "SwiftToolchainCSQLite", package: "swift-toolchain-sqlite")]),
         // os: Logger, os_log, signposts (dropped) and OSAllocatedUnfairLock.
         .target(name: "os"),
+        // SwiftData: @Model, containers and contexts over a JSON file store (SwiftUISwiftData adds @Query).
+        .target(name: "SwiftData", dependencies: ["SwiftUIMacros"]),
         // Network: NWConnection (TCP, TLS through SChannel on Windows, connected UDP) and NWListener on sockets.
         .target(
             name: "CNetworkSupport",
@@ -170,17 +173,17 @@ if standIns {
         .target(name: "COpenCombineHelpers"),
         .target(name: "Combine", dependencies: ["COpenCombineHelpers"], exclude: ["LICENSE-OpenCombine.txt"],
                 swiftSettings: [.swiftLanguageMode(.v5)]),
-        .testTarget(name: "CompatTests", dependencies: ["UniformTypeIdentifiers", "Combine", "CryptoKit", "SQLite3", "os", "Network"]),
+        .testTarget(name: "CompatTests", dependencies: ["UniformTypeIdentifiers", "Combine", "CryptoKit", "SQLite3", "os", "Network", "SwiftData"]),
     ]
 }
 
 #if os(Linux)
 // Native Linux build (GTK backend): the other platforms' backends are left out.
-let excluded: Set<String> = ["SwiftUIAppKit", "SwiftUISwiftData", "CSwiftUIAndroid", "SwiftUIAndroid"]
+let excluded: Set<String> = ["SwiftUIAppKit", "CSwiftUIAndroid", "SwiftUIAndroid"]
 package.targets.removeAll { excluded.contains($0.name) }
 package.products.removeAll { excluded.contains($0.name) }
 for target in package.targets where target.name == "SwiftUI" {
-    target.dependencies = ["_SwiftUICore", "SwiftUIGtk"]
+    target.dependencies = ["_SwiftUICore", "SwiftUIGtk", "SwiftUISwiftData"]
 }
 // GTK 3 headers and libraries (`apt install libgtk-3-dev`). Declared only here: elsewhere SwiftPM would
 // look for gtk+-3.0 with pkg-config and warn in every package that depends on SwiftUI.
@@ -193,12 +196,12 @@ package.targets += [.executableTarget(name: "GalleryGtk", dependencies: ["SwiftU
 package.products += [.executable(name: "GalleryGtk", targets: ["GalleryGtk"])]
 #elseif os(Windows)
 // Native Windows build (WinUI backend): executables and the other platforms' backends are left out.
-let excluded: Set<String> = ["ReferenceApp2", "Demo", "SwiftUIAppKit", "SwiftUISwiftData", "CSwiftUIAndroid", "SwiftUIAndroid",
+let excluded: Set<String> = ["ReferenceApp2", "Demo", "SwiftUIAppKit", "CSwiftUIAndroid", "SwiftUIAndroid",
                              "SwiftUIGtk"]
 package.targets.removeAll { excluded.contains($0.name) }
 package.products.removeAll { excluded.contains($0.name) }
 for target in package.targets where target.name == "SwiftUI" {
-    target.dependencies = ["_SwiftUICore", "SwiftUIWinUI"]
+    target.dependencies = ["_SwiftUICore", "SwiftUIWinUI", "SwiftUISwiftData"]
 }
 // Windows apps are DLLs the C# host loads (Windows/scripts/build-app.ps1); the DLL's `main`
 // (from `@main`) registers the app's scenes. Same sources as the Android apps.
