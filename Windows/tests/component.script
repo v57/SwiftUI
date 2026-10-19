@@ -1,0 +1,12 @@
+# Smoke test for ComponentWinUI (the ComponentKit catalog): opens, visits a few pages, saves screenshots
+# and node trees to C:\dev\shots.
+wait 6000
+screenshot C:\dev\shots\component-01-root.png
+dump C:\dev\shots\component-01-root.txt
+tap Buttons
+wait 2000
+screenshot C:\dev\shots\component-02-buttons.png
+tap Sidebar
+wait 2000
+screenshot C:\dev\shots\component-03-sidebar.png
+exit

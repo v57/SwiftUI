@@ -22,9 +22,11 @@ $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
 $package = if ($PackagePath) { (Resolve-Path $(if ([IO.Path]::IsPathRooted($PackagePath)) { $PackagePath } else { Join-Path $root $PackagePath })).Path } else { $root }
 
 Write-Host "Building $Product ($Configuration)"
-swift build --package-path $package --product $Product -c $Configuration
+# CodeView debug info and PDBs, so cdb and WER dumps (C:\dev\dumps) show Swift frames.
+$debugInfo = @("-Xswiftc", "-g", "-Xswiftc", "-debug-info-format=codeview", "-Xlinker", "-debug")
+swift build --package-path $package --product $Product -c $Configuration @debugInfo
 if ($LASTEXITCODE -ne 0) { throw "swift build failed" }
-$bin = (swift build --package-path $package -c $Configuration --show-bin-path).Trim()
+$bin = (swift build --package-path $package -c $Configuration @debugInfo --show-bin-path).Trim()
 $dll = Join-Path $bin "$Product.dll"
 if (-not (Test-Path $dll)) { throw "Build failed: $dll missing" }
 
@@ -35,8 +37,20 @@ if (-not $SkipHost -or -not (Test-Path "$out\SwiftUIHost.exe")) {
     if ($LASTEXITCODE -ne 0) { throw "dotnet build failed" }
 }
 
+# SwiftUI's view graph recurses as deep as an app's views nest (generic metadata, layout, rendering), and
+# Windows gives the main thread a 1 MB stack by default (macOS: 8 MB), which deep pages overflowed. Raise the
+# host's stack reserve in its PE header (SizeOfStackReserve, PE32+ optional header offset 72).
+$exe = "$out\SwiftUIHost.exe"
+$bytes = [IO.File]::ReadAllBytes($exe)
+$optional = [BitConverter]::ToInt32($bytes, 0x3C) + 24
+if ([BitConverter]::ToUInt16($bytes, $optional) -eq 0x20B -and [BitConverter]::ToUInt64($bytes, $optional + 72) -ne 64MB) {
+    [BitConverter]::GetBytes([UInt64]64MB).CopyTo($bytes, $optional + 72)
+    [IO.File]::WriteAllBytes($exe, $bytes)
+}
+
 # The app DLL, other DLLs it built (dynamic dependencies), and the Swift runtime.
 Copy-Item $dll $out -Force
+Get-ChildItem $bin -Filter *.pdb | Copy-Item -Destination $out -Force
 Get-ChildItem $bin -Filter *.dll | Where-Object { $_.Name -ne "$Product.dll" } | Copy-Item -Destination $out -Force
 $swiftCore = (Get-Command swiftCore.dll -ErrorAction SilentlyContinue).Source
 if ($swiftCore) {

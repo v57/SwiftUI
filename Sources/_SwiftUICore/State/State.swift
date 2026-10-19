@@ -243,7 +243,7 @@ extension Binding: _GraphComparable {
 
 nonisolated func runtimeWarning(_ message: @autoclosure () -> String) {
     #if DEBUG
-    let text = "[SwiftUI] \(message())\n"
-    FileHandle.standardError.write(text.data(using: .utf8)!)
+    // C stdio, not FileHandle: a Windows GUI process has no standard error, and FileHandle.write traps there.
+    fputs("[SwiftUI] \(message())\n", stderr)
     #endif
 }

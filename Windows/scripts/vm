@@ -5,6 +5,8 @@
 #                              ~/Downloads/VMs/Windows-qemu.sh runs it, else the UTM shared-network lease)
 #   vm ssh <powershell…>       runs a command in the VM
 #   vm sync                    copies this package's sources to C:\dev\SwiftUI (no .build/.git)
+#   vm sync-repo <dir> [name]  copies another checkout (a sibling v57 repo or its worktree) to C:\dev\<name>
+#                              (default: the folder's name), next to SwiftUI, so `../<name>` paths resolve there
 #   vm build [args…]           sync + Windows/scripts/build-app.ps1 [args…]
 #   vm run <exe> [args…]       runs a program on the VM's desktop (interactive session) and waits
 #   vm screenshot <local.png>  captures the VM's desktop
@@ -44,6 +46,16 @@ case "$1" in
     copy "$TAR" "$USER_NAME@$(vm_ip):C:/dev/swiftui-src.tar"
     rm -f "$TAR"
     remote "New-Item -ItemType Directory -Force '$REMOTE' | Out-Null; tar -xf C:/dev/swiftui-src.tar -C '$REMOTE'; Remove-Item C:/dev/swiftui-src.tar"
+    ;;
+  sync-repo)
+    src="$(cd "$2" && pwd)"; name="${3:-$(basename "$src")}"
+    TAR="$(mktemp -t swiftui-repo).tar"
+    COPYFILE_DISABLE=1 tar -h -C "$src" --exclude .build --exclude .git --exclude .claude --exclude '.build-*' \
+      --exclude ./build --exclude DerivedData --exclude '*.xcodeproj' --exclude '*.xcworkspace' --exclude .swiftpm \
+      --exclude '*/bin' --exclude '*/obj' --exclude .DS_Store -cf "$TAR" .
+    copy "$TAR" "$USER_NAME@$(vm_ip):C:/dev/$name-src.tar"
+    rm -f "$TAR"
+    remote "New-Item -ItemType Directory -Force 'C:\\dev\\$name' | Out-Null; tar -xf C:/dev/$name-src.tar -C 'C:\\dev\\$name'; Remove-Item C:/dev/$name-src.tar"
     ;;
   build) shift; "$0" sync; remote "& '$REMOTE\\Windows\\scripts\\build-app.ps1' $*" ;;
   run)
