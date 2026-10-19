@@ -347,6 +347,8 @@ public protocol RenderBackend: PlatformServices {
     func performHapticFeedback(_ feedback: SensoryFeedback)
     /// The pasteboard's items as item providers.
     func readPasteboard() -> [NSItemProvider]
+    /// The pasteboard's text, read now (nil when it holds none).
+    func readPasteboardString() -> String?
     /// Decodes image data (PNG, JPEG, ...) into a platform image.
     func decodeImage(_ data: Data, scale: CGFloat) -> PlatformImage?
     /// Called before the renderer applies a batch of changes (a commit or an animation frame); every
@@ -369,6 +371,7 @@ extension RenderBackend {
     public func performHapticFeedback(_ feedback: SensoryFeedback) {}
     public func decodeImage(_ data: Data, scale: CGFloat) -> PlatformImage? { nil }
     public func readPasteboard() -> [NSItemProvider] { [] }
+    public func readPasteboardString() -> String? { nil }
     public func willCommit() {}
     public func didCommit() {}
     public func updateAccessibility(of view: AnyObject, node: RenderNode) {}

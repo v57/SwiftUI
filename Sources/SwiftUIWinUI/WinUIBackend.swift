@@ -328,8 +328,12 @@ public final class WinUIBackend: RenderBackend {
     }
 
     public func readPasteboard() -> [NSItemProvider] {
-        guard let text = WinUIPlatform.call(hostView, .paste, nil) else { return [] }
+        guard let text = readPasteboardString() else { return [] }
         return [NSItemProvider(object: text)]
+    }
+
+    public func readPasteboardString() -> String? {
+        WinUIPlatform.call(hostView, .paste, nil)
     }
 }
 

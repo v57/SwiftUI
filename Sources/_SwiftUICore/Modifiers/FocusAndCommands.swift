@@ -203,6 +203,8 @@ public final class Pasteboard {
     /// Replaces the pasteboard's contents with items (strings, URLs, images…).
     public func setItems(_ items: [Any]) { backend?.writeToPasteboard(items) }
     public func setString(_ string: String) { setItems([string]) }
+    /// The text on the pasteboard, or nil when it holds none.
+    public func string() -> String? { backend?.readPasteboardString() }
 }
 
 extension EnvironmentValues {

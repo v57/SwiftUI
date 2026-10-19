@@ -60,7 +60,9 @@ let package = Package(
             ]
         ),
         // Foundation/CoreGraphics types missing from swift-corelibs-foundation (empty on Apple).
-        .target(name: "SwiftUIPortability", dependencies: standIns("CoreGraphics", "CoreTransferable", "UniformTypeIdentifiers")),
+        .target(
+            name: "SwiftUIPortability", dependencies: standIns("CoreGraphics", "CoreTransferable", "UniformTypeIdentifiers"),
+            linkerSettings: [.linkedLibrary("shell32", .when(platforms: [.windows]))]),
         .target(
             name: "_SwiftUICore",
             dependencies: [
