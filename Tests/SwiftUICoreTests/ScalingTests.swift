@@ -1,6 +1,9 @@
 import Foundation
 import Observation
 import Testing
+#if os(Windows)
+import WinSDK
+#endif
 @testable import _SwiftUICore
 import SwiftUIHeadless
 
@@ -86,9 +89,16 @@ func threadInstructions() -> UInt64 {
 
 /// CPU time the calling thread has used, in seconds.
 func threadCPUTime() -> Double {
+    #if os(Windows)
+    var creation = FILETIME(), exit = FILETIME(), kernel = FILETIME(), user = FILETIME()
+    guard GetThreadTimes(GetCurrentThread(), &creation, &exit, &kernel, &user) else { return 0 }
+    func seconds(_ time: FILETIME) -> Double { Double(UInt64(time.dwHighDateTime) << 32 | UInt64(time.dwLowDateTime)) / 1e7 }
+    return seconds(kernel) + seconds(user)
+    #else
     var time = timespec()
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time)
     return Double(time.tv_sec) + Double(time.tv_nsec) / 1e9
+    #endif
 }
 
 /// Counts rule evaluations by the first word of the attribute's label.

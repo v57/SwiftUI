@@ -126,7 +126,26 @@ let package = Package(
 )
 
 if standIns {
+    package.dependencies += [
+        .package(url: "https://github.com/apple/swift-crypto.git", "3.0.0"..<"5.0.0"),
+        .package(url: "https://github.com/swiftlang/swift-toolchain-sqlite", from: "1.0.0"),
+    ]
+    // Stand-ins for Apple frameworks that libraries and apps import directly (not through SwiftUI): depend on
+    // these products off Apple platforms and `import CryptoKit` / `import SQLite3` / `import os` build unchanged.
+    package.products += [
+        .library(name: "CryptoKit", targets: ["CryptoKit"]),
+        .library(name: "SQLite3", targets: ["SQLite3"]),
+        .library(name: "os", targets: ["os"]),
+    ]
     package.targets += [
+        // CryptoKit: swift-crypto, plus SecureEnclave keys sealed to the device's user (DPAPI on Windows).
+        .target(
+            name: "CryptoKit", dependencies: [.product(name: "Crypto", package: "swift-crypto")],
+            linkerSettings: [.linkedLibrary("crypt32", .when(platforms: [.windows]))]),
+        // SQLite3: the toolchain's SQLite.
+        .target(name: "SQLite3", dependencies: [.product(name: "SwiftToolchainCSQLite", package: "swift-toolchain-sqlite")]),
+        // os: Logger, os_log, signposts (dropped) and OSAllocatedUnfairLock.
+        .target(name: "os"),
         // CoreGraphics: geometry, colors, paths, bitmap images and a software-drawn bitmap context.
         .target(name: "CoreGraphics"),
         .target(name: "UniformTypeIdentifiers"),
@@ -140,7 +159,7 @@ if standIns {
         .target(name: "COpenCombineHelpers"),
         .target(name: "Combine", dependencies: ["COpenCombineHelpers"], exclude: ["LICENSE-OpenCombine.txt"],
                 swiftSettings: [.swiftLanguageMode(.v5)]),
-        .testTarget(name: "CompatTests", dependencies: ["UniformTypeIdentifiers", "Combine"]),
+        .testTarget(name: "CompatTests", dependencies: ["UniformTypeIdentifiers", "Combine", "CryptoKit", "SQLite3", "os"]),
     ]
 }
 
