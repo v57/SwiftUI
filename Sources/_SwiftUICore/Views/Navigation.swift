@@ -336,6 +336,21 @@ public struct NavigationSplitView<Sidebar: View, Content: View, Detail: View>: V
         self.columnVisibility = columnVisibility
     }
 
+    /// The compact column only matters when the split view collapses into a stack (never on the desktop).
+    public init(
+        columnVisibility: Binding<NavigationSplitViewVisibility>, preferredCompactColumn: Binding<NavigationSplitViewColumn>,
+        @ViewBuilder sidebar: () -> Sidebar, @ViewBuilder content: () -> Content, @ViewBuilder detail: () -> Detail
+    ) {
+        self.init(columnVisibility: columnVisibility, sidebar: sidebar, content: content, detail: detail)
+    }
+
+    public init(
+        preferredCompactColumn: Binding<NavigationSplitViewColumn>, @ViewBuilder sidebar: () -> Sidebar,
+        @ViewBuilder content: () -> Content, @ViewBuilder detail: () -> Detail
+    ) {
+        self.init(sidebar: sidebar, content: content, detail: detail)
+    }
+
     private var visibility: Binding<NavigationSplitViewVisibility> { columnVisibility ?? $internalVisibility }
     @Environment(\._controlDesign) private var design
 
