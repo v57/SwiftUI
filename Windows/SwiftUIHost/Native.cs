@@ -295,6 +295,7 @@ static class Events
     public const int OpenUrl = 13;
     public const int SetDate = 14;
     public const int SetColor = 15;
+    public const int SetSelection = 16;
     public const int PointerBegan = 20;
     public const int PointerMoved = 21;
     public const int PointerEnded = 22;

@@ -107,7 +107,7 @@ final class WinUIHost {
 
     enum Event: Int32 {
         case primary = 1, setBool, setText, setDouble, editingChanged, pressed, submit = 8, focusChanged, secondaryClick
-        case scrolled, scrollPhase, openURL, setDate, setColor
+        case scrolled, scrollPhase, openURL, setDate, setColor, setSelection
         case pointerBegan = 20, pointerMoved, pointerEnded, pointerCancelled
         case hover = 24, hoverLocation
         /// Host-level events (node -1): a menu bar item (text = its id) and a finished file
@@ -132,6 +132,7 @@ final class WinUIHost {
         case .menuItem, .fileDialog: break // host-level (node -1)
         case .setBool: actions.setBool?(a != 0)
         case .setText: actions.setText?(text ?? "")
+        case .setSelection: actions.setSelection?(Int(a)..<(Int(a) + Int(b)))
         case .setDouble: actions.setDouble?(a)
         case .editingChanged: actions.editingChanged?(a != 0)
         case .pressed: actions.pressed?(a != 0)

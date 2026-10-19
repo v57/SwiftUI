@@ -732,6 +732,7 @@ struct _TextInput: View {
     let text: Binding<String>
     let prompt: String
     let kind: Kind
+    var selection: Binding<TextSelection?>? = nil
 
     var body: Never { primitiveBody(Self.self) }
 
@@ -762,6 +763,13 @@ struct _TextInput: View {
             case nil: break
             }
             #endif
+            if let selection = field.selection?.wrappedValue, case .selection(let range) = selection.indices {
+                let text = field.text.wrappedValue
+                if let lower = range.lowerBound.samePosition(in: text.utf16), let upper = range.upperBound.samePosition(in: text.utf16) {
+                    let start = text.utf16.distance(from: text.utf16.startIndex, to: lower)
+                    resolved.selection = start..<(start + text.utf16.distance(from: lower, to: upper))
+                }
+            }
             return .textField(resolved)
         }
         let viewAttribute = view.attribute
@@ -769,6 +777,20 @@ struct _TextInput: View {
         actions.setText = { [weak viewAttribute] value in
             guard let viewAttribute else { return }
             AnyAttribute.withoutDependencies { viewAttribute.value.text.wrappedValue = value }
+        }
+        actions.setSelection = { [weak viewAttribute] offsets in
+            guard let viewAttribute else { return }
+            AnyAttribute.withoutDependencies {
+                let field = viewAttribute.value
+                guard let selection = field.selection else { return }
+                let utf16 = field.text.wrappedValue.utf16
+                let count = utf16.count
+                let lower = utf16.index(utf16.startIndex, offsetBy: min(max(0, offsets.lowerBound), count))
+                let upper = utf16.index(utf16.startIndex, offsetBy: min(max(0, offsets.upperBound), count))
+                let range = lower..<upper
+                if case .selection(let current)? = selection.wrappedValue?.indices, current == range { return }
+                selection.wrappedValue = TextSelection(range: range)
+            }
         }
         actions.submit = {
             AnyAttribute.withoutDependencies {
@@ -1078,8 +1100,14 @@ struct _FormRowLayout: Layout {
 
 public struct TextEditor: View {
     let text: Binding<String>
+    var selection: Binding<TextSelection?>?
     public init(text: Binding<String>) { self.text = text }
-    public var body: some View { _TextInput(text: text, prompt: "", kind: .editor) }
+    /// A text editor whose selection (and caret) the binding follows and sets.
+    public init(text: Binding<String>, selection: Binding<TextSelection?>) {
+        self.text = text
+        self.selection = selection
+    }
+    public var body: some View { _TextInput(text: text, prompt: "", kind: .editor, selection: selection) }
 }
 
 // MARK: - Slider

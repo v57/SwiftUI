@@ -259,6 +259,8 @@ extension ByteWriter {
             string(field.contentType)
             u8(UInt8(clamping: field.keyboardType))
             u8(field.autocapitalization.map { UInt8($0) } ?? 255)
+            i32(field.selection?.lowerBound ?? -1)
+            i32(field.selection?.count ?? 0)
         case .slider(let slider):
             f64(slider.value)
             f64(slider.range.lowerBound)

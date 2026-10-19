@@ -263,7 +263,14 @@ sealed class TextFieldNode : NodeView
         else
         {
             var box = new TextBox();
-            box.TextChanged += (_, _) => { if (!updating) Report(box.Text); };
+            box.TextChanged += (_, _) => { if (!updating) Report(Normalized(box.Text)); };
+            box.SelectionChanged += (_, _) =>
+            {
+                if (updating || !tracksSelection) return;
+                reportedSelections.Enqueue((box.SelectionStart, box.SelectionLength));
+                while (reportedSelections.Count > 16) reportedSelections.Dequeue();
+                Host.Event(Id, Events.SetSelection, box.SelectionStart, box.SelectionLength);
+            };
             textBox = box;
             field = box;
         }
@@ -281,6 +288,15 @@ sealed class TextFieldNode : NodeView
         reported = null;
         Layout();
     }
+
+    /// A multi-line TextBox ends lines with "\r"; SwiftUI text uses "\n" (one for one, so offsets agree).
+    static string Normalized(string text) => text.Replace("\r\n", "\n").Replace('\r', '\n');
+
+    /// The node's TextEditor has a selection binding: selection changes are reported.
+    bool tracksSelection;
+    /// Selections recently sent to Swift: an update still carrying one is behind the box (keystrokes moved the caret
+    /// since), not a selection the app set.
+    readonly Queue<(int, int)> reportedSelections = new();
 
     void Report(string text)
     {
@@ -300,6 +316,9 @@ sealed class TextFieldNode : NodeView
         r.String(); // content type
         r.U8(); // keyboard type
         r.U8(); // autocapitalization
+        var selectionStart = r.I32();
+        var selectionLength = r.I32();
+        tracksSelection = selectionStart >= 0;
         var enabled = (flags & 1) != 0;
         var secure = (flags & 2) != 0;
         multiline = (flags & 4) != 0 || (flags & 32) != 0;
@@ -336,12 +355,16 @@ sealed class TextFieldNode : NodeView
         }
         if (textBox != null)
         {
-            if (textBox.Text != text && text != reported)
+            if (Normalized(textBox.Text) != text && text != reported)
             {
                 var selection = textBox.SelectionStart;
                 textBox.Text = text;
                 textBox.SelectionStart = Math.Min(selection, text.Length);
             }
+            if (selectionStart >= 0 && selectionStart + selectionLength <= textBox.Text.Length
+                && !reportedSelections.Contains((selectionStart, selectionLength))
+                && (textBox.SelectionStart != selectionStart || textBox.SelectionLength != selectionLength))
+                textBox.Select(selectionStart, selectionLength);
             textBox.PlaceholderText = placeholder ?? "";
             textBox.TextAlignment = alignment switch { 1 => TextAlignment.Center, 2 => TextAlignment.Right, _ => TextAlignment.Left };
         }

@@ -109,6 +109,8 @@ public struct ResolvedTextField: Equatable, Sendable {
     public var keyboardType = 0
     /// `textInputAutocapitalization`: nil default, 0 never, 1 words, 2 sentences, 3 characters.
     public var autocapitalization: Int?
+    /// The selection a `TextEditor(text:selection:)` binding holds, in UTF-16 offsets (nil: the backend's own).
+    public var selection: Range<Int>?
 }
 
 public struct ResolvedSlider: Equatable, Sendable {
@@ -185,6 +187,8 @@ public struct RenderActions {
     public var openURL: (@MainActor (URL) -> Void)?
     public var setBool: (@MainActor (Bool) -> Void)?
     public var setText: (@MainActor (String) -> Void)?
+    /// The text view's selection changed (UTF-16 offsets).
+    public var setSelection: (@MainActor (Range<Int>) -> Void)?
     public var setDouble: (@MainActor (Double) -> Void)?
     /// A continuous control's interaction began (true) or ended (false).
     public var editingChanged: (@MainActor (Bool) -> Void)?
