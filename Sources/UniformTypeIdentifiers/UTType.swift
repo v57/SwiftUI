@@ -43,9 +43,17 @@ public struct UTType: Hashable, Sendable, Codable, CustomStringConvertible {
         identifier = dynamic
     }
 
+    /// The type for a MIME type; unknown ones get a dynamic type conforming to `supertype` (like Apple's `dyn.`
+    /// types).
     public init?(mimeType: String, conformingTo supertype: UTType = .data) {
-        guard let match = Registry.lookup(mimeType: mimeType.lowercased()), UTType(known: match).conforms(to: supertype) else { return nil }
-        identifier = match
+        let mime = mimeType.lowercased()
+        if let match = Registry.lookup(mimeType: mime), UTType(known: match).conforms(to: supertype) {
+            identifier = match
+            return
+        }
+        let dynamic = "dyn.mime-\(mime)"
+        Registry.declare(dynamic, conformsTo: [supertype.identifier], mimeTypes: [mime], isDynamic: true)
+        identifier = dynamic
     }
 
     public init?(tag: String, tagClass: UTTagClass, conformingTo supertype: UTType?) {
@@ -120,10 +128,10 @@ enum Registry {
         return declarations[identifier]
     }
 
-    static func declare(_ identifier: String, conformsTo: [String], extensions: [String] = [], isDynamic: Bool = false) {
+    static func declare(_ identifier: String, conformsTo: [String], extensions: [String] = [], mimeTypes: [String] = [], isDynamic: Bool = false) {
         lock.lock(); defer { lock.unlock() }
         if declarations[identifier] == nil {
-            declarations[identifier] = UTType.Declaration(conformsTo: conformsTo, extensions: extensions, isDynamic: isDynamic)
+            declarations[identifier] = UTType.Declaration(conformsTo: conformsTo, extensions: extensions, mimeTypes: mimeTypes, isDynamic: isDynamic)
         }
     }
 
