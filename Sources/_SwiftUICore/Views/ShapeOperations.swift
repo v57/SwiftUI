@@ -3,7 +3,7 @@ import Foundation
 import CoreGraphics
 #endif
 
-#if canImport(CoreGraphics)
+#if canImport(ObjectiveC)
 extension Path {
     /// The path as a Core Graphics path.
     public var cgPath: CGPath {
@@ -65,6 +65,41 @@ extension Path {
     }
 }
 #else
+#if canImport(CoreGraphics)
+extension Path {
+    /// The path as a (stand-in) Core Graphics path.
+    public var cgPath: CGPath {
+        let path = CGMutablePath()
+        for element in elements {
+            switch element {
+            case .move(let p): path.move(to: p)
+            case .line(let p): path.addLine(to: p)
+            case let .quadCurve(p, c): path.addQuadCurve(to: p, control: c)
+            case let .curve(p, c1, c2): path.addCurve(to: p, control1: c1, control2: c2)
+            case .closeSubpath: path.closeSubpath()
+            }
+        }
+        return path
+    }
+
+    public init(_ path: CGPath) {
+        var result = Path()
+        path.applyWithBlock { pointer in
+            let element = pointer.pointee
+            let points = element.points
+            switch element.type {
+            case .moveToPoint: result.move(to: points[0])
+            case .addLineToPoint: result.addLine(to: points[0])
+            case .addQuadCurveToPoint: result.addQuadCurve(to: points[1], control: points[0])
+            case .addCurveToPoint: result.addCurve(to: points[2], control1: points[0], control2: points[1])
+            case .closeSubpath: result.closeSubpath()
+            }
+        }
+        self = result
+    }
+}
+#endif
+
 extension Path {
     /// Path boolean operations on platforms without Core Graphics, provided by the backend
     /// (Android: `android.graphics.Path.op`). Without one, operations return `self`.

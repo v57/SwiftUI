@@ -1,7 +1,5 @@
-// Types SwiftUI's API uses that come from CoreGraphics on Apple platforms but are missing from
-// swift-corelibs-foundation (which only has CGFloat, CGPoint, CGSize, CGRect). Built on non-Apple
-// platforms only; _SwiftUICore re-exports this module there.
-#if !canImport(CoreGraphics)
+// CoreGraphics stand-in (Linux, Windows, Android): the geometry Foundation lacks there (it only has CGFloat,
+// CGPoint, CGSize, CGRect). SwiftUIPortability re-exports this module, so `import SwiftUI` brings it.
 import Foundation
 
 public struct CGAffineTransform: Hashable, Sendable, Codable {
@@ -84,4 +82,13 @@ public struct CGVector: Hashable, Sendable, Codable {
     public init(dx: Double, dy: Double) { self.dx = CGFloat(dx); self.dy = CGFloat(dy) }
     public static let zero = CGVector()
 }
-#endif
+
+/// How the ends of stroked lines are drawn.
+public enum CGLineCap: Int32, Sendable {
+    case butt, round, square
+}
+
+/// How the joins between stroked line segments are drawn.
+public enum CGLineJoin: Int32, Sendable {
+    case miter, round, bevel
+}

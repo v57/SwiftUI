@@ -455,3 +455,55 @@ enum InlineMarkdown {
         flush()
     }
 }
+
+#if !canImport(ObjectiveC)
+/// Apple's Markdown initializers, which swift-foundation keeps to Apple platforms: inline Markdown (emphasis,
+/// code, strikethrough, links) as `inlinePresentationIntent` and `link` runs. Block structure isn't kept:
+/// line breaks become spaces unless the syntax preserves whitespace.
+extension AttributedString {
+    public struct MarkdownParsingOptions: Hashable, Sendable {
+        public enum InterpretedSyntax: Hashable, Sendable { case full, inlineOnly, inlineOnlyPreservingWhitespace }
+        public enum FailurePolicy: Hashable, Sendable { case throwError, returnPartiallyParsedIfPossible }
+
+        public var allowsExtendedAttributes: Bool
+        public var interpretedSyntax: InterpretedSyntax
+        public var failurePolicy: FailurePolicy
+        public var languageCode: String?
+
+        public init(
+            allowsExtendedAttributes: Bool = false, interpretedSyntax: InterpretedSyntax = .full,
+            failurePolicy: FailurePolicy = .throwError, languageCode: String? = nil
+        ) {
+            self.allowsExtendedAttributes = allowsExtendedAttributes
+            self.interpretedSyntax = interpretedSyntax
+            self.failurePolicy = failurePolicy
+            self.languageCode = languageCode
+        }
+    }
+
+    public init(markdown: String, options: MarkdownParsingOptions = .init(), baseURL: URL? = nil) throws {
+        var source = markdown
+        if options.interpretedSyntax != .inlineOnlyPreservingWhitespace {
+            source = source.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }.joined(separator: " ")
+        }
+        var result = AttributedString()
+        for run in InlineMarkdown.parse(source) {
+            var piece = AttributedString(run.text)
+            var intent: InlinePresentationIntent = []
+            if run.style.contains(.bold) { intent.insert(.stronglyEmphasized) }
+            if run.style.contains(.italic) { intent.insert(.emphasized) }
+            if run.style.contains(.code) { intent.insert(.code) }
+            if run.style.contains(.strikethrough) { intent.insert(.strikethrough) }
+            if !intent.isEmpty { piece.inlinePresentationIntent = intent }
+            if let link = run.link { piece.link = baseURL.flatMap { URL(string: link.relativeString, relativeTo: $0) } ?? link }
+            result += piece
+        }
+        self = result
+    }
+
+    public init(markdown: Data, options: MarkdownParsingOptions = .init(), baseURL: URL? = nil) throws {
+        try self.init(markdown: String(decoding: markdown, as: UTF8.self), options: options, baseURL: baseURL)
+    }
+}
+#endif

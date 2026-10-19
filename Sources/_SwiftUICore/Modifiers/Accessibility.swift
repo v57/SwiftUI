@@ -448,3 +448,49 @@ extension View {
         _accessibility { $0.linkedGroup = AnyHashable(id) }
     }
 }
+
+#if !canImport(Accessibility)
+/// Notifications for assistive technologies (Apple's Accessibility framework spelling). The backend posts
+/// them (`AccessibilityNotification.poster`); without one they do nothing.
+public enum AccessibilityNotification {
+    /// What a backend receives for each post.
+    public enum Kind: Sendable {
+        case announcement(String)
+        case layoutChanged
+        case screenChanged
+        case pageScrolled(String)
+    }
+
+    /// Installed by backends that talk to the platform's screen reader.
+    nonisolated(unsafe) public static var poster: ((Kind) -> Void)?
+
+    /// Speaks a message.
+    public struct Announcement: Sendable {
+        public var message: String
+        public init(_ message: String) { self.message = message }
+        public init(_ message: AttributedString) { self.message = String(message.characters) }
+        public func post() { AccessibilityNotification.poster?(.announcement(message)) }
+    }
+
+    /// Part of the screen changed.
+    public struct LayoutChanged: Sendable {
+        public init() {}
+        public init<Element>(_ element: Element?) {}
+        public func post() { AccessibilityNotification.poster?(.layoutChanged) }
+    }
+
+    /// Most of the screen changed.
+    public struct ScreenChanged: Sendable {
+        public init() {}
+        public init<Element>(_ element: Element?) {}
+        public func post() { AccessibilityNotification.poster?(.screenChanged) }
+    }
+
+    /// A scroll finished; the message describes the new position.
+    public struct PageScrolled: Sendable {
+        public var message: String
+        public init(_ message: String) { self.message = message }
+        public func post() { AccessibilityNotification.poster?(.pageScrolled(message)) }
+    }
+}
+#endif

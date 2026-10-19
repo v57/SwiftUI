@@ -472,6 +472,12 @@ public struct Text: Equatable {
             if let font = run[TextAttributes.FontAttribute.self] { part = part.font(font) }
             if let color = run[TextAttributes.ForegroundColorAttribute.self] { part = part.foregroundColor(color) }
             if let color = run[TextAttributes.BackgroundColorAttribute.self] { part.modifiers.append(.background(color)) }
+            if let intent = run.inlinePresentationIntent {
+                if intent.contains(.stronglyEmphasized) { part = part.bold() }
+                if intent.contains(.emphasized) { part = part.italic() }
+                if intent.contains(.code) { part = part.fontDesign(.monospaced) }
+                if intent.contains(.strikethrough) { part = part.strikethrough() }
+            }
             // Platform scopes (AppKit's tracking, underline, ...) are read by the backend.
             if let bridge = TextAttributes.platformBridge { part.modifiers += bridge(attributedContent[run.range]).map(\.modifier) }
             parts.append(part)

@@ -312,4 +312,35 @@ open class FileWrapper: NSObject, @unchecked Sendable {
         if options.contains(.withNameUpdating) { filename = url.lastPathComponent }
     }
 }
+/// Inline Markdown styling of an attributed string's runs (Apple's Foundation declares it; swift-foundation
+/// keeps it to Apple platforms).
+public struct InlinePresentationIntent: OptionSet, Hashable, Codable, Sendable {
+    public let rawValue: UInt
+    public init(rawValue: UInt) { self.rawValue = rawValue }
+    public static let emphasized = InlinePresentationIntent(rawValue: 1 << 0)
+    public static let stronglyEmphasized = InlinePresentationIntent(rawValue: 1 << 1)
+    public static let code = InlinePresentationIntent(rawValue: 1 << 2)
+    public static let strikethrough = InlinePresentationIntent(rawValue: 1 << 5)
+    public static let softBreak = InlinePresentationIntent(rawValue: 1 << 6)
+    public static let lineBreak = InlinePresentationIntent(rawValue: 1 << 7)
+    public static let inlineHTML = InlinePresentationIntent(rawValue: 1 << 8)
+    public static let blockHTML = InlinePresentationIntent(rawValue: 1 << 9)
+}
+
+extension AttributeScopes {
+    /// Foundation attributes Apple's scope has and swift-foundation's lacks (`run.inlinePresentationIntent`).
+    public struct PortableFoundationAttributes: AttributeScope {
+        public enum InlinePresentationIntentAttribute: CodableAttributedStringKey {
+            public typealias Value = InlinePresentationIntent
+            public static let name = "NSInlinePresentationIntent"
+        }
+        public let inlinePresentationIntent: InlinePresentationIntentAttribute
+    }
+}
+
+extension AttributeDynamicLookup {
+    public subscript<T: AttributedStringKey>(dynamicMember keyPath: KeyPath<AttributeScopes.PortableFoundationAttributes, T>) -> T {
+        self[T.self]
+    }
+}
 #endif

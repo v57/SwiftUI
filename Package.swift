@@ -60,7 +60,7 @@ let package = Package(
             ]
         ),
         // Foundation/CoreGraphics types missing from swift-corelibs-foundation (empty on Apple).
-        .target(name: "SwiftUIPortability", dependencies: standIns("CoreTransferable", "UniformTypeIdentifiers")),
+        .target(name: "SwiftUIPortability", dependencies: standIns("CoreGraphics", "CoreTransferable", "UniformTypeIdentifiers")),
         .target(
             name: "_SwiftUICore",
             dependencies: [
@@ -127,6 +127,8 @@ let package = Package(
 
 if standIns {
     package.targets += [
+        // CoreGraphics: geometry, colors, paths, bitmap images and a software-drawn bitmap context.
+        .target(name: "CoreGraphics"),
         .target(name: "UniformTypeIdentifiers"),
         // CoreTransferable: Transferable and its representations.
         .target(name: "CoreTransferable", dependencies: ["UniformTypeIdentifiers"]),

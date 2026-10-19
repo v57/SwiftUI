@@ -187,3 +187,51 @@ final class ImageLayoutComputer: LayoutComputer {
         return other.intrinsic == intrinsic && other.image.isResizable == image.isResizable && other.textSpacing == textSpacing
     }
 }
+
+#if !canImport(ObjectiveC) && canImport(CoreGraphics)
+// Off Apple platforms a `CGImage` is the CoreGraphics stand-in's bitmap; backends turn it into their own image
+// the first time they draw it.
+extension Image {
+    public init(_ cgImage: CGImage, scale: CGFloat, orientation: Image.Orientation = .up, label: Text) {
+        let size = CGSize(width: CGFloat(cgImage.width) / scale, height: CGFloat(cgImage.height) / scale)
+        self.init(_platformImage: PlatformImage(object: cgImage, size: size))
+    }
+
+    public init(decorative cgImage: CGImage, scale: CGFloat, orientation: Image.Orientation = .up) {
+        let size = CGSize(width: CGFloat(cgImage.width) / scale, height: CGFloat(cgImage.height) / scale)
+        self.init(_platformImage: PlatformImage(object: cgImage, size: size))
+    }
+}
+
+/// How `ImageRenderer` rasterizes a view off Apple platforms: installed by a backend that can draw offscreen.
+public enum _ImageRendering {
+    nonisolated(unsafe) public static var rasterize: (@MainActor (AnyView, ProposedViewSize, CGFloat) -> CGImage?)?
+}
+
+/// Renders a view into an image (laid out at `proposedSize`, rasterized at `scale`). `cgImage` is nil where the
+/// backend can't draw offscreen.
+@MainActor
+public final class ImageRenderer<Content: View>: ObservableObject {
+    public var content: Content
+    public var label: String?
+    public var proposedSize: ProposedViewSize = .unspecified
+    public var scale: CGFloat = 1
+    public var isOpaque = false
+    public var colorMode: ColorRenderingMode = .nonLinear
+
+    public init(content view: Content) {
+        content = view
+    }
+
+    public var cgImage: CGImage? {
+        _ImageRendering.rasterize?(AnyView(content), proposedSize, scale)
+    }
+
+    /// Draws the rendered image into a context the caller provides.
+    public func render(rasterizationScale: CGFloat = 1, renderer: (CGSize, (CGContext) -> Void) -> Void) {
+        guard let image = cgImage else { return }
+        let size = CGSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
+        renderer(size) { context in context.draw(image, in: CGRect(origin: .zero, size: size)) }
+    }
+}
+#endif

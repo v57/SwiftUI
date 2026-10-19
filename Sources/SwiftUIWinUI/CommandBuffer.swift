@@ -342,7 +342,7 @@ extension ByteWriter {
             string(name)
         case .platform(let platform):
             u8(2)
-            i32((platform.object as? WinUIBitmap)?.id ?? -1)
+            i32(WinUIBitmap.bitmap(for: platform.object)?.id ?? -1)
         }
         bool(image.isResizable)
         let tinted = image.renderingMode == nil || image.renderingMode == .monochrome

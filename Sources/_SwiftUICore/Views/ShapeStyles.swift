@@ -297,7 +297,6 @@ public struct StrokeStyle: Hashable, Sendable {
         self.dashPhase = dashPhase
     }
 
-    #if canImport(CoreGraphics)
     /// Apple's spelling: CoreGraphics line caps and joins.
     @_disfavoredOverload
     public init(lineWidth: CGFloat = 1, lineCap: CGLineCap, lineJoin: CGLineJoin = .miter, miterLimit: CGFloat = 10, dash: [CGFloat] = [], dashPhase: CGFloat = 0) {
@@ -305,5 +304,4 @@ public struct StrokeStyle: Hashable, Sendable {
         let join: LineJoin = switch lineJoin { case .round: .round; case .bevel: .bevel; default: .miter }
         self.init(lineWidth: lineWidth, lineCap: cap, lineJoin: join, miterLimit: miterLimit, dash: dash, dashPhase: dashPhase)
     }
-    #endif
 }
