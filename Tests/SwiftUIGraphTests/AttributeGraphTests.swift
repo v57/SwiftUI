@@ -119,6 +119,25 @@ struct AttributeGraphTests {
         #expect(derived.peekValue == 2)
     }
 
+    @Test func attributeDestroyedWhileUpdatingItsInputs() {
+        // A dynamic container's rule can destroy the subgraph of an attribute that is pulling it: the pull
+        // stops there instead of reading inputs the destroyed attribute no longer has.
+        let rootGraph = Subgraph(graph: graph)
+        let trigger = Attribute(rootGraph, value: 0)
+        let other = Attribute(rootGraph, value: 1)
+        let child = rootGraph.makeChild()
+        // The container's value stays the same, so the pull goes on to the next input.
+        let container = Attribute(rootGraph) { () -> Int in
+            if trigger.value > 0 { child.destroy() }
+            return 0
+        }
+        let derived = Attribute(child) { container.value + other.value }
+        #expect(derived.value == 1)
+        trigger.setValue(1)
+        derived.updateIfNeeded()
+        #expect(derived.isDestroyed)
+    }
+
     @Test func existentialFieldComparison() {
         // A struct holding a non-class protocol existential: comparing must open the payload, not
         // re-box the existential (that recursed until the stack overflowed).

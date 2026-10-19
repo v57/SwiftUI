@@ -113,10 +113,15 @@ public class AnyAttribute {
         if !flags.contains(.forced) {
             var stale = false
             var index = 0
-            let count = inputs.count
-            while index < count {
+            while index < inputs.count {
                 let edge = inputs[index]
                 edge.attribute.updateIfNeeded()
+                // Updating an input can destroy this attribute (a dynamic container dropping the subgraph
+                // it is in), which takes its inputs away.
+                if flags.contains(.destroyed) {
+                    flags.remove([.dirty, .forced])
+                    return
+                }
                 if edge.attribute.changedRevision != edge.revision {
                     stale = true
                     break
