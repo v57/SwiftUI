@@ -26,6 +26,15 @@ public enum WinUIAppRunner {
         scenes = descriptions
         AppRuntime.openWindow = { id, value in open(id: id, value: value) }
         AppRuntime.dismissWindow = { id, value in dismiss(id: id, value: value) }
+        AppRuntime.presentWindow = { description, onClose in present(description, onClose: onClose) }
+        AppRuntime.focusPresentedWindow = { token in
+            guard let token = token as? PresentedWindow, let host = host(ofScene: token.scene) else { return }
+            _ = WinUIPlatform.call(host.view, .activate, nil)
+        }
+        AppRuntime.closePresentedWindow = { token in
+            guard let token = token as? PresentedWindow, let host = host(ofScene: token.scene) else { return }
+            sui_close_window(host.view)
+        }
         if ProcessInfo.processInfo.environment["SWIFTUI_PERF"] != nil {
             WinUIPerf.enabled = true
         }
@@ -33,6 +42,37 @@ public enum WinUIAppRunner {
         if let index = descriptions.firstIndex(where: \.opensAtLaunch) ?? (descriptions.isEmpty ? nil : 0) {
             openScene(index, value: nil)
         }
+    }
+
+    /// A window opened from code (`HostingWindow`): its description is a scene appended after the app's.
+    final class PresentedWindow {
+        let scene: Int
+        let onClose: @MainActor () -> Void
+        init(scene: Int, onClose: @escaping @MainActor () -> Void) {
+            self.scene = scene
+            self.onClose = onClose
+        }
+    }
+
+    private static var presented: [Int: PresentedWindow] = [:]
+
+    static func present(_ description: WindowDescription, onClose: @escaping @MainActor () -> Void) -> AnyObject {
+        scenes.append(description)
+        let token = PresentedWindow(scene: scenes.count - 1, onClose: onClose)
+        presented[token.scene] = token
+        openScene(token.scene, value: nil)
+        return token
+    }
+
+    static func host(ofScene scene: Int) -> WinUIHost? {
+        windows.first { $0.scene == scene && $0.host != nil }?.host
+    }
+
+    /// A window is going away: a presented one reports that it closed.
+    static func hostWillClose(_ host: WinUIHost) {
+        guard let scene = windows.first(where: { $0.host === host })?.scene, let token = presented.removeValue(forKey: scene)
+        else { return }
+        token.onClose()
     }
 
     static func openScene(_ index: Int, value: AnyHashable?) {
@@ -115,6 +155,7 @@ public func swiftui_destroy_host(_ handle: Int64) {
     MainActor.assumeIsolated {
         guard let pointer = UnsafeRawPointer(bitPattern: Int(handle)) else { return }
         let host = Unmanaged<WinUIHost>.fromOpaque(pointer)
+        WinUIAppRunner.hostWillClose(host.takeUnretainedValue())
         host.takeUnretainedValue().tearDown()
         host.release()
         WinUIMainLoop.serviceTimers()

@@ -299,6 +299,13 @@ public enum AppRuntime {
     /// Opens a window for an id and/or value (installed by the backend runner).
     public static var openWindow: (@MainActor (String?, AnyHashable?) -> Void)?
     public static var dismissWindow: (@MainActor (String?, AnyHashable?) -> Void)?
+    /// Opens a window from code, outside the scenes (`HostingWindow`), and calls `onClose` once it closes;
+    /// returns the backend's handle for it (installed by backends that run windows).
+    public static var presentWindow: (@MainActor (_ window: WindowDescription, _ onClose: @escaping @MainActor () -> Void) -> AnyObject?)?
+    /// Brings a presented window to the front.
+    public static var focusPresentedWindow: (@MainActor (AnyObject) -> Void)?
+    /// Closes a presented window.
+    public static var closePresentedWindow: (@MainActor (AnyObject) -> Void)?
     /// Starts moving the window under the pointer with the current mouse-down (`WindowDragGesture`).
     public static var performWindowDrag: (@MainActor () -> Void)?
     /// The app's menu bar commands (evaluated by backends when menus open).
@@ -336,4 +343,53 @@ public enum AppRuntime {
 
     /// The running app (kept alive for platforms where `main` returns).
     public private(set) static var app: (any App)?
+}
+
+/// A window code opens itself, with a view in it, outside the app's scenes: what an `NSWindow` with an
+/// `NSHostingView` is on the Mac, on every backend (for libraries that show a window of their own, such as an
+/// updater's). Showing it again brings it to the front.
+///
+/// ```swift
+/// let window = HostingWindow(title: "Software Update", defaultSize: CGSize(width: 560, height: 200)) {
+///     UpdateView(updater: updater)
+/// }
+/// window.onClose = { updater.windowClosed() }
+/// window.show()
+/// ```
+@MainActor
+public final class HostingWindow {
+    public let title: String
+    /// Called once the window closed (by the user or `close()`).
+    public var onClose: (() -> Void)?
+    private let description: WindowDescription
+    private var handle: AnyObject?
+
+    public init<Content: View>(title: String, defaultSize: CGSize? = nil, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        var description = WindowDescription(title: title, defaultSize: defaultSize) { backend in
+            ViewGraph(rootView: _WindowContent(content: content), backend: backend)
+        }
+        description.launchBehavior = .suppressed
+        self.description = description
+    }
+
+    /// Whether the window is open.
+    public var isVisible: Bool { handle != nil }
+
+    /// Opens the window, or brings it to the front.
+    public func show() {
+        if let handle {
+            AppRuntime.focusPresentedWindow?(handle)
+            return
+        }
+        handle = AppRuntime.presentWindow?(description) { [weak self] in
+            guard let self else { return }
+            self.handle = nil
+            self.onClose?()
+        }
+    }
+
+    public func close() {
+        if let handle { AppRuntime.closePresentedWindow?(handle) }
+    }
 }

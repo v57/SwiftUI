@@ -9,6 +9,10 @@
 #if canImport(UniformTypeIdentifiers)
 @_exported import UniformTypeIdentifiers
 #endif
+#if canImport(FoundationNetworking)
+// URLSession and friends: part of Foundation on Apple platforms, their own module elsewhere.
+@_exported import FoundationNetworking
+#endif
 
 #if canImport(AppKit)
 // Like `import SwiftUI` on macOS, `import SwiftUI` also gives access to AppKit.
