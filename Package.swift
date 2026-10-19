@@ -136,6 +136,7 @@ if standIns {
         .library(name: "CryptoKit", targets: ["CryptoKit"]),
         .library(name: "SQLite3", targets: ["SQLite3"]),
         .library(name: "os", targets: ["os"]),
+        .library(name: "Network", targets: ["Network"]),
     ]
     package.targets += [
         // CryptoKit: swift-crypto, plus SecureEnclave keys sealed to the device's user (DPAPI on Windows).
@@ -146,6 +147,14 @@ if standIns {
         .target(name: "SQLite3", dependencies: [.product(name: "SwiftToolchainCSQLite", package: "swift-toolchain-sqlite")]),
         // os: Logger, os_log, signposts (dropped) and OSAllocatedUnfairLock.
         .target(name: "os"),
+        // Network: NWConnection (TCP, TLS through SChannel on Windows, connected UDP) and NWListener on sockets.
+        .target(
+            name: "CNetworkSupport",
+            linkerSettings: [
+                .linkedLibrary("ws2_32", .when(platforms: [.windows])), .linkedLibrary("secur32", .when(platforms: [.windows])),
+                .linkedLibrary("crypt32", .when(platforms: [.windows])),
+            ]),
+        .target(name: "Network", dependencies: ["CNetworkSupport"]),
         // CoreGraphics: geometry, colors, paths, bitmap images and a software-drawn bitmap context.
         .target(name: "CoreGraphics"),
         .target(name: "UniformTypeIdentifiers"),
@@ -159,7 +168,7 @@ if standIns {
         .target(name: "COpenCombineHelpers"),
         .target(name: "Combine", dependencies: ["COpenCombineHelpers"], exclude: ["LICENSE-OpenCombine.txt"],
                 swiftSettings: [.swiftLanguageMode(.v5)]),
-        .testTarget(name: "CompatTests", dependencies: ["UniformTypeIdentifiers", "Combine", "CryptoKit", "SQLite3", "os"]),
+        .testTarget(name: "CompatTests", dependencies: ["UniformTypeIdentifiers", "Combine", "CryptoKit", "SQLite3", "os", "Network"]),
     ]
 }
 
