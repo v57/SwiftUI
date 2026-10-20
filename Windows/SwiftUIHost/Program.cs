@@ -135,6 +135,17 @@ static class HostWindow
         // Within the display's work area (the title bar adds to the content size).
         var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(window.AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Primary).WorkArea;
         var size = new SizeInt32(Math.Min((int)(width * scale), area.Width), Math.Min((int)(height * scale), area.Height));
+        if (view.ContentSize.Width > 0)
+        {
+            // A content-sized window: its client area is the content's ideal size.
+            window.AppWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(view.ContentSize.Width * scale), (int)Math.Ceiling(view.ContentSize.Height * scale)));
+            size = new SizeInt32(Math.Min(window.AppWindow.Size.Width, area.Width), Math.Min(window.AppWindow.Size.Height, area.Height));
+            if (view.FixedSize && window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
+            {
+                presenter.IsResizable = false;
+                presenter.IsMaximizable = false;
+            }
+        }
         window.AppWindow.MoveAndResize(new RectInt32(area.X + (area.Width - size.Width) / 2, area.Y + (area.Height - size.Height) / 2, size.Width, size.Height));
         window.Activate();
     }

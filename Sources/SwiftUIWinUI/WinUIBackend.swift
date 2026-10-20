@@ -347,6 +347,8 @@ enum WinUIPlatform {
         case setMenuBar
         /// Shows a file picker (WinUIFileDialogs' encoding); returns nil if it can't.
         case fileDialog
+        /// The window's chrome and size from its scene, before it opens (`WinUIHost.configureWindow`).
+        case configureWindow
     }
 
     @MainActor

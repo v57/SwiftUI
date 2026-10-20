@@ -214,7 +214,14 @@ sealed class HostView
 
     const int PlatformOpenUrl = 1, PlatformHaptic = 2, PlatformShare = 3, PlatformCopy = 4, PlatformPaste = 5,
         PlatformControlMetrics = 6, PlatformImageSize = 7, PlatformShowKeyboard = 8, PlatformHideKeyboard = 9,
-        PlatformSetTitle = 10, PlatformSetToolbar = 11, PlatformActivate = 12, PlatformSetMenuBar = 13, PlatformFileDialog = 14;
+        PlatformSetTitle = 10, PlatformSetToolbar = 11, PlatformActivate = 12, PlatformSetMenuBar = 13, PlatformFileDialog = 14,
+        PlatformConfigureWindow = 15;
+
+    /// From the scene (`PlatformConfigureWindow`, before the window opens): no menu bar row (a hidden or plain
+    /// title bar), the content size to open at (epx; 0: the default size), and whether the size is fixed.
+    public bool HidesMenuBar { get; private set; }
+    public Windows.Foundation.Size ContentSize { get; private set; }
+    public bool FixedSize { get; private set; }
 
     /// Copies text to the clipboard. Flush keeps it after the app exits. While another process (e.g. a
     /// clipboard manager or a VM's clipboard sync) has the clipboard open, retries every 50 ms.
@@ -277,6 +284,18 @@ sealed class HostView
             case PlatformSetMenuBar:
                 SetMenuBar(argument ?? "");
                 return null;
+            case PlatformConfigureWindow:
+            {
+                var f = (argument ?? "").Split(',');
+                if (f.Length < 4) return null;
+                double Number(string text) => double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : -1;
+                HidesMenuBar = f[0] == "1";
+                var (w, h) = (Number(f[1]), Number(f[2]));
+                ContentSize = w > 0 && h > 0 ? new Windows.Foundation.Size(w, h) : default;
+                FixedSize = f[3] == "1";
+                if (HidesMenuBar) menuBar.Visibility = Visibility.Collapsed;
+                return null;
+            }
             case PlatformFileDialog:
                 _ = ShowFileDialog(argument ?? "");
                 return "1";
@@ -400,7 +419,7 @@ sealed class HostView
             }
             parent.Add(item);
         }
-        menuBar.Visibility = menuBar.Items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        menuBar.Visibility = menuBar.Items.Count > 0 && !HidesMenuBar ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // MARK: File dialogs

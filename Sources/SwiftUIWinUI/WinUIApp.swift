@@ -132,6 +132,7 @@ public enum WinUIAppRunner {
         let value = pendingValues.removeValue(forKey: valueID)
         let description = scenes[index]
         let host = WinUIHost(view: view) { backend in description.makeGraphForValue(backend, value) }
+        host.configureWindow(description)
         windows.append(OpenWindow(host: host, scene: index, value: value))
         return host
     }

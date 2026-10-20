@@ -34,6 +34,25 @@ final class WinUIHost {
         menuBar.refresh()
     }
 
+    /// Before the window opens: a hidden or plain title bar has no menu bar row (the Mac's menus are the
+    /// app's, not the window's), and a content-sized window (`windowResizability(.contentSize)`, a utility
+    /// window) opens at its content's ideal size, fixed when the content can't grow. Encoded "hidesMenuBar,
+    /// width, height, fixed" (epx; -1: the host's default size).
+    func configureWindow(_ description: WindowDescription) {
+        let hidesMenuBar = description.kind == .hiddenTitleBar || description.kind == .plain
+        var size = CGSize(width: -1, height: -1)
+        var fixed = false
+        if description.defaultSize == nil, description.kind == .utility || description.resizability == .contentSize {
+            let ideal = graph.sizeThatFits(.unspecified)
+            let maximum = graph.sizeThatFits(ProposedViewSize(width: .infinity, height: .infinity))
+            size = CGSize(width: ideal.width.rounded(.up), height: ideal.height.rounded(.up))
+            fixed = description.resizability == .contentSize && maximum.width <= ideal.width + 0.5
+                && maximum.height <= ideal.height + 0.5
+        }
+        let fields = [hidesMenuBar ? "1" : "0", "\(Float(size.width))", "\(Float(size.height))", fixed ? "1" : "0"]
+        _ = WinUIPlatform.call(view, .configureWindow, fields.joined(separator: ","))
+    }
+
     private var tornDown = false
 
     func tearDown() {
