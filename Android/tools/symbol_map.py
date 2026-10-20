@@ -124,6 +124,8 @@ M = {
     "square.and.line.vertical.and.square": "compare", "rectangle.and.pencil.and.ellipsis": "edit_note",
     "rectangle.portrait.and.arrow.right": "logout", "rectangle.portrait.and.arrow.forward": "logout",
     "arrow.right.square": "logout", "person.crop.circle.badge.checkmark": "how_to_reg",
+    "arrow.triangle.branch": "call_split", "arrow.triangle.merge": "merge", "arrow.uturn.left": "undo", "character.cursor.ibeam": "text_fields", "cylinder": "database", "exclamationmark": "priority_high",
+    "exclamationmark.arrow.triangle.2.circlepath": "sync_problem", "gauge.medium": "speed", "swift": "code", "testtube.2": "science", "text.quote": "format_quote", "button.horizontal": "smart_button", "menubar.rectangle": "menu", "plusminus": "exposure",
 }
 
 def main():
