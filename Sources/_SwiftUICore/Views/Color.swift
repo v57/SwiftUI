@@ -101,8 +101,13 @@ public struct Color: Hashable, Sendable, CustomStringConvertible {
         case let .dynamic(light, dark): return environment.colorScheme == .dark ? dark : light
         case .accent:
             // The system accent is gray in inactive windows (explicit tints keep their color).
-            if environment.tint == nil, !environment.appearsActive { return inactiveAccent.resolve(in: environment) }
-            return (environment.tint ?? .blue).resolve(in: environment)
+            guard let tint = environment.tint else {
+                return environment.appearsActive ? Color.blue.resolve(in: environment) : inactiveAccent.resolve(in: environment)
+            }
+            // A tint made from the accent (`.tint(.accentColor)`) means the system accent underneath.
+            var untinted = environment
+            untinted.tint = nil
+            return tint.resolve(in: untinted)
         case let .opacity(base, opacity):
             var resolved = resolve(base, environment)
             resolved.opacity *= Float(opacity)
@@ -358,6 +363,13 @@ public struct BackgroundStyle: ShapeStyle, Hashable {
     }
 }
 
+/// Placeholder text: the foreground at the tertiary level.
+public struct PlaceholderTextShapeStyle: ShapeStyle, Hashable {
+    public init() {}
+    public func _resolvePaint(in environment: EnvironmentValues) -> ResolvedPaint { HierarchicalShapeStyle.tertiary._resolvePaint(in: environment) }
+}
+
+extension ShapeStyle where Self == PlaceholderTextShapeStyle { public static var placeholder: PlaceholderTextShapeStyle { .init() } }
 extension ShapeStyle where Self == SeparatorShapeStyle { public static var separator: SeparatorShapeStyle { .init() } }
 extension ShapeStyle where Self == BackgroundStyle { public static var background: BackgroundStyle { .init() } }
 

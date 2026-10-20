@@ -89,8 +89,8 @@ public struct TimelineView<Schedule: TimelineSchedule, Content: View>: View {
 
 // MARK: - Canvas
 
-/// Immediate-mode drawing recorded as commands and replayed by the backend.
-@MainActor
+/// Immediate-mode drawing recorded as commands and replayed by the backend. Not isolated, as in SwiftUI: a
+/// canvas's renderer may draw from a nonisolated context.
 public struct GraphicsContext {
     public enum Shading {
         case color(Color)
@@ -109,7 +109,7 @@ public struct GraphicsContext {
     let recorder: DrawingRecorder
     var transform = CGAffineTransform.identity
     public var opacity: Double = 1
-    let environment: EnvironmentValues
+    public let environment: EnvironmentValues
 
     public mutating func translateBy(x: CGFloat, y: CGFloat) { transform = transform.translatedBy(x: x, y: y) }
     public mutating func scaleBy(x: CGFloat, y: CGFloat) { transform = transform.scaledBy(x: x, y: y) }
@@ -143,8 +143,7 @@ public struct GraphicsContext {
     }
 }
 
-@MainActor
-final class DrawingRecorder {
+final class DrawingRecorder: @unchecked Sendable {
     var commands: [DrawCommand] = []
 }
 
@@ -581,6 +580,12 @@ public struct SceneStorage<Value>: DynamicProperty {
     public init(wrappedValue: Value, _ key: String) {
         self.key = key
         self.defaultValue = wrappedValue
+    }
+
+    /// An optional value that starts as `nil`.
+    public init(_ key: String) where Value: ExpressibleByNilLiteral {
+        self.key = key
+        self.defaultValue = nil
     }
 
     public var wrappedValue: Value {
