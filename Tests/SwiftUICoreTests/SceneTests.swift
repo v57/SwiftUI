@@ -133,3 +133,30 @@ struct WindowConfigurationTests {
         #expect(configuration.isToolbarHidden == true)
     }
 }
+
+@MainActor
+struct WindowValueTests {
+    struct Window: View {
+        @Binding var name: String?
+        var body: some View {
+            Button(name ?? "welcome") { name = "project" }
+        }
+    }
+
+    /// A window presenting a value that sets it (Welcome becoming a project's window) shows the new value.
+    @Test func settingTheValueUpdatesTheWindow() {
+        var windows: [WindowDescription] = []
+        WindowGroup(id: "w", for: String.self) { $name in Window(name: $name) }._collectWindows(into: &windows)
+        let scene = windows[0]
+        let host = TestHost(graph: { backend in scene.makeGraphForValue(backend, nil) })
+        host.flush()
+        #expect(host.view(withText: "welcome") != nil)
+        host.tap("welcome")
+        host.flush()
+        #expect(host.view(withText: "project") != nil)
+        // A later update keeps it.
+        host.resize(to: CGSize(width: 300, height: 300))
+        host.flush()
+        #expect(host.view(withText: "project") != nil)
+    }
+}

@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 #if canImport(CoreGraphics)
 import CoreGraphics
 #endif
@@ -103,42 +104,43 @@ public enum WindowKind: Hashable, Sendable { case standard, hiddenTitleBar, plai
 public struct WindowGroup<Content: View>: Scene {
     let title: String
     let id: String?
-    let content: (AnyHashable?) -> Content
+    /// Makes a window's content from its presented value, once per window.
+    let content: (AnyHashable?) -> () -> Content
     let valueType: Any.Type?
     var defaultSize: CGSize?
 
     public init(@ViewBuilder content: @escaping () -> Content) {
         self.title = ""
         self.id = nil
-        self.content = { _ in content() }
+        self.content = { _ in content }
         self.valueType = nil
     }
 
     @_disfavoredOverload public init<S: StringProtocol>(_ title: S, @ViewBuilder content: @escaping () -> Content) {
         self.title = String(title)
         self.id = nil
-        self.content = { _ in content() }
+        self.content = { _ in content }
         self.valueType = nil
     }
 
     public init(_ titleKey: LocalizedStringKey, @ViewBuilder content: @escaping () -> Content) {
         self.title = titleKey.key
         self.id = nil
-        self.content = { _ in content() }
+        self.content = { _ in content }
         self.valueType = nil
     }
 
     @_disfavoredOverload public init<S: StringProtocol>(_ title: S, id: String, @ViewBuilder content: @escaping () -> Content) {
         self.title = String(title)
         self.id = id
-        self.content = { _ in content() }
+        self.content = { _ in content }
         self.valueType = nil
     }
 
     public init(id: String, @ViewBuilder content: @escaping () -> Content) {
         self.title = ""
         self.id = id
-        self.content = { _ in content() }
+        self.content = { _ in content }
         self.valueType = nil
     }
 
@@ -148,8 +150,9 @@ public struct WindowGroup<Content: View>: Scene {
         self.id = id
         self.valueType = D.self
         self.content = { value in
+            // One box per window: its binding outlives body updates, and setting it updates the window.
             let box = _WindowValueBox(value: value?.base as? D)
-            return content(Binding(get: { box.value }, set: { box.value = $0 }))
+            return { content(Binding(get: { box.value }, set: { box.value = $0 })) }
         }
     }
 
@@ -163,7 +166,7 @@ public struct WindowGroup<Content: View>: Scene {
         let content = self.content
         var description = WindowDescription(title: title, defaultSize: defaultSize) { backend, value in
             // Evaluated inside a body so reads in the scene's content closure are tracked.
-            ViewGraph(rootView: _WindowContent(content: { content(value) }), backend: backend)
+            ViewGraph(rootView: _WindowContent(content: content(value)), backend: backend)
         }
         description.id = id
         description.valueType = valueType
@@ -179,8 +182,8 @@ public struct WindowGroup<Content: View>: Scene {
     }
 }
 
-/// A window's presented value (`WindowGroup(for:)`).
-@MainActor
+/// A window's presented value (`WindowGroup(for:)`), observed by the window's views.
+@MainActor @Observable
 final class _WindowValueBox<D> {
     var value: D?
     init(value: D?) { self.value = value }
