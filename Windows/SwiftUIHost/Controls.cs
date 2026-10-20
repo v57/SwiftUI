@@ -318,7 +318,7 @@ sealed class TextFieldNode : NodeView
         r.U8(); // autocapitalization
         var selectionStart = r.I32();
         var selectionLength = r.I32();
-        tracksSelection = selectionStart >= 0;
+        tracksSelection = (flags & 64) != 0;
         var enabled = (flags & 1) != 0;
         var secure = (flags & 2) != 0;
         multiline = (flags & 4) != 0 || (flags & 32) != 0;

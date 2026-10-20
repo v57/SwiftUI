@@ -763,6 +763,7 @@ struct _TextInput: View {
             case nil: break
             }
             #endif
+            resolved.tracksSelection = field.selection != nil
             if let selection = field.selection?.wrappedValue, case .selection(let range) = selection.indices {
                 let text = field.text.wrappedValue
                 if let lower = range.lowerBound.samePosition(in: text.utf16), let upper = range.upperBound.samePosition(in: text.utf16) {

@@ -191,7 +191,7 @@ open class NSFileCoordinator: NSObject, @unchecked Sendable {
         byAccessor writer: (URL) -> Void
     ) {
         writer(url)
-        wrote()
+        wrote([url])
     }
 
     open func coordinate(
@@ -200,7 +200,7 @@ open class NSFileCoordinator: NSObject, @unchecked Sendable {
         byAccessor readerWriter: (URL, URL) -> Void
     ) {
         readerWriter(readingURL, writingURL)
-        wrote()
+        wrote([writingURL])
     }
 
     open func coordinate(
@@ -209,16 +209,17 @@ open class NSFileCoordinator: NSObject, @unchecked Sendable {
         byAccessor writer: (URL, URL) -> Void
     ) {
         writer(url1, url2)
-        wrote()
+        wrote([url1, url2])
     }
 
     open func item(at oldURL: URL, willMoveTo newURL: URL) {}
     open func item(at oldURL: URL, didMoveTo newURL: URL) {}
     open func cancel() {}
 
-    /// The writer's own presenter doesn't hear about its change (as on Apple platforms).
-    private func wrote() {
-        if let filePresenter { PresenterWatcher.shared.resnapshot(filePresenter) }
+    /// The other presenters of the items hear about the change at once, as on Apple platforms (the watcher would
+    /// tell them a second later, by when the writer may have moved on); the writer's own presenter doesn't.
+    private func wrote(_ urls: [URL]) {
+        PresenterWatcher.shared.wrote(urls, by: filePresenter)
     }
 }
 
@@ -255,9 +256,24 @@ final class PresenterWatcher: @unchecked Sendable {
         lock.withLock { _ = watched.removeValue(forKey: ObjectIdentifier(presenter)) }
     }
 
-    func resnapshot(_ presenter: any NSFilePresenter) {
-        let snapshot = Self.snapshot(presenter.presentedItemURL)
-        lock.withLock { watched[ObjectIdentifier(presenter)]?.snapshot = snapshot }
+    /// A coordinated write in this process: presenters of the items (but `writer`) are told now, and every presenter's
+    /// snapshot takes the change in, so the watcher doesn't report it again.
+    func wrote(_ urls: [URL], by writer: (any NSFilePresenter)?) {
+        let paths = urls.map { $0.standardizedFileURL.path }
+        let entries = lock.withLock { watched }
+        for (key, entry) in entries {
+            guard let presenter = entry.presenter else { continue }
+            let snapshot = Self.snapshot(presenter.presentedItemURL)
+            lock.withLock { watched[key]?.snapshot = snapshot }
+            guard presenter !== writer, let root = presenter.presentedItemURL?.standardizedFileURL.path else { continue }
+            let touched = paths.filter { $0 == root || $0.hasPrefix(root.hasSuffix("/") ? root : root + "/") }
+            guard !touched.isEmpty else { continue }
+            nonisolated(unsafe) let target = presenter
+            presenter.presentedItemOperationQueue.addOperation {
+                for path in touched where path != root { target.presentedSubitemDidChange(at: URL(fileURLWithPath: path)) }
+                target.presentedItemDidChange()
+            }
+        }
     }
 
     private func check() {

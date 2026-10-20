@@ -109,7 +109,9 @@ public struct ResolvedTextField: Equatable, Sendable {
     public var keyboardType = 0
     /// `textInputAutocapitalization`: nil default, 0 never, 1 words, 2 sentences, 3 characters.
     public var autocapitalization: Int?
-    /// The selection a `TextEditor(text:selection:)` binding holds, in UTF-16 offsets (nil: the backend's own).
+    /// A `TextEditor(text:selection:)`: the backend reports selection changes (`setSelection`).
+    public var tracksSelection = false
+    /// The selection the binding holds, in UTF-16 offsets (nil: none set).
     public var selection: Range<Int>?
 }
 

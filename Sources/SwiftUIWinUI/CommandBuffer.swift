@@ -251,6 +251,7 @@ extension ByteWriter {
             if field.wantsFocus { flags |= 8 }
             if field.isAutocorrectionDisabled { flags |= 16 }
             if field.wraps { flags |= 32 }
+            if field.tracksSelection { flags |= 64 }
             u8(flags)
             u8(field.style == .plain ? 1 : field.style == .roundedBorder ? 2 : field.style == .squareBorder ? 3 : 0)
             font(field.font)
