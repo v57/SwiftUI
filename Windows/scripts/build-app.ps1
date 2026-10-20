@@ -50,8 +50,11 @@ if ([BitConverter]::ToUInt16($bytes, $optional) -eq 0x20B -and [BitConverter]::T
 
 # The app DLL, other DLLs it built (dynamic dependencies), and the Swift runtime.
 Copy-Item $dll $out -Force
-Get-ChildItem $bin -Filter *.pdb | Copy-Item -Destination $out -Force
-Get-ChildItem $bin -Filter *.dll | Where-Object { $_.Name -ne "$Product.dll" } | Copy-Item -Destination $out -Force
+# Test bundles (`<Target>Tests.dll`) share the bin folder but aren't the app's: left out (Code's came to 250 MB).
+$isTest = { $_.BaseName -like "*Tests" }
+Get-ChildItem $out -File -ErrorAction SilentlyContinue | Where-Object $isTest | Remove-Item -Force
+Get-ChildItem $bin -Filter *.pdb | Where-Object { -not (& $isTest) } | Copy-Item -Destination $out -Force
+Get-ChildItem $bin -Filter *.dll | Where-Object { $_.Name -ne "$Product.dll" -and -not (& $isTest) } | Copy-Item -Destination $out -Force
 $swiftCore = (Get-Command swiftCore.dll -ErrorAction SilentlyContinue).Source
 if ($swiftCore) {
     Get-ChildItem (Split-Path $swiftCore) -Filter *.dll | Copy-Item -Destination $out -Force
