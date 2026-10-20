@@ -34,7 +34,13 @@ final class WinUIHost {
             self?.hidesTitle = toolbar.chrome.removesTitle
         }
         graph.onWindowConfigurationChange = { [weak self] configuration in
-            self?.toolbarBackgroundHidden = configuration.isToolbarBackgroundHidden == true
+            guard let self else { return }
+            toolbarBackgroundHidden = configuration.isToolbarBackgroundHidden == true
+            let scheme = configuration.preferredColorScheme.map { $0 == .dark ? "dark" : "light" } ?? ""
+            if scheme != windowColorScheme {
+                windowColorScheme = scheme
+                _ = WinUIPlatform.call(view, .setColorScheme, scheme)
+            }
         }
         graph.onNavigationTitleChange = { [weak self] title in
             guard let self else { return }
@@ -73,6 +79,8 @@ final class WinUIHost {
     /// `toolbar(removing: .title)`: the row shows no window title.
     private var hidesTitle = false { didSet { updateTitleBar() } }
     private var titleBarDescription = ""
+    /// The appearance asked of the window ("dark", "light", "": the system's).
+    private var windowColorScheme = ""
     /// The row as the host lays it out (epx), for `windowTitleBarArea`.
     private var titleBarArea = WindowTitleBarArea(height: 0, leading: 0, trailing: 0)
 

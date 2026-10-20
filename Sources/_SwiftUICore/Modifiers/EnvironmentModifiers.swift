@@ -179,8 +179,11 @@ extension View {
         transformEnvironment(\.isEnabled) { enabled in enabled = enabled && !disabled }
     }
 
+    /// The scheme of the window this view is in, as Apple's: the host applies it to the whole window (title bar,
+    /// controls) where it can (`WindowConfiguration.preferredColorScheme`); the views inside take it at once.
     public func preferredColorScheme(_ colorScheme: ColorScheme?) -> some View {
         transformEnvironment(\.colorScheme) { scheme in if let colorScheme { scheme = colorScheme } }
+            ._windowConfiguration { if let colorScheme { $0.preferredColorScheme = colorScheme } }
     }
 }
 

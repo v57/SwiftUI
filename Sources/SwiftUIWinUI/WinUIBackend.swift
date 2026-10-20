@@ -351,6 +351,8 @@ enum WinUIPlatform {
         case configureWindow
         /// Content in the title bar row ("contentInTitleBar,hidesTitle").
         case setTitleBar
+        /// The window's appearance (`preferredColorScheme`): "dark", "light", or empty for the system's.
+        case setColorScheme
     }
 
     @MainActor

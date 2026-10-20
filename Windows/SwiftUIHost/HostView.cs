@@ -81,7 +81,6 @@ sealed class HostView
         titleBand.SizeChanged += (_, _) => UpdateTitleBar();
         titleLeading.SizeChanged += (_, _) => UpdateTitleBar();
         commandBar.SizeChanged += (_, _) => UpdateTitleBar();
-        RootElement.Background = Theme.Brush("SolidBackgroundFillColorBaseBrush", 0xFFF3F3F3);
         content.Children.Add(measuring);
         content.Children.Add(focusSink);
         content.Children.Add(root.Element);
@@ -118,6 +117,9 @@ sealed class HostView
     void UpdateTheme()
     {
         var dark = RootElement.ActualTheme == ElementTheme.Dark;
+        // The window's ground (Fluent's base background), in the window's own theme: an app's preferred scheme can
+        // differ from the system's, which the app's resources follow.
+        RootElement.Background = Colors.Brush(dark ? 0xFF202020u : 0xFFF3F3F3u);
         // The caption buttons draw over the row: their glyphs follow the theme.
         var titleBar = Window.AppWindow.TitleBar;
         titleBar.ButtonForegroundColor = dark ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black;
@@ -328,7 +330,7 @@ sealed class HostView
     const int PlatformOpenUrl = 1, PlatformHaptic = 2, PlatformShare = 3, PlatformCopy = 4, PlatformPaste = 5,
         PlatformControlMetrics = 6, PlatformImageSize = 7, PlatformShowKeyboard = 8, PlatformHideKeyboard = 9,
         PlatformSetTitle = 10, PlatformSetToolbar = 11, PlatformActivate = 12, PlatformSetMenuBar = 13, PlatformFileDialog = 14,
-        PlatformConfigureWindow = 15, PlatformSetTitleBar = 16;
+        PlatformConfigureWindow = 15, PlatformSetTitleBar = 16, PlatformSetColorScheme = 17;
 
     /// From the scene (`PlatformConfigureWindow`, before the window opens): no menu bar row (a hidden or plain
     /// title bar), the content size to open at (epx; 0: the default size), and whether the size is fixed.
@@ -391,6 +393,11 @@ sealed class HostView
                 return null;
             case PlatformSetTitleBar:
                 SetTitleBar(argument ?? "");
+                return null;
+            case PlatformSetColorScheme:
+                // `preferredColorScheme`: the whole window (its controls and caption buttons) takes the appearance,
+                // which comes back to SwiftUI as the window's scheme (UpdateTheme).
+                RootElement.RequestedTheme = argument switch { "dark" => ElementTheme.Dark, "light" => ElementTheme.Light, _ => ElementTheme.Default };
                 return null;
             case PlatformSetToolbar:
                 SetToolbar(argument ?? "");

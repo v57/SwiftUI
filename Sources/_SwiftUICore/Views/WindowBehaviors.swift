@@ -31,6 +31,8 @@ public struct WindowConfiguration: Equatable, @unchecked Sendable {
     public var isToolbarHidden: Bool?
     public var isToolbarBackgroundHidden: Bool?
     public var toolbarColorScheme: ColorScheme?
+    /// `preferredColorScheme`: the window's appearance (nil: the system's).
+    public var preferredColorScheme: ColorScheme?
     public var allowsActivationEvents: Bool?
     public var resizeObservers: [WindowResizeObserver] = []
     /// `dismissalConfirmationDialog` in a window: closing asks first.
@@ -44,6 +46,7 @@ public struct WindowConfiguration: Equatable, @unchecked Sendable {
             && lhs.resizeAnchor == rhs.resizeAnchor && lhs.representedURL == rhs.representedURL && lhs.background == rhs.background
             && lhs.isToolbarHidden == rhs.isToolbarHidden && lhs.isToolbarBackgroundHidden == rhs.isToolbarBackgroundHidden
             && lhs.toolbarColorScheme == rhs.toolbarColorScheme && lhs.allowsActivationEvents == rhs.allowsActivationEvents
+            && lhs.preferredColorScheme == rhs.preferredColorScheme
             && lhs.resizeObservers.map(ObjectIdentifier.init) == rhs.resizeObservers.map(ObjectIdentifier.init)
             && (lhs.closeConfirmation == nil) == (rhs.closeConfirmation == nil)
     }
@@ -61,6 +64,7 @@ public struct WindowConfiguration: Equatable, @unchecked Sendable {
         isToolbarHidden = next.isToolbarHidden ?? isToolbarHidden
         isToolbarBackgroundHidden = next.isToolbarBackgroundHidden ?? isToolbarBackgroundHidden
         toolbarColorScheme = next.toolbarColorScheme ?? toolbarColorScheme
+        preferredColorScheme = next.preferredColorScheme ?? preferredColorScheme
         allowsActivationEvents = next.allowsActivationEvents ?? allowsActivationEvents
         resizeObservers += next.resizeObservers
         closeConfirmation = next.closeConfirmation ?? closeConfirmation
