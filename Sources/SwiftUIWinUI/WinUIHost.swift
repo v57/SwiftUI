@@ -29,7 +29,13 @@ final class WinUIHost {
         graph.clock = { WinUIPerf.now() }
         graph.onNeedsUpdate = { [weak self] in self?.scheduleUpdate() }
         graph.onNeedsAnimationFrame = { [weak self] in self?.requestFrame() }
-        graph.onToolbarChange = { [weak self] toolbar in self?.updateToolbar(toolbar) }
+        graph.onToolbarChange = { [weak self] toolbar in
+            self?.updateToolbar(toolbar)
+            self?.hidesTitle = toolbar.chrome.removesTitle
+        }
+        graph.onWindowConfigurationChange = { [weak self] configuration in
+            self?.toolbarBackgroundHidden = configuration.isToolbarBackgroundHidden == true
+        }
         graph.onNavigationTitleChange = { [weak self] title in
             guard let self else { return }
             // nil: the scene's title.
@@ -44,6 +50,7 @@ final class WinUIHost {
     /// width, height, fixed" (epx; -1: the host's default size).
     func configureWindow(_ description: WindowDescription) {
         let hidesMenuBar = description.kind == .hiddenTitleBar || description.kind == .plain
+        hiddenTitleBar = description.kind == .hiddenTitleBar
         var size = CGSize(width: -1, height: -1)
         var fixed = false
         if description.defaultSize == nil, description.kind == .utility || description.resizability == .contentSize {
@@ -55,6 +62,28 @@ final class WinUIHost {
         }
         let fields = [hidesMenuBar ? "1" : "0", "\(Float(size.width))", "\(Float(size.height))", fixed ? "1" : "0"]
         _ = WinUIPlatform.call(view, .configureWindow, fields.joined(separator: ","))
+    }
+
+    // MARK: Title bar
+
+    /// The content runs up into the title bar row, as on the Mac: a hidden title bar, or the window toolbar's background
+    /// hidden (`toolbarBackgroundVisibility(.hidden, for: .windowToolbar)`), where the content draws its own bar.
+    private var hiddenTitleBar = false { didSet { updateTitleBar() } }
+    private var toolbarBackgroundHidden = false { didSet { updateTitleBar() } }
+    /// `toolbar(removing: .title)`: the row shows no window title.
+    private var hidesTitle = false { didSet { updateTitleBar() } }
+    private var titleBarDescription = ""
+    /// The row as the host lays it out (epx), for `windowTitleBarArea`.
+    private var titleBarArea = WindowTitleBarArea(height: 0, leading: 0, trailing: 0)
+
+    private func updateTitleBar() {
+        let contentInTitleBar = hiddenTitleBar || toolbarBackgroundHidden
+        let description = (contentInTitleBar ? "1" : "0") + "," + (hidesTitle ? "1" : "0")
+        guard description != titleBarDescription else { return }
+        titleBarDescription = description
+        _ = WinUIPlatform.call(view, .setTitleBar, description)
+        let area = contentInTitleBar ? titleBarArea : nil
+        graph.setEnvironment { $0.windowTitleBarArea = area }
     }
 
     private var tornDown = false
@@ -100,6 +129,19 @@ final class WinUIHost {
             let scheme: ColorScheme = value == 1 ? .dark : .light
             graph.setEnvironment { $0.colorScheme = scheme }
             AppRuntime.environment.colorScheme = scheme
+        case 2, 3, 4:
+            // The title bar row (epx): its height, the menu bar's reach from the leading edge, the caption buttons'
+            // (and the toolbar's) from the trailing one.
+            let points = CGFloat(value)
+            switch key {
+            case 2: titleBarArea.height = points
+            case 3: titleBarArea.leading = points
+            default: titleBarArea.trailing = points
+            }
+            if titleBarDescription.hasPrefix("1") {
+                let area = titleBarArea
+                graph.setEnvironment { $0.windowTitleBarArea = area }
+            }
         default:
             break
         }

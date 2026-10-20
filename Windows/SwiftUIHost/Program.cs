@@ -140,8 +140,10 @@ static class HostWindow
         var size = new SizeInt32(Math.Min((int)(width * scale), area.Width), Math.Min((int)(height * scale), area.Height));
         if (view.ContentSize.Width > 0)
         {
-            // A content-sized window: its client area is the content's ideal size.
-            window.AppWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(view.ContentSize.Width * scale), (int)Math.Ceiling(view.ContentSize.Height * scale)));
+            // A content-sized window: its client area is the content's ideal size, and the title bar row above it
+            // unless the content runs up into it.
+            var contentHeight = view.ContentSize.Height + (view.ContentInTitleBar ? 0 : HostView.TitleBarHeight);
+            window.AppWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(view.ContentSize.Width * scale), (int)Math.Ceiling(contentHeight * scale)));
             size = new SizeInt32(Math.Min(window.AppWindow.Size.Width, area.Width), Math.Min(window.AppWindow.Size.Height, area.Height));
             if (view.FixedSize && window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
             {

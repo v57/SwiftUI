@@ -287,6 +287,8 @@ sealed class EffectNode : NodeView
 
     /// <summary>Has a primary (tap) action.</summary>
     public bool Tappable => (touchFlags & FlagPrimary) != 0;
+    /// Takes clicks or drags (not just hover): in the title bar row it keeps them from moving the window.
+    public bool HandlesPointer => (touchFlags & ~FlagHover) != 0;
 
     Point Local(PointerRoutedEventArgs e) => e.GetCurrentPoint(Element).Position;
     static double Time(PointerRoutedEventArgs e) => e.GetCurrentPoint(null).Timestamp / 1e6;

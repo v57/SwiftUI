@@ -13,6 +13,7 @@ using Windows.System;
 using Windows.UI.Core;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml.Input;
+using Windows.Graphics;
 
 
 namespace SwiftUIHost;
@@ -33,8 +34,19 @@ sealed class HostView
     readonly Canvas measuring = new() { Opacity = 0, IsHitTestVisible = false };
     /// Holds keyboard focus when no control has it (key events only reach a focused element).
     readonly ContentControl focusSink = new() { IsTabStop = true, Width = 1, Height = 1, Opacity = 0, UseSystemFocusVisuals = false, IsHitTestVisible = false };
-    readonly CommandBar commandBar = new() { DefaultLabelPosition = CommandBarDefaultLabelPosition.Right, Visibility = Visibility.Collapsed, IsDynamicOverflowEnabled = true };
-    readonly MenuBar menuBar = new() { Visibility = Visibility.Collapsed };
+    readonly CommandBar commandBar = new() { DefaultLabelPosition = CommandBarDefaultLabelPosition.Right, Visibility = Visibility.Collapsed, IsDynamicOverflowEnabled = true, Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+    readonly MenuBar menuBar = new() { Visibility = Visibility.Collapsed, VerticalAlignment = VerticalAlignment.Center };
+    /// The title bar row, as on the Mac: the window's content reaches into the title bar, and the row holds the menu
+    /// bar, the window's title and the toolbar's buttons beside the caption buttons. The content starts under it, or
+    /// runs up into it (`SetTitleBar`: a hidden title bar, a hidden toolbar background) and draws its own bar there.
+    readonly Grid titleBand = new() { Height = TitleBarHeight };
+    readonly StackPanel titleLeading = new() { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left };
+    readonly TextBlock titleText = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 12, 0), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
+    public const double TitleBarHeight = 48;
+    bool contentInTitleBar, hidesTitle;
+    /// The content runs up into the title bar row (else it starts under the row).
+    public bool ContentInTitleBar => contentInTitleBar;
+    List<RectInt32> passthrough = new();
     readonly ContainerNode root;
     readonly Dictionary<int, NodeView> nodes = new();
     readonly string sceneTitle;
@@ -50,14 +62,25 @@ sealed class HostView
         nodes[0] = root;
 
         RootElement.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        RootElement.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         RootElement.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        Grid.SetRow(menuBar, 0);
-        Grid.SetRow(commandBar, 1);
-        Grid.SetRow(content, 2);
-        RootElement.Children.Add(menuBar);
-        RootElement.Children.Add(commandBar);
+        titleLeading.Children.Add(menuBar);
+        titleLeading.Children.Add(titleText);
+        titleBand.Children.Add(titleLeading);
+        titleBand.Children.Add(commandBar);
+        Grid.SetRow(titleBand, 0);
+        Grid.SetRow(content, 1);
+        // The row over the content: where the content runs up into it, the menu and buttons stay on top.
         RootElement.Children.Add(content);
+        RootElement.Children.Add(titleBand);
+        Window.ExtendsContentIntoTitleBar = true;
+        var titleBar = Window.AppWindow.TitleBar;
+        titleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Tall;
+        titleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
+        titleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+        titleText.Text = window.Title;
+        titleBand.SizeChanged += (_, _) => UpdateTitleBar();
+        titleLeading.SizeChanged += (_, _) => UpdateTitleBar();
+        commandBar.SizeChanged += (_, _) => UpdateTitleBar();
         RootElement.Background = Theme.Brush("SolidBackgroundFillColorBaseBrush", 0xFFF3F3F3);
         content.Children.Add(measuring);
         content.Children.Add(focusSink);
@@ -94,7 +117,96 @@ sealed class HostView
 
     void UpdateTheme()
     {
-        if (Handle != 0) Native.SetEnvironment(Handle, EnvironmentKeys.ColorScheme, RootElement.ActualTheme == ElementTheme.Dark ? 1 : 0);
+        var dark = RootElement.ActualTheme == ElementTheme.Dark;
+        // The caption buttons draw over the row: their glyphs follow the theme.
+        var titleBar = Window.AppWindow.TitleBar;
+        titleBar.ButtonForegroundColor = dark ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black;
+        titleBar.ButtonInactiveForegroundColor = Windows.UI.Color.FromArgb(0xFF, 0x99, 0x99, 0x99);
+        titleBar.ButtonHoverBackgroundColor = dark ? Windows.UI.Color.FromArgb(0x18, 0xFF, 0xFF, 0xFF) : Windows.UI.Color.FromArgb(0x10, 0, 0, 0);
+        titleBar.ButtonHoverForegroundColor = titleBar.ButtonForegroundColor;
+        titleBar.ButtonPressedBackgroundColor = dark ? Windows.UI.Color.FromArgb(0x28, 0xFF, 0xFF, 0xFF) : Windows.UI.Color.FromArgb(0x20, 0, 0, 0);
+        if (Handle != 0) Native.SetEnvironment(Handle, EnvironmentKeys.ColorScheme, dark ? 1 : 0);
+    }
+
+    // MARK: Title bar row
+
+    /// From the window's root (`PlatformSetTitleBar`): whether its content runs up into the row, and whether the row
+    /// shows the window's title.
+    void SetTitleBar(string description)
+    {
+        var f = description.Split(',');
+        contentInTitleBar = f.Length > 0 && f[0] == "1";
+        hidesTitle = f.Length > 1 && f[1] == "1";
+        Grid.SetRow(content, contentInTitleBar ? 0 : 1);
+        Grid.SetRowSpan(content, contentInTitleBar ? 2 : 1);
+        titleText.Visibility = hidesTitle ? Visibility.Collapsed : Visibility.Visible;
+        UpdateTitleBar();
+    }
+
+    /// The caption buttons' room, the toolbar beside them, and what the row tells SwiftUI: its height and how far
+    /// the menu bar (and title) and the buttons reach in, so a bar the content draws there keeps clear of them.
+    void UpdateTitleBar()
+    {
+        var scale = RootElement.XamlRoot?.RasterizationScale ?? 1;
+        var titleBar = Window.AppWindow.TitleBar;
+        var captions = titleBar.RightInset / scale;
+        commandBar.Margin = new Thickness(0, 0, captions, 0);
+        titleLeading.Margin = new Thickness(titleBar.LeftInset / scale, 0, 0, 0);
+        if (Handle != 0)
+        {
+            var leading = titleBar.LeftInset / scale + (menuBar.Visibility == Visibility.Visible ? menuBar.ActualWidth : 0)
+                + (titleText.Visibility == Visibility.Visible && titleText.Text.Length > 0 ? titleText.ActualWidth + 24 : 0);
+            var trailing = captions + (commandBar.Visibility == Visibility.Visible ? commandBar.ActualWidth : 0);
+            Native.SetEnvironment(Handle, EnvironmentKeys.TitleBarHeight, (int)TitleBarHeight);
+            Native.SetEnvironment(Handle, EnvironmentKeys.TitleBarLeading, (int)Math.Ceiling(leading));
+            Native.SetEnvironment(Handle, EnvironmentKeys.TitleBarTrailing, (int)Math.Ceiling(trailing));
+        }
+        UpdateDragRegions();
+    }
+
+    /// The row drags the window, except where something takes the click: the menu bar, the toolbar, and (where the
+    /// content runs up into the row) its buttons, fields and tap targets.
+    void UpdateDragRegions()
+    {
+        if (RootElement.XamlRoot == null) return;
+        var scale = RootElement.XamlRoot.RasterizationScale;
+        var rects = new List<RectInt32>();
+        void Add(double x, double y, double w, double h)
+        {
+            var bottom = Math.Min(y + h, TitleBarHeight);
+            if (w <= 0 || bottom <= y) return;
+            rects.Add(new RectInt32((int)Math.Floor(x * scale), (int)Math.Floor(y * scale), (int)Math.Ceiling(w * scale), (int)Math.Ceiling((bottom - y) * scale)));
+        }
+        void AddElement(FrameworkElement element)
+        {
+            if (element.Visibility != Visibility.Visible || element.ActualWidth <= 0) return;
+            var origin = element.TransformToVisual(RootElement).TransformPoint(new Windows.Foundation.Point(0, 0));
+            Add(origin.X, origin.Y, element.ActualWidth, element.ActualHeight);
+        }
+        AddElement(menuBar);
+        AddElement(commandBar);
+        if (contentInTitleBar)
+        {
+            void Visit(NodeView node, double ox, double oy)
+            {
+                var x = ox + node.FrameX;
+                var y = oy + node.FrameY;
+                if (node != root && y >= TitleBarHeight) return;
+                if (node is ButtonNode or ToggleNode or TextFieldNode or SliderNode or DatePickerNode or ColorWellNode or PlatformViewNode
+                    || node is EffectNode { HandlesPointer: true })
+                {
+                    Add(x, y, node.FrameWidth, node.FrameHeight);
+                    return;
+                }
+                foreach (var child in node.ChildContainer.Children)
+                    if (child is FrameworkElement { Tag: NodeView n }) Visit(n, node == root ? 0 : x, node == root ? 0 : y);
+            }
+            Visit(root, 0, 0);
+        }
+        if (rects.Count == passthrough.Count && rects.Zip(passthrough).All(p => p.First.Equals(p.Second))) return;
+        passthrough = rects;
+        var source = Microsoft.UI.Input.InputNonClientPointerSource.GetForWindowId(Window.AppWindow.Id);
+        source.SetRegionRects(Microsoft.UI.Input.NonClientRegionKind.Passthrough, rects.ToArray());
     }
 
     void UpdateSize()
@@ -188,6 +300,7 @@ sealed class HostView
                     throw new InvalidOperationException($"Unknown render command {op}");
             }
         }
+        if (contentInTitleBar) UpdateDragRegions();
     }
 
     // MARK: Frames
@@ -215,7 +328,7 @@ sealed class HostView
     const int PlatformOpenUrl = 1, PlatformHaptic = 2, PlatformShare = 3, PlatformCopy = 4, PlatformPaste = 5,
         PlatformControlMetrics = 6, PlatformImageSize = 7, PlatformShowKeyboard = 8, PlatformHideKeyboard = 9,
         PlatformSetTitle = 10, PlatformSetToolbar = 11, PlatformActivate = 12, PlatformSetMenuBar = 13, PlatformFileDialog = 14,
-        PlatformConfigureWindow = 15;
+        PlatformConfigureWindow = 15, PlatformSetTitleBar = 16;
 
     /// From the scene (`PlatformConfigureWindow`, before the window opens): no menu bar row (a hidden or plain
     /// title bar), the content size to open at (epx; 0: the default size), and whether the size is fixed.
@@ -274,6 +387,10 @@ sealed class HostView
                 return Images.Size(argument ?? "");
             case PlatformSetTitle:
                 Window.Title = argument ?? (sceneTitle.Length > 0 ? sceneTitle : HostWindow.AppName);
+                titleText.Text = Window.Title;
+                return null;
+            case PlatformSetTitleBar:
+                SetTitleBar(argument ?? "");
                 return null;
             case PlatformSetToolbar:
                 SetToolbar(argument ?? "");

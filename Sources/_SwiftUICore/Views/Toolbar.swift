@@ -86,13 +86,15 @@ public struct NavigationChrome: Equatable {
     public var wantsToolbar = false
     /// `toolbar(removing: .sidebarToggle)`.
     public var removesSidebarToggle = false
+    /// `toolbar(removing: .title)`: the window shows no title of its own (the content names itself).
+    public var removesTitle = false
 
     public init() {}
 
     public static func == (lhs: NavigationChrome, rhs: NavigationChrome) -> Bool {
         lhs.hasSidebar == rhs.hasSidebar && lhs.sidebarWidth == rhs.sidebarWidth && lhs.isSidebarVisible == rhs.isSidebarVisible
             && lhs.wantsToolbar == rhs.wantsToolbar && (lhs.toggleSidebar == nil) == (rhs.toggleSidebar == nil)
-            && lhs.removesSidebarToggle == rhs.removesSidebarToggle
+            && lhs.removesSidebarToggle == rhs.removesSidebarToggle && lhs.removesTitle == rhs.removesTitle
     }
 }
 
@@ -108,6 +110,7 @@ public struct NavigationChromeKey: PreferenceKey {
         }
         value.wantsToolbar = value.wantsToolbar || next.wantsToolbar
         value.removesSidebarToggle = value.removesSidebarToggle || next.removesSidebarToggle
+        value.removesTitle = value.removesTitle || next.removesTitle
     }
 }
 

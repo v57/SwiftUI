@@ -110,6 +110,7 @@ extension View {
     public func toolbar(removing defaultItemKind: ToolbarDefaultItemKind?) -> some View {
         transformPreference(NavigationChromeKey.self) { chrome in
             if defaultItemKind == .sidebarToggle { chrome.removesSidebarToggle = true }
+            if defaultItemKind == .title { chrome.removesTitle = true }
         }
     }
 
@@ -218,4 +219,35 @@ public struct ToolbarDefaultItemKind: Hashable, Sendable {
     public static let sidebarToggle = ToolbarDefaultItemKind(value: 0)
     public static let title = ToolbarDefaultItemKind(value: 1)
     public static let search = ToolbarDefaultItemKind(value: 2)
+}
+
+// MARK: - Title bar area
+
+/// The window's title bar where content runs up into it: its height, and how far the window's own controls reach in
+/// from each edge (on Windows the menu bar at the leading end, the minimize, maximize and close buttons at the
+/// trailing one). A bar drawn in the title bar (`toolbarBackgroundVisibility(.hidden, for: .windowToolbar)`) keeps
+/// clear of them. A v57/SwiftUI addition: nil where the system draws the title bar around the content (the Mac, whose
+/// traffic lights have a fixed place).
+public struct WindowTitleBarArea: Equatable, Sendable {
+    public var height: CGFloat
+    public var leading: CGFloat
+    public var trailing: CGFloat
+
+    public init(height: CGFloat, leading: CGFloat, trailing: CGFloat) {
+        self.height = height
+        self.leading = leading
+        self.trailing = trailing
+    }
+}
+
+private struct WindowTitleBarAreaKey: EnvironmentKey {
+    static let defaultValue: WindowTitleBarArea? = nil
+}
+
+extension EnvironmentValues {
+    /// Where the window's title bar is, when the content runs up into it (see `WindowTitleBarArea`).
+    public var windowTitleBarArea: WindowTitleBarArea? {
+        get { self[WindowTitleBarAreaKey.self] }
+        set { self[WindowTitleBarAreaKey.self] = newValue }
+    }
 }

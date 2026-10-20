@@ -338,4 +338,7 @@ static class Events
 static class EnvironmentKeys
 {
     public const int ColorScheme = 1;
+    /// The title bar row (epx): its height, the menu bar's reach from the leading edge, the caption buttons' and
+    /// the toolbar's from the trailing one.
+    public const int TitleBarHeight = 2, TitleBarLeading = 3, TitleBarTrailing = 4;
 }

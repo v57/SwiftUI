@@ -349,6 +349,8 @@ enum WinUIPlatform {
         case fileDialog
         /// The window's chrome and size from its scene, before it opens (`WinUIHost.configureWindow`).
         case configureWindow
+        /// Content in the title bar row ("contentInTitleBar,hidesTitle").
+        case setTitleBar
     }
 
     @MainActor
