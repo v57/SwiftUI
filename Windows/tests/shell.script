@@ -1,0 +1,9 @@
+# Smoke test for ShellWinUI: launch, past the feature chooser (first launch), run a command in the local terminal.
+wait 10000
+tap Continue
+wait 6000
+keys Get-Location; $PSVersionTable.PSVersion.Major\n
+wait 3000
+screenshot C:\dev\shots\shell.png
+dump C:\dev\shots\shell.txt
+exit

@@ -1,0 +1,25 @@
+# ShellWinUI over SSH: a new SSH connection (password) to Database's test bastion (relayed to 192.168.64.1:2222),
+# then a command in the remote shell. The sidebar's Remote + is at (210, 133) in a fresh window.
+wait 9000
+tapat 210 133
+wait 2000
+fill #1|192.168.64.1
+fill #2|tunnel
+fill #4|2222
+tap SSH Key (Keychain)
+wait 1000
+tap Password
+wait 1000
+fill #5|tunnelpass
+wait 500
+screenshot C:\dev\shots\shell-ssh-form.png
+tap Connect
+wait 6000
+screenshot C:\dev\shots\shell-ssh-1.png
+dump C:\dev\shots\shell-ssh-1.txt
+tap Accept
+wait 5000
+keys uname -a; whoami\n
+wait 3000
+screenshot C:\dev\shots\shell-ssh-2.png
+exit

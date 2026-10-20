@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -156,7 +157,10 @@ static class HostWindow
 /// <summary>
 /// Drives the app for automated checks, one command per line:
 ///   wait &lt;ms&gt; · screenshot &lt;png path&gt; · dump &lt;txt path&gt; · tap &lt;text&gt; (the button or tap target
-///   around a text) · type &lt;text&gt; (into the first text field) · back · log &lt;message&gt; · exit
+///   around a text) · tapat &lt;x&gt; &lt;y&gt; (the tap target at a point, in dump coordinates)
+///   · type &lt;text&gt; (into the first text field) · fill &lt;placeholder&gt;|&lt;text&gt; (into the
+///   field with that placeholder, or #n: the nth field) · keys &lt;text&gt; (key presses to the focused
+///   view, \n for Return) · back · log &lt;message&gt; · exit
 /// </summary>
 static class Script
 {
@@ -188,6 +192,20 @@ static class Script
                         break;
                     case "type":
                         if (view?.FirstTextField() is { } field) view.Event(field.Id, Events.SetText, text: argument);
+                        break;
+                    case "tapat":
+                        var point = argument.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(v => double.Parse(v, CultureInfo.InvariantCulture)).ToArray();
+                        if (view?.TapTarget(point[0], point[1]) is { } hit) view.Event(hit.Id, Events.Primary);
+                        else Console.Error.WriteLine($"[script] tapat: nothing to tap at {argument}");
+                        break;
+                    case "fill":
+                        var bar = argument.IndexOf('|');
+                        if (bar > 0 && view?.TextField(argument[..bar]) is { } target)
+                            view.Event(target.Id, Events.SetText, text: argument[(bar + 1)..]);
+                        else Console.Error.WriteLine($"[script] fill: no text field \"{argument}\"");
+                        break;
+                    case "keys":
+                        view?.SendKeys(argument.Replace("\\n", "\n"));
                         break;
                     case "back":
                         if (view != null) Native.Back(view.Handle);

@@ -327,6 +327,24 @@ sealed class HostView
         else if (code == -2 && phase == 0 && Native.Back(Handle)) e.Handled = true;
     }
 
+    /// Script mode's `keys`: each character as a key press SwiftUI receives (Return for a newline), as typing them
+    /// would send them to the focused view.
+    public void SendKeys(string text)
+    {
+        if (Handle == 0) return;
+        foreach (var rune in text.EnumerateRunes())
+        {
+            var characters = rune.Value == '\n' ? "\r" : rune.ToString();
+            var upper = char.IsUpper(characters, 0);
+            // Letters arrive as the lowercase key with Shift, as the keyboard sends them.
+            var code = rune.Value == '\n' ? -1 : rune.Value == '\t' ? -5 : rune.Value == ' ' ? -6
+                : upper ? Rune.ToLowerInvariant(rune).Value : rune.Value;
+            var modifiers = upper ? 1 : 0;
+            Native.Key(Handle, code, characters, modifiers, 0);
+            Native.Key(Handle, code, characters, modifiers, 2);
+        }
+    }
+
     /// The key's Unicode scalar (lowercase letter / unshifted symbol) or a special key code, and
     /// the characters it types.
     static int KeyCode(VirtualKey key, bool shift, out string characters)
@@ -550,10 +568,37 @@ sealed class HostView
         return lines.ToString();
     }
 
+    /// <summary>The innermost button or tap target at a point (dump coordinates), for script mode's `tapat`.</summary>
+    public NodeView? TapTarget(double px, double py)
+    {
+        NodeView? found = null;
+        void Visit(NodeView node, double ox, double oy)
+        {
+            var x = ox + node.FrameX;
+            var y = oy + node.FrameY;
+            var inside = node == root || (px >= x && py >= y && px < x + node.FrameWidth && py < y + node.FrameHeight);
+            if (!inside) return;
+            if (node is ButtonNode || node is EffectNode { Tappable: true }) found = node;
+            foreach (var child in node.ChildContainer.Children)
+                if (child is FrameworkElement { Tag: NodeView n }) Visit(n, node == root ? 0 : x, node == root ? 0 : y);
+        }
+        Visit(root, 0, 0);
+        return found;
+    }
+
     /// <summary>Text nodes whose text contains `text`.</summary>
     public IEnumerable<NodeView> Find(string text) => nodes.Values.Where(n => n is TextNode && n.Describe().Contains(text, StringComparison.Ordinal));
 
     public NodeView? FirstTextField() => nodes.Values.Where(n => n is TextFieldNode).OrderBy(n => n.Id).FirstOrDefault();
+
+    /// The text field whose placeholder is `placeholder`, or the nth (`#2`: the second, in creation order).
+    public NodeView? TextField(string placeholder)
+    {
+        var fields = nodes.Values.OfType<TextFieldNode>().OrderBy(n => n.Id).ToList();
+        if (placeholder.StartsWith('#') && int.TryParse(placeholder[1..], out var index))
+            return index >= 1 && index <= fields.Count ? fields[index - 1] : null;
+        return fields.FirstOrDefault(n => n.Placeholder == placeholder);
+    }
 
     /// <summary>Renders the window's content to a PNG file.</summary>
     public async Task Screenshot(string path)

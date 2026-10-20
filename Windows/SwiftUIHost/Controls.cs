@@ -244,6 +244,9 @@ sealed class TextFieldNode : NodeView
 
     public TextFieldNode(HostView host, int id) : base(host, id, Kinds.TextField) { }
 
+    /// The field's prompt (its placeholder), for script mode's `fill`.
+    public string Placeholder => textBox?.PlaceholderText ?? passwordBox?.PlaceholderText ?? "";
+
     protected override int FirstNodeChildIndex => 1;
 
     void Make(bool secure)
