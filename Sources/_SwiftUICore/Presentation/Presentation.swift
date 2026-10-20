@@ -22,11 +22,18 @@ final class PresentationEntry {
     let environment: Attribute<EnvironmentValues>
     /// Presenter frame in host coordinates (anchored presentations).
     let anchor: Attribute<ViewGeometry>?
+    /// For a presenter inside another presentation (a picker's menu in a sheet), its frame as of the last update:
+    /// the presentation layer lays out both, so reading `anchor` while placing the menu would be a cycle. Nil until
+    /// the first update has measured it.
+    var deferredAnchor: Attribute<CGRect?>?
     let dismiss: @MainActor () -> Void
     /// The content's `PresentationAppearance` (observed by the chrome): blocks or confirms
     /// interactive dismissal, sets background, corner radius and sizing.
     let appearanceBox = _PresentationAppearanceBox()
     var appearance: PresentationAppearance { appearanceBox.appearance }
+    /// A sheet's toolbar items (`.toolbar` in its content): shown along the sheet's bottom edge, as on macOS,
+    /// rather than in the window's toolbar.
+    let toolbar: Attribute<[ToolbarEntry]>
 
     /// Escape key / click outside: honors `interactiveDismissDisabled` and
     /// `dismissalConfirmationDialog`.
@@ -36,7 +43,8 @@ final class PresentationEntry {
         dismiss()
     }
 
-    init(id: Int, kind: Kind, environment: Attribute<EnvironmentValues>, anchor: Attribute<ViewGeometry>?, dismiss: @escaping @MainActor () -> Void, make: @escaping @MainActor (_ViewInputs) -> _ViewOutputs) {
+    init(id: Int, kind: Kind, subgraph: Subgraph, environment: Attribute<EnvironmentValues>, anchor: Attribute<ViewGeometry>?, dismiss: @escaping @MainActor () -> Void, make: @escaping @MainActor (_ViewInputs) -> _ViewOutputs) {
+        toolbar = Attribute(subgraph, value: [], isEqual: { $0 == $1 })
         self.id = id
         self.kind = kind
         self.environment = environment
@@ -100,7 +108,16 @@ extension _ViewInputs {
             }
             return env
         }
-        let entry = PresentationEntry(id: id, kind: kind, environment: contentEnvironment, anchor: geometry, dismiss: dismiss, make: make)
+        let entry = PresentationEntry(id: id, kind: kind, subgraph: subgraph, environment: contentEnvironment, anchor: geometry, dismiss: dismiss, make: make)
+        if kind == .popover || kind == .menu, AnyAttribute.withoutDependencies({ presenterEnvironment.value.isPresented }) {
+            let deferred = Attribute<CGRect?>(subgraph, value: nil, isEqual: { $0 == $1 })
+            entry.deferredAnchor = deferred
+            let geometry = self.geometry
+            let frame = Attribute<CGRect>(subgraph, isEqual: { $0 == $1 }) { geometry.value.frame }
+            frame.order = depth
+            frame.onChange = { value in host.enqueueAfterUpdate { deferred.setValue(value) } }
+            frame.isEager = true
+        }
         // Observed: `isPresented` often reads a binding into an `@Observable` model (`$model.isShown`), which changes
         // without the presenter's body running again.
         let observer = makeObservedAttribute(subgraph, of: Bool.self, isEqual: { $0 == $1 }) { isPresented() }
@@ -152,7 +169,10 @@ struct _PresentationLayer: View {
                     let chrome = Attribute<_PresentationChrome>(placement.subgraph) {
                         // Only anchored presentations read the presenter's frame (a presenter
                         // inside another presentation lives in this layer).
-                        _PresentationChrome(entry: entry, anchor: entry.kind == .popover || entry.kind == .menu ? entry.anchor?.value.frame : nil)
+                        _PresentationChrome(
+                            entry: entry,
+                            anchor: entry.kind == .popover || entry.kind == .menu
+                                ? entry.deferredAnchor.map { $0.value } ?? entry.anchor?.value.frame : nil)
                     }
                     return _PresentationChrome._makeView(view: _GraphValue(chrome), inputs: inputs)
                 }))
@@ -170,12 +190,25 @@ struct _PresentationContent: View {
 
     static func _makeView(view: _GraphValue<Self>, inputs: _ViewInputs) -> _ViewOutputs {
         let entry = AnyAttribute.withoutDependencies { view.attribute.value.entry }
-        let outputs = entry.make(inputs.requesting(PresentationAppearanceKey.self))
+        var contentInputs = inputs.requesting(PresentationAppearanceKey.self)
+        if entry.kind == .sheet { contentInputs = contentInputs.requesting(ToolbarItemsKey.self) }
+        var outputs = entry.make(contentInputs)
+        let host = inputs.host
         if let appearance = outputs.preferences.attribute(for: PresentationAppearanceKey.self, in: inputs.subgraph) {
-            let host = inputs.host
             let observer = Attribute<PresentationAppearance>(inputs.subgraph, isEqual: { $0 == $1 }) { appearance.value }
             observer.onChange = { value in host.enqueueAfterUpdate { entry.appearanceBox.appearance = value } }
             observer.isEager = true
+        }
+        if entry.kind == .sheet {
+            // The sheet shows its own toolbar items (`_SheetActionBar`); the window's toolbar doesn't get them.
+            if let items = outputs.preferences.attribute(for: ToolbarItemsKey.self, in: inputs.subgraph) {
+                let observer = Attribute<[ToolbarEntry]>(inputs.subgraph, isEqual: { $0 == $1 }) { items.value }
+                observer.onChange = { value in host.enqueueAfterUpdate { entry.toolbar.setValue(value) } }
+                observer.isEager = true
+            }
+            if inputs.requests(ToolbarItemsKey.self) {
+                outputs.preferences[ToolbarItemsKey.self] = Attribute(inputs.subgraph, value: [], isEqual: { $0 == $1 })
+            }
         }
         return outputs
     }
@@ -197,9 +230,13 @@ struct _PresentationChrome: View {
         let radius = appearance.cornerRadius ?? 10
         switch entry.kind {
         case .sheet:
+            let actions = entry.toolbar.value.filter { !$0.isSidebarItem && $0.search == nil && $0.placement != .principal }
             ZStack {
                 Color.black.opacity(0.25)
-                _PresentationContent(entry: entry)
+                VStack(spacing: 0) {
+                    _PresentationContent(entry: entry)
+                    if !actions.isEmpty { _SheetActionBar(items: actions) }
+                }
                     .frame(minWidth: appearance.sizing.minimumSize.width, idealWidth: appearance.sizing.idealSize?.width,
                            minHeight: appearance.sizing.minimumSize.height, idealHeight: appearance.sizing.idealSize?.height)
                     .background(RoundedRectangle(cornerRadius: radius).fill(appearance.background ?? AnyShapeStyle(Color.controlBackground)))
@@ -219,6 +256,8 @@ struct _PresentationChrome: View {
                     .transition(.scale(scale: 0.9).combined(with: .opacity))
             }
         case .popover, .menu:
+            // A deferred anchor not measured yet: shown once it is (the next update), not at the corner.
+            let measuring = anchor == nil && entry.deferredAnchor != nil
             _AnchoredLayout(anchor: anchor ?? .zero, gap: entry.kind == .menu ? 2 : 8) {
                 Color.clear.contentShape(Rectangle()).onTapGesture { entry.interactiveDismiss() }
                 _PresentationContent(entry: entry)
@@ -226,8 +265,33 @@ struct _PresentationChrome: View {
                     .background(RoundedRectangle(cornerRadius: 8).fill(Color.controlBackground))
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.separator))
                     .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
+                    .opacity(measuring ? 0 : 1)
             }
         }
+    }
+}
+
+/// A sheet's toolbar items along its bottom edge, as macOS shows them: other items leading, then destructive,
+/// cancellation and confirmation actions trailing.
+struct _SheetActionBar: View {
+    let items: [ToolbarEntry]
+
+    private static let trailing: [ToolbarItemPlacement] = [.destructiveAction, .cancellationAction, .confirmationAction]
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(items.filter { !Self.trailing.contains($0.placement) }, id: \.id) { item($0) }
+            Spacer(minLength: 0)
+            ForEach(Self.trailing, id: \.self) { placement in
+                ForEach(items.filter { $0.placement == placement }, id: \.id) { item($0) }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+    }
+
+    private func item(_ entry: ToolbarEntry) -> some View {
+        entry.content.environment(\.self, entry.environment)
     }
 }
 

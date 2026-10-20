@@ -31,6 +31,72 @@ struct PresentationFeatureTests {
         #expect(options?.defaultDirectory?.path == "/tmp" && options?.showsHiddenFiles == true)
     }
 
+    /// A sheet's toolbar actions show along its bottom edge (as on macOS), follow its state, and stay out of the
+    /// window's toolbar.
+    @Test func sheetToolbarActionsShowInTheSheet() {
+        struct Screen: View {
+            @State var shown = true
+            var body: some View {
+                Text("base")
+                    .toolbar { Button("Window Item") {} }
+                    .sheet(isPresented: $shown) { Form() }
+            }
+        }
+        struct Form: View {
+            @Environment(\.dismiss) private var dismiss
+            @State private var name = ""
+            var body: some View {
+                NavigationStack {
+                    TextField("Name", text: $name)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                            ToolbarItem(placement: .confirmationAction) { Button(name.isEmpty ? "Add" : "Add \(name)") {} }
+                        }
+                }
+            }
+        }
+        let host = TestHost(Screen())
+        host.flush()
+        #expect(host.texts.contains("Cancel") && host.texts.contains("Add"))
+        #expect(host.graph.windowToolbar.items.map(\.button?.title) == ["Window Item"])
+        host.tap("Cancel")
+        host.finishAnimations()
+        #expect(!host.texts.contains("Cancel"))
+    }
+
+    /// A menu opened in a sheet with toolbar actions (a picker in a form) picks its option: the presentation layer
+    /// lays out both, so the menu reads its presenter's frame from the last update (it was a cycle).
+    @Test func pickerMenuInASheetWithActions() {
+        struct Screen: View {
+            @State var shown = true
+            var body: some View {
+                Text("base").sheet(isPresented: $shown) { Form() }
+            }
+        }
+        struct Form: View {
+            @State private var method = "Key"
+            var body: some View {
+                NavigationStack {
+                    Picker("Method", selection: $method) {
+                        Text("Key").tag("Key")
+                        Text("Password").tag("Password")
+                    }
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) { Button("Connect \(method)") {} }
+                    }
+                }
+            }
+        }
+        let host = TestHost(Screen())
+        host.flush()
+        #expect(host.texts.contains("Connect Key"))
+        host.tap("Key")
+        host.finishAnimations()
+        host.tap("Password")
+        host.finishAnimations()
+        #expect(host.texts.contains("Connect Password"))
+    }
+
     @Test func dialogIconSeverityAndSuppression() {
         struct Screen: View {
             @State var shown = true
