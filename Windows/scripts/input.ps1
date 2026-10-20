@@ -5,7 +5,8 @@
 # -Shot saves a screenshot after the input from this same process (starting another one would
 # take the focus and close open menus/flyouts).
 # -Steps runs several actions in one process (e.g. open a menu, then click an item):
-#   "click:146,72; wait:400; click:204,175; keys:^i; text:hi" (move:x,y moves the pointer without clicking)
+#   "click:146,72; wait:400; click:204,175; keys:^i; text:hi" (move:x,y moves the pointer without clicking;
+#   scroll:x,y,n turns the wheel n notches down there, up when negative)
 # Usage: input.ps1 -X 120 -Y 80 [-Right] | -Keys "^i" | -Text "hello" | -Steps "..." [-Process name] [-DelayMs 300] [-Shot path.png]
 param([int]$X = -1, [int]$Y = -1, [switch]$Right, [string]$Keys, [string]$Text, [string]$Steps, [string]$Process = "SwiftUIHost", [int]$DelayMs = 300, [string]$Shot)
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
@@ -42,6 +43,12 @@ foreach ($step in ($Steps -split ";")) {
         "move" { $p = $value -split ","; [Input]::SetCursorPos([int]$p[0], [int]$p[1]) | Out-Null }
         "click" { $p = $value -split ","; [Input]::Click([int]$p[0], [int]$p[1], $false) }
         "rclick" { $p = $value -split ","; [Input]::Click([int]$p[0], [int]$p[1], $true) }
+        "scroll" {
+            $p = $value -split ","
+            [Input]::SetCursorPos([int]$p[0], [int]$p[1]) | Out-Null
+            $delta = [BitConverter]::ToUInt32([BitConverter]::GetBytes([int](-120 * [int]$p[2])), 0)
+            [Input]::mouse_event(0x0800, 0, 0, $delta, [UIntPtr]::Zero)
+        }
         "keys" { [System.Windows.Forms.SendKeys]::SendWait($value) }
         "text" { [System.Windows.Forms.SendKeys]::SendWait(($value -replace '([+^%~(){}\[\]])', '{$1}')) }
         "wait" { Start-Sleep -Milliseconds ([int]$value) }
