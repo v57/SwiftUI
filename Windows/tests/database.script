@@ -1,0 +1,7 @@
+# Smoke test for DatabaseWinUI. Launch with --data-dir <folder with connections.json and secrets-dev.json> and the
+# app's debug arguments (--select "Shop/postgres/public/orders", --new-query "…" --run): it loads, then this
+# captures the window.
+wait 12000
+screenshot C:\dev\shots\db.png
+dump C:\dev\shots\db.txt
+exit

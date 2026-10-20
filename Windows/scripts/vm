@@ -51,7 +51,7 @@ case "$1" in
     src="$(cd "$2" && pwd)"; name="${3:-$(basename "$src")}"
     TAR="$(mktemp -t swiftui-repo).tar"
     COPYFILE_DISABLE=1 tar -h -C "$src" --exclude .build --exclude .git --exclude .claude --exclude '.build-*' \
-      --exclude ./build --exclude DerivedData --exclude '*.xcodeproj' --exclude '*.xcworkspace' --exclude .swiftpm \
+      --exclude ./build --exclude DerivedData --exclude xcuserdata --exclude '*.xcodeproj/project.xcworkspace' --exclude '*.xcworkspace' --exclude .swiftpm \
       --exclude '*/bin' --exclude '*/obj' --exclude .DS_Store -cf "$TAR" .
     copy "$TAR" "$USER_NAME@$(vm_ip):C:/dev/$name-src.tar"
     rm -f "$TAR"
