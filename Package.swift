@@ -140,6 +140,9 @@ if standIns {
         .library(name: "os", targets: ["os"]),
         .library(name: "Network", targets: ["Network"]),
         .library(name: "SwiftData", targets: ["SwiftData"]),
+        // Foundation APIs swift-corelibs-foundation lacks (trash, bookmarks, file coordination, Markdown
+        // attributed strings, …), for libraries that don't import SwiftUI.
+        .library(name: "SwiftUIPortability", targets: ["SwiftUIPortability"]),
     ]
     package.targets += [
         // CryptoKit: swift-crypto, plus SecureEnclave keys sealed to the device's user (DPAPI on Windows).

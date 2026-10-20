@@ -12,6 +12,19 @@ extension URL {
     public func stopAccessingSecurityScopedResource() {}
 }
 
+extension NSString {
+    /// The path with the home folder written as `~` (as on Apple platforms; Windows separators are compared as `/`).
+    public var abbreviatingWithTildeInPath: String {
+        let path = (self as String).replacingOccurrences(of: "\\", with: "/")
+        var home = FileManager.default.homeDirectoryForCurrentUser.path.replacingOccurrences(of: "\\", with: "/")
+        while home.count > 1, home.hasSuffix("/") { home.removeLast() }
+        guard !home.isEmpty, home != "/" else { return self as String }
+        if path.lowercased() == home.lowercased() { return "~" }
+        guard path.lowercased().hasPrefix(home.lowercased() + "/") else { return self as String }
+        return "~" + path.dropFirst(home.count)
+    }
+}
+
 extension FileManager {
     /// Moves an item to the Trash (the Recycle Bin on Windows; the freedesktop.org trash elsewhere).
     public func trashItem(at url: URL, resultingItemURL outResultingURL: UnsafeMutablePointer<NSURL?>?) throws {
