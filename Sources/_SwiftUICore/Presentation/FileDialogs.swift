@@ -186,3 +186,24 @@ extension View {
     }
 }
 #endif
+
+/// File panels for code outside a view (a menu command's helper, a library), shown by the most recently
+/// created window's backend: what `NSOpenPanel` and `NSSavePanel` are on the Mac (SwiftUI extension).
+///
+/// ```swift
+/// var request = FileDialogRequest(kind: .open, contentTypes: [UTType.folder.identifier], canChooseDirectories: true)
+/// request.options.confirmationLabel = "Add"
+/// if let folders = await FileDialogs.present(request) { add(folders) }
+/// ```
+@MainActor
+public enum FileDialogs {
+    weak static var backend: (any RenderBackend)?
+
+    /// The chosen URLs, or nil when cancelled (or no window can show a panel).
+    public static func present(_ request: FileDialogRequest) async -> [URL]? {
+        guard let backend else { return nil }
+        return await withCheckedContinuation { continuation in
+            backend.presentFileDialog(request) { continuation.resume(returning: $0) }
+        }
+    }
+}
