@@ -49,13 +49,29 @@ public struct WindowDescription {
     public var valueType: Any.Type?
     /// A single-instance window (`Window`).
     public var isSingle = false
-    /// Builds the window's view graph on the given backend (`value`: the presented value).
-    public let makeGraphForValue: @MainActor (any RenderBackend, AnyHashable?) -> ViewGraph
+    private let buildGraph: @MainActor (any RenderBackend, AnyHashable?) -> ViewGraph
+    /// Scene-level environment (`Scene.environment`, `Scene.modelContainer`), applied in order.
+    public var environmentTransforms: [@MainActor (inout EnvironmentValues) -> Void] = []
 
     public init(title: String, defaultSize: CGSize?, makeGraph: @escaping @MainActor (any RenderBackend, AnyHashable?) -> ViewGraph) {
         self.title = title
         self.defaultSize = defaultSize
-        self.makeGraphForValue = makeGraph
+        self.buildGraph = makeGraph
+    }
+
+    /// Builds the window's view graph on the given backend (`value`: the presented value).
+    public var makeGraphForValue: @MainActor (any RenderBackend, AnyHashable?) -> ViewGraph {
+        let build = buildGraph
+        let transforms = environmentTransforms
+        return { backend, value in
+            let graph = build(backend, value)
+            if !transforms.isEmpty {
+                graph.setEnvironment { values in
+                    for transform in transforms { transform(&values) }
+                }
+            }
+            return graph
+        }
     }
 
     public init(title: String, defaultSize: CGSize?, makeGraph: @escaping @MainActor (any RenderBackend) -> ViewGraph) {

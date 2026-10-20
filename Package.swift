@@ -91,7 +91,7 @@ let package = Package(
         // A Swift Charts subset (import SwiftUICharts instead of Charts).
         .target(name: "SwiftUICharts", dependencies: ["_SwiftUICore"]),
         // SwiftData's SwiftUI integration (@Query, .modelContainer) on Apple platforms.
-        .target(name: "SwiftUISwiftData", dependencies: ["_SwiftUICore"] + standIns("SwiftData")),
+        .target(name: "SwiftUISwiftData", dependencies: ["_SwiftUICore", "SwiftUIMacros"] + standIns("SwiftData")),
         .target(
             name: "SwiftUI",
             dependencies: [

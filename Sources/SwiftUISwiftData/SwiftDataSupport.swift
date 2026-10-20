@@ -31,7 +31,7 @@ extension View {
     }
 
     public func modelContainer(for modelTypes: [any PersistentModel.Type], inMemory: Bool = false, isAutosaveEnabled: Bool = true, isUndoEnabled: Bool = false) -> some View {
-        let container = Self.makeContainer(modelTypes, inMemory: inMemory)
+        let container = makeContainer(modelTypes, inMemory: inMemory)
         container.mainContext.autosaveEnabled = isAutosaveEnabled
         return modelContainer(container)
     }
@@ -43,13 +43,29 @@ extension View {
     public func modelContext(_ context: ModelContext) -> some View {
         environment(\.modelContext, context)
     }
+}
 
-    fileprivate static func makeContainer(_ types: [any PersistentModel.Type], inMemory: Bool) -> ModelContainer {
-        do {
-            return try ModelContainer(for: Schema(types), configurations: ModelConfiguration(isStoredInMemoryOnly: inMemory))
-        } catch {
-            fatalError("Failed to create ModelContainer: \(error)")
-        }
+extension Scene {
+    public func modelContainer(_ container: ModelContainer) -> some Scene {
+        environment(\.modelContext, container.mainContext)
+    }
+
+    public func modelContainer(for modelTypes: [any PersistentModel.Type], inMemory: Bool = false, isAutosaveEnabled: Bool = true, isUndoEnabled: Bool = false) -> some Scene {
+        let container = makeContainer(modelTypes, inMemory: inMemory)
+        container.mainContext.autosaveEnabled = isAutosaveEnabled
+        return modelContainer(container)
+    }
+
+    public func modelContainer(for modelType: any PersistentModel.Type, inMemory: Bool = false, isAutosaveEnabled: Bool = true, isUndoEnabled: Bool = false) -> some Scene {
+        modelContainer(for: [modelType], inMemory: inMemory, isAutosaveEnabled: isAutosaveEnabled, isUndoEnabled: isUndoEnabled)
+    }
+}
+
+private func makeContainer(_ types: [any PersistentModel.Type], inMemory: Bool) -> ModelContainer {
+    do {
+        return try ModelContainer(for: Schema(types), configurations: ModelConfiguration(isStoredInMemoryOnly: inMemory))
+    } catch {
+        fatalError("Failed to create ModelContainer: \(error)")
     }
 }
 
@@ -74,14 +90,24 @@ final class QueryChangeObserver {
     isolated deinit { tokens.forEach(NotificationCenter.default.removeObserver) }
 }
 
-/// Mirrors SwiftData's `@Query`: fetches models matching a descriptor from the environment's
-/// model context and re-fetches when the context changes.
-@MainActor @propertyWrapper
+/// Mirrors SwiftData's `Query`: fetches models matching a descriptor from the environment's
+/// model context and re-fetches when the context changes. `@Query` is the macro below, which stores one.
+@MainActor
 public struct Query<Element: PersistentModel, Result>: DynamicProperty {
     @Environment(\.modelContext) private var modelContext
     @State private var observer = QueryChangeObserver()
     private let descriptor: FetchDescriptor<Element>
 
+    /// `Result` is `[Element]` (SwiftData's only result type).
+    public var wrappedValue: Result {
+        observer.observe(modelContext)
+        _ = observer.revision
+        let models = (try? modelContext.fetch(descriptor)) ?? []
+        return models as! Result
+    }
+}
+
+extension Query where Result == [Element] {
     public init(_ descriptor: FetchDescriptor<Element>) {
         self.descriptor = descriptor
     }
@@ -97,13 +123,17 @@ public struct Query<Element: PersistentModel, Result>: DynamicProperty {
     public init<Value: Comparable>(filter: Predicate<Element>? = nil, sort keyPath: KeyPath<Element, Value?> & Sendable, order: SortOrder = .forward) {
         self.descriptor = FetchDescriptor(predicate: filter, sortBy: [SortDescriptor(keyPath, order: order)])
     }
-
-    /// `Result` is `[Element]` (SwiftData's only result type).
-    public var wrappedValue: Result {
-        observer.observe(modelContext)
-        _ = observer.revision
-        let models = (try? modelContext.fetch(descriptor)) ?? []
-        return models as! Result
-    }
 }
+
+/// `@Query var items: [Item]`: a property reading a stored `Query<Item, [Item]>`, as SwiftData declares it.
+@attached(accessor) @attached(peer, names: prefixed(_))
+public macro Query() = #externalMacro(module: "SwiftUIMacros", type: "QueryMacro")
+@attached(accessor) @attached(peer, names: prefixed(_))
+public macro Query<Element: PersistentModel>(_ descriptor: FetchDescriptor<Element>) = #externalMacro(module: "SwiftUIMacros", type: "QueryMacro")
+@attached(accessor) @attached(peer, names: prefixed(_))
+public macro Query<Element: PersistentModel>(filter: Predicate<Element>? = nil, sort: [SortDescriptor<Element>] = []) = #externalMacro(module: "SwiftUIMacros", type: "QueryMacro")
+@attached(accessor) @attached(peer, names: prefixed(_))
+public macro Query<Element: PersistentModel, Value: Comparable>(filter: Predicate<Element>? = nil, sort keyPath: KeyPath<Element, Value>, order: SortOrder = .forward) = #externalMacro(module: "SwiftUIMacros", type: "QueryMacro")
+@attached(accessor) @attached(peer, names: prefixed(_))
+public macro Query<Element: PersistentModel, Value: Comparable>(filter: Predicate<Element>? = nil, sort keyPath: KeyPath<Element, Value?>, order: SortOrder = .forward) = #externalMacro(module: "SwiftUIMacros", type: "QueryMacro")
 #endif

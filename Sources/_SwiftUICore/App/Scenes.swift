@@ -94,6 +94,12 @@ extension Scene {
         }
     }
     public func defaultSize(width: CGFloat, height: CGFloat) -> some Scene { defaultSize(CGSize(width: width, height: height)) }
+    /// Sets an environment value for every window of the scene.
+    public func environment<V>(_ keyPath: WritableKeyPath<EnvironmentValues, V>, _ value: V) -> some Scene {
+        _ModifiedScene(base: self) { window in
+            window.environmentTransforms.append { $0[keyPath: keyPath] = value }
+        }
+    }
     /// Keyboard shortcut of the window's "Show" command (Window menu).
     public func keyboardShortcut(_ key: KeyEquivalent, modifiers: EventModifiers = .command) -> some Scene { self }
 }
