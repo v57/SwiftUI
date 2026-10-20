@@ -17,8 +17,12 @@ public final class ChildProcess: @unchecked Sendable {
     private var exited = false
 
     /// Starts `executable` with `arguments` in `directory`. `environment` replaces the app's; with `input` the
-    /// child's standard input is a pipe (`write`, `closeInput`), else NUL.
-    public init(executable: URL, arguments: [String], directory: URL?, environment: [String: String], input: Bool = false) throws {
+    /// child's standard input is a pipe (`write`, `closeInput`), else NUL. Arguments are quoted the way the C
+    /// runtime splits them; `verbatimArguments` joins them as they are (`cmd /s /c "…"` reads its own).
+    public init(
+        executable: URL, arguments: [String], directory: URL?, environment: [String: String], input: Bool = false,
+        verbatimArguments: Bool = false
+    ) throws {
         var security = SECURITY_ATTRIBUTES(nLength: DWORD(MemoryLayout<SECURITY_ATTRIBUTES>.size), lpSecurityDescriptor: nil, bInheritHandle: true)
         func pipe() throws -> (read: HANDLE, write: HANDLE) {
             var read: HANDLE?, write: HANDLE?
@@ -71,13 +75,17 @@ public final class ChildProcess: @unchecked Sendable {
         startup.StartupInfo.hStdError = err.write
         startup.lpAttributeList = list
 
-        var commandLine = Array(([executable.path] + arguments).map(Self.quote).joined(separator: " ").utf16) + [0]
+        // Native paths: cmd reads the "/" of "C:/Windows/System32/cmd.exe" in its own command line as switches.
+        let program = Self.nativePath(executable.path)
+        let line = ([Self.quote(program)] + (verbatimArguments ? arguments : arguments.map(Self.quote)))
+            .joined(separator: " ")
+        var commandLine = Array(line.utf16) + [0]
         let block = environment.sorted { $0.key.uppercased() < $1.key.uppercased() }.map { "\($0.key)=\($0.value)" }
         var environmentBlock = Array((block.joined(separator: "\0") + "\0\0").utf16)
         var info = PROCESS_INFORMATION()
         let flags = DWORD(CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW)
-        let created = executable.path.withCString(encodedAs: UTF16.self) { application in
-            (directory?.path ?? FileManager.default.currentDirectoryPath).withCString(encodedAs: UTF16.self) { cwd in
+        let created = program.withCString(encodedAs: UTF16.self) { application in
+            Self.nativePath(directory?.path ?? FileManager.default.currentDirectoryPath).withCString(encodedAs: UTF16.self) { cwd in
                 environmentBlock.withUnsafeMutableBufferPointer { env in
                     withUnsafeMutablePointer(to: &startup.StartupInfo) { startupInfo in
                         CreateProcessW(application, &commandLine, nil, nil, true, flags, env.baseAddress, cwd, startupInfo, &info)
@@ -89,7 +97,7 @@ public final class ChildProcess: @unchecked Sendable {
             CloseHandle(out.read)
             CloseHandle(err.read)
             if let input = self.input { CloseHandle(input) }
-            throw Self.lastError("CreateProcess \(executable.path)")
+            throw Self.lastError("CreateProcess \(program)")
         }
         CloseHandle(info.hThread)
         process = info.hProcess
@@ -154,6 +162,14 @@ public final class ChildProcess: @unchecked Sendable {
 
     /// PROC_THREAD_ATTRIBUTE_HANDLE_LIST (a macro Swift can't import): ProcThreadAttributeValue(2, FALSE, TRUE, FALSE).
     static let handleListAttribute = DWORD_PTR(0x0002_0002)
+
+    /// A path with Windows' separators ("C:/dev" → "C:\\dev"); URL paths use "/".
+    static func nativePath(_ path: String) -> String {
+        var path = path
+        // "/C:/dev" (a URL path) → "C:/dev".
+        if path.hasPrefix("/"), path.dropFirst().dropFirst().hasPrefix(":") { path.removeFirst() }
+        return path.replacingOccurrences(of: "/", with: "\\")
+    }
 
     /// One argument quoted the way the C runtime (CommandLineToArgvW) splits a command line.
     static func quote(_ argument: String) -> String {

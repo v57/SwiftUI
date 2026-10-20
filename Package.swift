@@ -176,7 +176,7 @@ if standIns {
         .target(name: "COpenCombineHelpers"),
         .target(name: "Combine", dependencies: ["COpenCombineHelpers"], exclude: ["LICENSE-OpenCombine.txt"],
                 swiftSettings: [.swiftLanguageMode(.v5)]),
-        .testTarget(name: "CompatTests", dependencies: ["UniformTypeIdentifiers", "Combine", "CryptoKit", "SQLite3", "os", "Network", "SwiftData"]),
+        .testTarget(name: "CompatTests", dependencies: ["UniformTypeIdentifiers", "Combine", "CryptoKit", "SQLite3", "os", "Network", "SwiftData", "SwiftUIPortability"]),
     ]
 }
 
