@@ -22,6 +22,10 @@ final class WinUIHost {
         self.view = view
         backend = WinUIBackend(hostView: view, scale: 1)
         graph = makeGraph(backend)
+        graph.setEnvironment { environment in
+            // dismissWindow() closes this window.
+            environment.dismissWindow = DismissWindowAction(_current: { [view] in sui_close_window(view) })
+        }
         graph.clock = { WinUIPerf.now() }
         graph.onNeedsUpdate = { [weak self] in self?.scheduleUpdate() }
         graph.onNeedsAnimationFrame = { [weak self] in self?.requestFrame() }

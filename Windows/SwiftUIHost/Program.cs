@@ -73,7 +73,9 @@ sealed class App : Application, IXamlMetadataProvider
         }
         var path = library.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ? library : library + ".dll";
         if (!Path.IsPathRooted(path)) path = Path.Combine(AppContext.BaseDirectory, path);
-        HostWindow.AppName = Path.GetFileNameWithoutExtension(path);
+        // The app's name: its DLL's, without the backend suffix (CodeWinUI.dll → Code).
+        var name = Path.GetFileNameWithoutExtension(path);
+        HostWindow.AppName = name.EndsWith("WinUI", StringComparison.Ordinal) && name.Length > 5 ? name[..^5] : name;
         try
         {
             // On this (the UI) thread: libdispatch binds its main queue to the loading thread.

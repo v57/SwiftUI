@@ -59,7 +59,33 @@ if ($swiftCore) {
     Write-Warning "Swift runtime (swiftCore.dll) not on PATH; the host will look for it on PATH at launch"
 }
 Set-Content -Path "$out\swiftui-app.txt" -Value $Product -NoNewline
-Write-Host "Staged: $out"
+
+# Info.plist next to the host, which Foundation reads as the main bundle's: the app's name, version and bundle
+# identifier from its Xcode project (the first target's), so its defaults are its own file
+# (%LOCALAPPDATA%\<identifier>.plist) and not the host's, shared by every app.
+$name = if ($Product -match '^(.+)WinUI$') { $Matches[1] } else { $Product }
+$project = Get-ChildItem $package -Filter project.pbxproj -Recurse -Depth 2 -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -notmatch '\\(\.build|Pods)\\' } | Select-Object -First 1
+$identifier = "dev.v57.$($name.ToLowerInvariant())"
+$version = "1.0"
+if ($project) {
+    $settings = Get-Content $project.FullName -Raw
+    if ($settings -match 'PRODUCT_BUNDLE_IDENTIFIER = "?([A-Za-z0-9.\-]+)"?;') { $identifier = $Matches[1] }
+    if ($settings -match 'MARKETING_VERSION = "?([0-9.]+)"?;') { $version = $Matches[1] }
+}
+$escape = { param($text) [Security.SecurityElement]::Escape($text) }
+@"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key><string>$(& $escape $identifier)</string>
+    <key>CFBundleName</key><string>$(& $escape $name)</string>
+    <key>CFBundleShortVersionString</key><string>$(& $escape $version)</string>
+</dict>
+</plist>
+"@ | Set-Content -Path "$out\Info.plist" -Encoding UTF8
+Write-Host "Staged: $out ($identifier $version)"
 
 if ($Run) {
     $arguments = @()

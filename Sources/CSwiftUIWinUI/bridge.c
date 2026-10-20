@@ -30,12 +30,16 @@ void swiftui_register(const sui_callbacks *callbacks) {
     sui_host = *callbacks;
 }
 
+// SwiftUIWinUI: names the process after the app and keeps its defaults saved, before the app's code runs.
+extern void swiftui_prepare_process(void);
+
 bool swiftui_run_main(void) {
     static char *argv[] = {"swiftui", NULL};
     if (main == swiftui_no_main) {
         sui_log(6, "The app library has no SwiftUI App entry point (@main)");
         return false;
     }
+    swiftui_prepare_process();
     main(1, argv);
     return true;
 }

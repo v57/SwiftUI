@@ -1,6 +1,7 @@
 #if os(Windows)
 import Foundation
 import CSwiftUIWinUI
+import WinSDK
 import _SwiftUICore
 
 /// Runs an `App` on Windows. The C# host owns the process and the message loop: it loads the app
@@ -47,6 +48,25 @@ public enum WinUIAppRunner {
             openScene(index, value: nil)
         }
         for index in presented { openScene(index, value: nil) }
+    }
+
+    /// The app's name, from its DLL (`CodeWinUI.dll` → "Code"): without a bundle, Foundation's name for the process
+    /// is the host's ("SwiftUIHost"), which titles and About panels would show.
+    static var appName: String? {
+        var module: HMODULE?
+        let found = withUnsafePointer(to: &scenes) { address in
+            GetModuleHandleExW(
+                DWORD(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT),
+                UnsafeRawPointer(address).assumingMemoryBound(to: WCHAR.self), &module)
+        }
+        guard found, let module else { return nil }
+        var buffer = [WCHAR](repeating: 0, count: Int(MAX_PATH) + 1)
+        let length = GetModuleFileNameW(module, &buffer, DWORD(buffer.count))
+        guard length > 0 else { return nil }
+        let file = URL(fileURLWithPath: String(decoding: buffer[..<Int(length)], as: UTF16.self))
+            .deletingPathExtension().lastPathComponent
+        guard file.hasSuffix("WinUI"), file.count > 5 else { return file }
+        return String(file.dropLast(5))
     }
 
     /// A window opened from code (`HostingWindow`): its description is a scene appended after the app's.
@@ -140,6 +160,34 @@ public enum WinUIAppRunner {
 
 // MARK: - C# → Swift (exported from the app DLL, see CSwiftUIWinUI/bridge.c)
 
+/// Before the app's `main`: Foundation names the process after the host ("SwiftUIHost.exe"), and without a
+/// bundle that name is the app's defaults file (`%LOCALAPPDATA%\<name>.plist`), shared by every app; it becomes
+/// the app's own. Defaults are written to disk only on `synchronize()`, so they're saved every couple of seconds
+/// (a closed or ended app keeps its settings).
+@_cdecl("swiftui_prepare_process")
+public func swiftui_prepare_process() {
+    MainActor.assumeIsolated {
+        if let name = WinUIAppRunner.appName { ProcessInfo.processInfo.processName = name }
+        DefaultsSaver.start()
+    }
+}
+
+/// Saves the defaults every couple of seconds (swift-corelibs-foundation posts no change notification;
+/// `synchronize()` writes only what changed).
+@MainActor
+enum DefaultsSaver {
+    private static var timer: DispatchSourceTimer?
+
+    static func start() {
+        guard timer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + 2, repeating: 2, leeway: .milliseconds(500))
+        timer.setEventHandler { UserDefaults.standard.synchronize() }
+        timer.resume()
+        self.timer = timer
+    }
+}
+
 @MainActor
 private func host(_ handle: Int64) -> WinUIHost? {
     guard let pointer = UnsafeRawPointer(bitPattern: Int(handle)) else { return nil }
@@ -164,6 +212,7 @@ public func swiftui_destroy_host(_ handle: Int64) {
         WinUIAppRunner.hostWillClose(host.takeUnretainedValue())
         host.takeUnretainedValue().tearDown()
         host.release()
+        UserDefaults.standard.synchronize()
         WinUIMainLoop.serviceTimers()
     }
 }

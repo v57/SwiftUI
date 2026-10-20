@@ -362,6 +362,13 @@ sealed class HostView
             return k;
         }
         if (k >= 96 && k <= 105) { characters = ((char)('0' + k - 96)).ToString(); return '0' + k - 96; }
+        // F1-F24 as AppKit's function-key characters (NSF1FunctionKey, U+F704…), which key equivalents use.
+        if (key >= VirtualKey.F1 && key <= VirtualKey.F24)
+        {
+            var f = (char)(0xF704 + (key - VirtualKey.F1));
+            characters = f.ToString();
+            return f;
+        }
         (char plain, char shifted) = k switch
         {
             186 => (';', ':'), 187 => ('=', '+'), 188 => (',', '<'), 189 => ('-', '_'), 190 => ('.', '>'),
