@@ -140,6 +140,7 @@ if standIns {
         .library(name: "os", targets: ["os"]),
         .library(name: "Network", targets: ["Network"]),
         .library(name: "SwiftData", targets: ["SwiftData"]),
+        .library(name: "Charts", targets: ["Charts"]),
         // Foundation APIs swift-corelibs-foundation lacks (trash, bookmarks, file coordination, Markdown
         // attributed strings, …), for libraries that don't import SwiftUI.
         .library(name: "SwiftUIPortability", targets: ["SwiftUIPortability"]),
@@ -173,6 +174,8 @@ if standIns {
         // schedulers, Timer.publish, NotificationCenter.publisher, URLSession publishers).
         // No `Darwin` stand-in: a module with that name flips `canImport(Darwin)` for every
         // package in the build (swift-crypto, NIO, ...) and breaks their platform checks.
+        // Charts: SwiftUICharts under Apple's module name.
+        .target(name: "Charts", dependencies: ["SwiftUICharts"]),
         .target(name: "COpenCombineHelpers"),
         .target(name: "Combine", dependencies: ["COpenCombineHelpers"], exclude: ["LICENSE-OpenCombine.txt"],
                 swiftSettings: [.swiftLanguageMode(.v5)]),

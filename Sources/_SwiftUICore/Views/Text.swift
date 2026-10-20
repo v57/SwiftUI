@@ -478,6 +478,14 @@ public struct Text: Equatable {
                 if intent.contains(.code) { part = part.fontDesign(.monospaced) }
                 if intent.contains(.strikethrough) { part = part.strikethrough() }
             }
+            #if !canImport(AppKit) && !canImport(UIKit)
+            if let tracking = run[TextAttributes.TrackingAttribute.self] ?? run[TextAttributes.KerningAttribute.self] {
+                part = part.tracking(tracking)
+            }
+            if let offset = run[TextAttributes.BaselineOffsetAttribute.self] { part = part.baselineOffset(offset) }
+            if let style = run[TextAttributes.UnderlineStyleAttribute.self] { part.modifiers.append(.underline(style)) }
+            if let style = run[TextAttributes.StrikethroughStyleAttribute.self] { part.modifiers.append(.strikethrough(style)) }
+            #endif
             // Platform scopes (AppKit's tracking, underline, ...) are read by the backend.
             if let bridge = TextAttributes.platformBridge { part.modifiers += bridge(attributedContent[run.range]).map(\.modifier) }
             parts.append(part)
@@ -666,6 +674,14 @@ public enum TextAttributes {
     public enum FontAttribute: AttributedStringKey { public typealias Value = Font; public static let name = "SwiftUI.Font" }
     public enum ForegroundColorAttribute: AttributedStringKey { public typealias Value = Color; public static let name = "SwiftUI.ForegroundColor" }
     public enum BackgroundColorAttribute: AttributedStringKey { public typealias Value = Color; public static let name = "SwiftUI.BackgroundColor" }
+    #if !canImport(AppKit) && !canImport(UIKit)
+    // Where no AppKit or UIKit scope declares them (Windows, Linux), as Apple's SwiftUI scope has them.
+    public enum TrackingAttribute: AttributedStringKey { public typealias Value = CGFloat; public static let name = "SwiftUI.Tracking" }
+    public enum KerningAttribute: AttributedStringKey { public typealias Value = CGFloat; public static let name = "SwiftUI.Kerning" }
+    public enum BaselineOffsetAttribute: AttributedStringKey { public typealias Value = CGFloat; public static let name = "SwiftUI.BaselineOffset" }
+    public enum UnderlineStyleAttribute: AttributedStringKey { public typealias Value = Text.LineStyle; public static let name = "SwiftUI.UnderlineStyle" }
+    public enum StrikethroughStyleAttribute: AttributedStringKey { public typealias Value = Text.LineStyle; public static let name = "SwiftUI.StrikethroughStyle" }
+    #endif
 
     /// Text styling a backend reads from its platform attribute scope.
     public enum PlatformStyle: Sendable {
@@ -692,6 +708,13 @@ extension AttributeScopes {
         public let font: TextAttributes.FontAttribute
         public let foregroundColor: TextAttributes.ForegroundColorAttribute
         public let backgroundColor: TextAttributes.BackgroundColorAttribute
+        #if !canImport(AppKit) && !canImport(UIKit)
+        public let tracking: TextAttributes.TrackingAttribute
+        public let kern: TextAttributes.KerningAttribute
+        public let baselineOffset: TextAttributes.BaselineOffsetAttribute
+        public let underlineStyle: TextAttributes.UnderlineStyleAttribute
+        public let strikethroughStyle: TextAttributes.StrikethroughStyleAttribute
+        #endif
         public let foundation: FoundationAttributes
     }
 

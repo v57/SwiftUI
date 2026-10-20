@@ -89,6 +89,16 @@ public struct Color: Hashable, Sendable, CustomStringConvertible {
 
     public init(_ resolved: Resolved) { storage = .resolved(resolved) }
 
+    /// A color for each appearance, as AppKit's and UIKit's dynamic system colors are. (A v57/SwiftUI addition for
+    /// code without either: Apple's SwiftUI gets there through `Color(nsColor:)` / `Color(uiColor:)`.)
+    public init(light: Color, dark: Color) {
+        var lightEnvironment = EnvironmentValues()
+        lightEnvironment.colorScheme = .light
+        var darkEnvironment = EnvironmentValues()
+        darkEnvironment.colorScheme = .dark
+        storage = .dynamic(light: light.resolve(in: lightEnvironment), dark: dark.resolve(in: darkEnvironment))
+    }
+
     public func opacity(_ opacity: Double) -> Color { Color(storage: .opacity(storage, opacity)) }
 
     public func resolve(in environment: EnvironmentValues) -> Resolved {
