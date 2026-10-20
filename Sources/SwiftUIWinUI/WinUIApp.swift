@@ -39,9 +39,14 @@ public enum WinUIAppRunner {
             WinUIPerf.enabled = true
         }
         WinUIText.install()
-        if let index = descriptions.firstIndex(where: \.opensAtLaunch) ?? (descriptions.isEmpty ? nil : 0) {
+        // Like SwiftUI, the first window scene opens at launch, plus scenes presented at launch (a welcome window
+        // in place of a suppressed main one); with neither, the first scene.
+        let first = descriptions.firstIndex(where: \.opensAtLaunch)
+        let presented = descriptions.indices.filter { descriptions[$0].launchBehavior == .presented && $0 != first }
+        if let index = first ?? (presented.isEmpty && !descriptions.isEmpty ? 0 : nil) {
             openScene(index, value: nil)
         }
+        for index in presented { openScene(index, value: nil) }
     }
 
     /// A window opened from code (`HostingWindow`): its description is a scene appended after the app's.

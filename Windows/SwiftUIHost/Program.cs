@@ -103,6 +103,15 @@ static class HostWindow
 {
     public static string AppName = "SwiftUI";
     public static readonly List<HostView> Views = new();
+    /// Windows the app asked for that aren't open yet: closing the last open window doesn't quit while one is
+    /// coming (a welcome window that closes as it opens the main one).
+    public static int PendingOpens;
+
+    /// Quits once the last window has closed and none is on its way.
+    public static void ExitIfNoWindows()
+    {
+        if (Views.Count == 0 && PendingOpens == 0) Application.Current.Exit();
+    }
 
     [DllImport("user32.dll")]
     static extern uint GetDpiForWindow(IntPtr hwnd);
@@ -118,7 +127,7 @@ static class HostWindow
         {
             view.Destroy();
             Views.Remove(view);
-            if (Views.Count == 0) Application.Current.Exit();
+            ExitIfNoWindows();
         };
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
         var scale = Math.Max(GetDpiForWindow(hwnd), 96) / 96.0;

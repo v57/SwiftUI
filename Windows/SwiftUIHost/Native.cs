@@ -46,7 +46,8 @@ static unsafe class Native
     static delegate* unmanaged<long, int, byte*, int, int, byte> key;
 
     static DispatcherQueue? queue;
-    static DispatcherQueueTimer? timer;
+    /// The thread timer that services Foundation's run loop (0: none armed).
+    static nuint runLoopTimer;
     static RegisteredWaitHandle? mainQueueWait;
     static AutoResetEvent? mainQueueEvent;
 
@@ -90,9 +91,6 @@ static unsafe class Native
     public static bool RunMain(DispatcherQueue dispatcherQueue)
     {
         queue = dispatcherQueue;
-        timer = dispatcherQueue.CreateTimer();
-        timer.IsRepeating = false;
-        timer.Tick += (_, _) => timerFired();
         // libdispatch signals this (auto-reset) event when work is queued on the main queue.
         mainQueueEvent = new AutoResetEvent(false) { SafeWaitHandle = new SafeWaitHandle(mainQueueHandle(), ownsHandle: false) };
         mainQueueWait = ThreadPool.RegisterWaitForSingleObject(mainQueueEvent, (_, _) => queue.TryEnqueue(DrainMainQueue), null, -1, executeOnlyOnce: false);
@@ -105,7 +103,7 @@ static unsafe class Native
     {
         drainMainQueue();
         // Work on the main queue may have scheduled run loop timers.
-        timerFired();
+        ArmRunLoopTimer(0);
     }
 
     // MARK: C# → Swift
@@ -234,15 +232,41 @@ static unsafe class Native
     [UnmanagedCallersOnly]
     static void OnArmTimer(double seconds)
     {
-        try
-        {
-            if (timer == null) return;
-            timer.Stop();
-            if (!(seconds >= 0)) return; // negative: disarm (NaN too)
-            timer.Interval = TimeSpan.FromSeconds(Math.Clamp(seconds, 0.001, 86_400));
-            timer.Start();
-        }
+        try { ArmRunLoopTimer(seconds); }
         catch (Exception e) { Report(e); }
+    }
+
+    // Foundation's run loop (its timers) is serviced from a Win32 thread timer, which the message loop dispatches
+    // at the top level: on Windows a pass through the main run loop also dispatches window messages, and doing
+    // that inside a dispatcher callback (a DispatcherQueue timer, an event, a frame) re-entered XAML's dispatcher,
+    // which then stopped dispatching for good (no more frames, input or queued work).
+    delegate void TimerProc(IntPtr window, uint message, nuint id, uint time);
+
+    [DllImport("user32.dll")]
+    static extern nuint SetTimer(IntPtr window, nuint id, uint milliseconds, TimerProc? proc);
+
+    [DllImport("user32.dll")]
+    static extern bool KillTimer(IntPtr window, nuint id);
+
+    /// Kept alive: user32 calls it.
+    static readonly TimerProc runLoopTimerProc = (_, _, _, _) =>
+    {
+        ArmRunLoopTimer(-1);
+        try { timerFired(); }
+        catch (Exception e) { Report(e); }
+    };
+
+    /// Fires the run loop's due timers after `seconds` (at least the system's 10 ms); negative disarms.
+    static void ArmRunLoopTimer(double seconds)
+    {
+        if (runLoopTimer != 0)
+        {
+            KillTimer(IntPtr.Zero, runLoopTimer);
+            runLoopTimer = 0;
+        }
+        if (!(seconds >= 0)) return; // NaN too
+        var milliseconds = (uint)Math.Clamp(Math.Ceiling(seconds * 1000), 1, 86_400_000);
+        runLoopTimer = SetTimer(IntPtr.Zero, 0, milliseconds, runLoopTimerProc);
     }
 
     [UnmanagedCallersOnly]
@@ -250,10 +274,13 @@ static unsafe class Native
     {
         var name = String(title) ?? "";
         // Not reentrantly: the Swift caller may be in the middle of an update.
+        HostWindow.PendingOpens++;
         queue?.TryEnqueue(() =>
         {
+            HostWindow.PendingOpens--;
             try { HostWindow.Open(scene, value, name, width, height); }
             catch (Exception e) { Report(e); }
+            HostWindow.ExitIfNoWindows();
         });
     }
 

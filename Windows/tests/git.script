@@ -1,0 +1,9 @@
+# Smoke test for GitWinUI: launch with --in-memory --add-folder C:\dev\sample, open the repository.
+wait 8000
+screenshot C:\dev\shots\git-01-root.png
+dump C:\dev\shots\git-01-root.txt
+tap sample
+wait 4000
+screenshot C:\dev\shots\git-02-repository.png
+dump C:\dev\shots\git-02-repository.txt
+exit
