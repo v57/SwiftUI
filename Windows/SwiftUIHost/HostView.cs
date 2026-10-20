@@ -43,7 +43,7 @@ sealed class HostView
     readonly StackPanel titleLeading = new() { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left };
     readonly TextBlock titleText = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 12, 0), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
     public const double TitleBarHeight = 48;
-    bool contentInTitleBar, hidesTitle;
+    bool contentInTitleBar, hidesTitle, contentDrawsMenuBar;
     /// The content runs up into the title bar row (else it starts under the row).
     public bool ContentInTitleBar => contentInTitleBar;
     List<RectInt32> passthrough = new();
@@ -139,6 +139,9 @@ sealed class HostView
         var f = description.Split(',');
         contentInTitleBar = f.Length > 0 && f[0] == "1";
         hidesTitle = f.Length > 1 && f[1] == "1";
+        // The content draws the menus itself (its own menu bar in the row): this one steps aside.
+        contentDrawsMenuBar = f.Length > 2 && f[2] == "1";
+        UpdateMenuBarVisibility();
         Grid.SetRow(content, contentInTitleBar ? 0 : 1);
         Grid.SetRowSpan(content, contentInTitleBar ? 2 : 1);
         titleText.Visibility = hidesTitle ? Visibility.Collapsed : Visibility.Visible;
@@ -568,8 +571,11 @@ sealed class HostView
             }
             parent.Add(item);
         }
-        menuBar.Visibility = menuBar.Items.Count > 0 && !HidesMenuBar ? Visibility.Visible : Visibility.Collapsed;
+        UpdateMenuBarVisibility();
     }
+
+    void UpdateMenuBarVisibility() =>
+        menuBar.Visibility = menuBar.Items.Count > 0 && !HidesMenuBar && !contentDrawsMenuBar ? Visibility.Visible : Visibility.Collapsed;
 
     // MARK: File dialogs
 

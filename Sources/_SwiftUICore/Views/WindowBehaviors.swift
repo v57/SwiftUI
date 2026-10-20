@@ -33,6 +33,8 @@ public struct WindowConfiguration: Equatable, @unchecked Sendable {
     public var toolbarColorScheme: ColorScheme?
     /// `preferredColorScheme`: the window's appearance (nil: the system's).
     public var preferredColorScheme: ColorScheme?
+    /// `windowMenuBarVisibility(.hidden)`: the content draws the window's menu bar itself (`windowMenuBar`).
+    public var isMenuBarHidden: Bool?
     public var allowsActivationEvents: Bool?
     public var resizeObservers: [WindowResizeObserver] = []
     /// `dismissalConfirmationDialog` in a window: closing asks first.
@@ -46,7 +48,7 @@ public struct WindowConfiguration: Equatable, @unchecked Sendable {
             && lhs.resizeAnchor == rhs.resizeAnchor && lhs.representedURL == rhs.representedURL && lhs.background == rhs.background
             && lhs.isToolbarHidden == rhs.isToolbarHidden && lhs.isToolbarBackgroundHidden == rhs.isToolbarBackgroundHidden
             && lhs.toolbarColorScheme == rhs.toolbarColorScheme && lhs.allowsActivationEvents == rhs.allowsActivationEvents
-            && lhs.preferredColorScheme == rhs.preferredColorScheme
+            && lhs.preferredColorScheme == rhs.preferredColorScheme && lhs.isMenuBarHidden == rhs.isMenuBarHidden
             && lhs.resizeObservers.map(ObjectIdentifier.init) == rhs.resizeObservers.map(ObjectIdentifier.init)
             && (lhs.closeConfirmation == nil) == (rhs.closeConfirmation == nil)
     }
@@ -65,6 +67,7 @@ public struct WindowConfiguration: Equatable, @unchecked Sendable {
         isToolbarBackgroundHidden = next.isToolbarBackgroundHidden ?? isToolbarBackgroundHidden
         toolbarColorScheme = next.toolbarColorScheme ?? toolbarColorScheme
         preferredColorScheme = next.preferredColorScheme ?? preferredColorScheme
+        isMenuBarHidden = next.isMenuBarHidden ?? isMenuBarHidden
         allowsActivationEvents = next.allowsActivationEvents ?? allowsActivationEvents
         resizeObservers += next.resizeObservers
         closeConfirmation = next.closeConfirmation ?? closeConfirmation
@@ -253,5 +256,42 @@ extension EnvironmentValues {
     public var windowTitleBarArea: WindowTitleBarArea? {
         get { self[WindowTitleBarAreaKey.self] }
         set { self[WindowTitleBarAreaKey.self] = newValue }
+    }
+}
+
+// MARK: - Menu bar
+
+/// One menu of the window's menu bar: the app's `.commands` placed into the platform's menus (on Windows File, Edit,
+/// View, the app's own, Window, Help).
+public struct WindowMenu: Identifiable {
+    public var title: String
+    public var items: [MenuItem]
+    public var id: String { title }
+
+    public init(title: String, items: [MenuItem]) {
+        self.title = title
+        self.items = items
+    }
+}
+
+private struct WindowMenuBarKey: EnvironmentKey {
+    nonisolated(unsafe) static let defaultValue: [WindowMenu]? = nil
+}
+
+extension EnvironmentValues {
+    /// The window's menus, for content that draws the menu bar itself (`windowMenuBarVisibility(.hidden)`): in the
+    /// title bar row with the toolbar, in its own style. A v57/SwiftUI addition: nil where the system shows the
+    /// app's menus (the Mac's menu bar is the app's, at the top of the screen).
+    public var windowMenuBar: [WindowMenu]? {
+        get { self[WindowMenuBarKey.self] }
+        set { self[WindowMenuBarKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// Whether the window shows its own menu bar (Windows' row of menus). Hidden, the content draws the menus from
+    /// `windowMenuBar`; their keyboard shortcuts work either way. A v57/SwiftUI addition (no effect on the Mac).
+    public func windowMenuBarVisibility(_ visibility: Visibility) -> some View {
+        _windowConfiguration { if visibility != .automatic { $0.isMenuBarHidden = visibility == .hidden } }
     }
 }

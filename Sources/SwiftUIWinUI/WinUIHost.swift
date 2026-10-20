@@ -36,6 +36,7 @@ final class WinUIHost {
         graph.onWindowConfigurationChange = { [weak self] configuration in
             guard let self else { return }
             toolbarBackgroundHidden = configuration.isToolbarBackgroundHidden == true
+            contentDrawsMenuBar = configuration.isMenuBarHidden == true
             let scheme = configuration.preferredColorScheme.map { $0 == .dark ? "dark" : "light" } ?? ""
             if scheme != windowColorScheme {
                 windowColorScheme = scheme
@@ -78,6 +79,13 @@ final class WinUIHost {
     private var toolbarBackgroundHidden = false { didSet { updateTitleBar() } }
     /// `toolbar(removing: .title)`: the row shows no window title.
     private var hidesTitle = false { didSet { updateTitleBar() } }
+    /// `windowMenuBarVisibility(.hidden)`: the content draws the menus (`windowMenuBar`), the row doesn't.
+    private var contentDrawsMenuBar = false { didSet { updateTitleBar() } }
+
+    /// The app's menus as the menu bar shows them, for content that draws its own.
+    func setWindowMenus(_ menus: [WindowMenu]?) {
+        graph.setEnvironment { $0.windowMenuBar = menus }
+    }
     private var titleBarDescription = ""
     /// The appearance asked of the window ("dark", "light", "": the system's).
     private var windowColorScheme = ""
@@ -86,7 +94,7 @@ final class WinUIHost {
 
     private func updateTitleBar() {
         let contentInTitleBar = hiddenTitleBar || toolbarBackgroundHidden
-        let description = (contentInTitleBar ? "1" : "0") + "," + (hidesTitle ? "1" : "0")
+        let description = [contentInTitleBar, hidesTitle, contentDrawsMenuBar].map { $0 ? "1" : "0" }.joined(separator: ",")
         guard description != titleBarDescription else { return }
         titleBarDescription = description
         _ = WinUIPlatform.call(view, .setTitleBar, description)

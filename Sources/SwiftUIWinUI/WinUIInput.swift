@@ -108,16 +108,20 @@ final class WinUIMenuBar {
         shortcuts = []
         nextID = 0
         var lines: [String] = []
+        var windowMenus: [WindowMenu] = []
         if !AppRuntime.commands.isEmpty {
             for (title, items) in menus() where !items.isEmpty {
                 lines.append(line(depth: 0, kind: "m", id: "", title: title))
                 encode(items, depth: 1, into: &lines)
+                windowMenus.append(WindowMenu(title: title, items: items))
             }
         }
         let updated = lines.joined(separator: "\n")
         guard updated != description else { return }
         description = updated
         _ = WinUIPlatform.call(host.view, .setMenuBar, updated)
+        // For content that draws the menu bar itself (`windowMenuBarVisibility(.hidden)`).
+        host.setWindowMenus(windowMenus.isEmpty ? nil : windowMenus)
     }
 
     /// Runs the enabled menu item with this shortcut.
