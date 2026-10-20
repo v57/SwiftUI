@@ -13,7 +13,7 @@ extension Text: View {
         var clock: Attribute<Date>?
         if AnyAttribute.withoutDependencies({ view.attribute.value.isTimeDependent }) {
             let now = Attribute<Date>(inputs.subgraph, value: Date(), isEqual: { $0 == $1 })
-            let timer = Timer(timeInterval: 1, repeats: true) { [weak now] _ in
+            let timer = Timer(fire: Date(timeIntervalSinceNow: 1), interval: 1, repeats: true) { [weak now] _ in
                 MainActor.assumeIsolated { now?.setValue(Date()) }
             }
             RunLoop.main.add(timer, forMode: .common)

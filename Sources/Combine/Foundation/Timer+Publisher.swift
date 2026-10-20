@@ -102,7 +102,8 @@ extension Foundation.Timer {
             }
 
             public func connect() -> Cancellable {
-                let timer = Timer(timeInterval: interval, repeats: true, block: fire)
+                // First fires after the interval, as Apple's (swift-corelibs-foundation's `Timer(timeInterval:…)` fires at once).
+                let timer = Timer(fire: Date(timeIntervalSinceNow: interval), interval: interval, repeats: true, block: fire)
                 timer.tolerance = tolerance ?? 0
                 runLoop.add(timer, forMode: mode)
                 return CancellableTimer(timer: timer, publisher: self)

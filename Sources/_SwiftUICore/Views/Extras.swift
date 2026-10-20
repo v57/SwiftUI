@@ -72,7 +72,7 @@ public struct TimelineView<Schedule: TimelineSchedule, Content: View>: View {
         let date = Attribute<Date>(inputs.subgraph, value: Date(), isEqual: { $0 == $1 })
         let interval = AnyAttribute.withoutDependencies { view.attribute.value.schedule._interval }
         if let interval {
-            let timer = Timer(timeInterval: interval, repeats: true) { [weak date] _ in
+            let timer = Timer(fire: Date(timeIntervalSinceNow: interval), interval: interval, repeats: true) { [weak date] _ in
                 MainActor.assumeIsolated { date?.setValue(Date()) }
             }
             RunLoop.main.add(timer, forMode: .common)
