@@ -161,3 +161,18 @@ struct PresentationFeatureTests {
 }
 
 @Observable final class PresentationWindowState { var isWelcomeShown = true }
+
+@MainActor
+struct TapCountTests {
+    @Test func doubleTapNeedsTwoClicksWithinTheInterval() {
+        let target = ObjectIdentifier(NSObject())
+        #expect(!TapCounter.register(target, required: 2, now: 10))
+        #expect(TapCounter.register(target, required: 2, now: 10.3))
+        // Too slow: the second click starts over.
+        #expect(!TapCounter.register(target, required: 2, now: 20))
+        #expect(!TapCounter.register(target, required: 2, now: 20.9))
+        #expect(TapCounter.register(target, required: 2, now: 21.1))
+        // A single tap fires on every click.
+        #expect(TapCounter.register(target, required: 1, now: 30))
+    }
+}

@@ -87,9 +87,33 @@ public struct _TapGestureModifier: PlatformEffectModifier {
         var actions = RenderActions()
         actions.primary = { [weak modifier] in
             guard let modifier else { return }
+            let count = AnyAttribute.withoutDependencies { modifier.value.count }
+            guard TapCounter.register(ObjectIdentifier(modifier), required: count) else { return }
             AnyAttribute.withoutDependencies { modifier.value.action() }
         }
         return actions
+    }
+}
+
+/// Counts clicks on a tap target for `onTapGesture(count:)`: the backends report each click, and a double tap is
+/// the second within the double-click interval. Kept by target, so an update between the clicks (the first
+/// selected a row) doesn't start over.
+@MainActor
+enum TapCounter {
+    static let interval: Double = 0.5
+    private static var taps: [ObjectIdentifier: (count: Int, time: Double)] = [:]
+
+    /// Whether this click completes `required` clicks.
+    static func register(_ target: ObjectIdentifier, required: Int, now: Double = ProcessInfo.processInfo.systemUptime) -> Bool {
+        guard required > 1 else { return true }
+        taps = taps.filter { now - $0.value.time <= interval }
+        let count = (taps[target]?.count ?? 0) + 1
+        if count >= required {
+            taps[target] = nil
+            return true
+        }
+        taps[target] = (count, now)
+        return false
     }
 }
 
