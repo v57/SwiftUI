@@ -304,8 +304,15 @@ extension ForEach: View where Content: View {
                     item.setLabel("ForEach item \(id)")
                     item.setRule { [unowned item] in
                         let forEach = view.attribute.value
-                        guard let position = state.index[id] else { return item.peekValue! }
-                        return observingChanges(invalidating: item) { forEach.content(forEach.data[position]) }
+                        let data = forEach.data
+                        // The index is the list's last pass: an item can update before the list does, from data that
+                        // changed under it (fewer elements), so the position is checked and looked up again if stale.
+                        var position = state.index[id]
+                        if let stale = position, !(stale >= data.startIndex && stale < data.endIndex && forEach.identify(data[stale]) == id) {
+                            position = data.firstIndex { forEach.identify($0) == id }
+                        }
+                        guard let position else { return item.peekValue! }
+                        return observingChanges(invalidating: item) { forEach.content(data[position]) }
                     }
                     let content = Content._makeViewList(view: _GraphValue(item), inputs: inputs.with(subgraph: subgraph).with(path: "#\(id)")).list
                     // ForEach tags its elements with their id unless they carry an explicit tag.
