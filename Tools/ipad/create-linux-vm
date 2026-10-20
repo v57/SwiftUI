@@ -1,0 +1,95 @@
+#!/bin/bash
+# Creates the Linux test VM for UTM on an iPad: a QEMU bundle (aarch64, emulated CPU "max", UTM's user-mode
+# network with the guest's ssh on device port 2223) from the Ubuntu 26.04 arm64 cloud image. It's provisioned
+# here on the Mac with HVF (user $SWIFTUI_VM_USER, your ~/.ssh/id_ed25519.pub, passwordless sudo, auto login on
+# Xorg into Xfce, GTK 3 dev packages, Swift 6.4.1), so the slow emulated guest only boots and builds.
+# Usage: Tools/ipad/create-linux-vm <resolute-server-cloudimg-arm64.img> [out dir, default ~/Virtual Machines/iPad]
+# Then: Tools/ipad/utm push "<out dir>/Ubuntu.utm"
+set -e
+IMG="$1"; OUT="${2:-$HOME/Virtual Machines/iPad}"
+[ -f "$IMG" ] || { sed -n '2,7p' "$0"; exit 1; }
+VM_USER="${SWIFTUI_VM_USER:-v57}"; NAME=Ubuntu; PORT=2223; SSH_PORT_MAC=2299
+BUNDLE="$OUT/$NAME.utm"
+[ -e "$BUNDLE" ] && { echo "$BUNDLE exists" >&2; exit 1; }
+WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
+
+mkdir -p "$BUNDLE/Data"
+qemu-img convert -O qcow2 "$IMG" "$BUNDLE/Data/disk.qcow2"
+qemu-img resize -q "$BUNDLE/Data/disk.qcow2" 32G
+
+# cloud-init seed (NoCloud) for the provisioning boot only; cloud-init is disabled afterwards.
+cat > "$WORK/user-data" <<EOF
+#cloud-config
+hostname: ubuntu-swift
+users:
+  - name: $VM_USER
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys: ['$(cat ~/.ssh/id_ed25519.pub)']
+EOF
+echo "instance-id: $NAME" > "$WORK/meta-data"
+xorriso -as mkisofs -quiet -o "$WORK/seed.iso" -V cidata -J -r "$WORK/user-data" "$WORK/meta-data"
+
+cp /opt/homebrew/share/qemu/edk2-arm-vars.fd "$WORK/vars.fd"
+qemu-system-aarch64 -M virt -accel hvf -cpu host -smp 6 -m 6144 -display none -serial file:"$WORK/console.log" \
+  -drive if=pflash,format=raw,readonly=on,file=/opt/homebrew/share/qemu/edk2-aarch64-code.fd \
+  -drive if=pflash,format=raw,file="$WORK/vars.fd" \
+  -drive if=virtio,format=qcow2,file="$BUNDLE/Data/disk.qcow2" -drive if=virtio,format=raw,file="$WORK/seed.iso" \
+  -nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:$SSH_PORT_MAC-:22 &
+QEMU=$!
+SSH=(ssh -q -p $SSH_PORT_MAC -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 "$VM_USER@127.0.0.1")
+echo "Booting for provisioning (console: $WORK/console.log)..."
+for _ in $(seq 1 120); do "${SSH[@]}" true 2>/dev/null && break; sleep 3; done
+"${SSH[@]}" 'cloud-init status --wait >/dev/null; set -e; export DEBIAN_FRONTEND=noninteractive
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq --no-install-recommends xorg gdm3 xfce4 xfce4-terminal dbus-x11 fonts-dejavu >/dev/null
+  sudo apt-get install -y -qq curl rsync xdotool imagemagick libgtk-3-dev pkg-config binutils git gnupg2 libc6-dev \
+    libcurl4-openssl-dev libedit-dev build-essential libpython3-dev libsqlite3-dev libxml2-dev libncurses-dev \
+    libz3-dev tzdata unzip zlib1g-dev >/dev/null
+  curl -sSL https://download.swift.org/swift-6.4.1-release/ubuntu2604-aarch64/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-ubuntu26.04-aarch64.tar.gz -o /tmp/swift.tgz
+  sudo mkdir -p /opt/swift && sudo tar -xzf /tmp/swift.tgz -C /opt/swift --strip-components=1 && rm /tmp/swift.tgz
+  echo "export PATH=/opt/swift/usr/bin:\$PATH" | sudo tee /etc/profile.d/swift.sh >/dev/null
+  printf "[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin='"$VM_USER"'\nWaylandEnable=false\n" | sudo tee /etc/gdm3/custom.conf >/dev/null
+  printf "[User]\nSession=xfce\nXSession=xfce\n" | sudo tee /var/lib/AccountsService/users/'"$VM_USER"' >/dev/null
+  sudo systemctl set-default graphical.target
+  # The NIC differs on the iPad: DHCP on any ethernet instead of the MAC cloud-init matched.
+  sudo rm -f /etc/netplan/50-cloud-init.yaml
+  printf "network:\n  version: 2\n  ethernets:\n    all:\n      match: {name: \"en*\"}\n      dhcp4: true\n" | sudo tee /etc/netplan/01-all.yaml >/dev/null
+  sudo chmod 600 /etc/netplan/01-all.yaml
+  sudo touch /etc/cloud/cloud-init.disabled
+  sudo apt-get clean
+  echo provisioned'
+FONT="$(cd "$(dirname "$0")/../.." && pwd)/Android/swiftui/src/main/assets/MaterialSymbolsOutlined.ttf"
+if [ -s "$FONT" ]; then
+  "${SSH[@]}" 'mkdir -p ~/.local/share/fonts'
+  scp -q -P $SSH_PORT_MAC -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$FONT" "$VM_USER@127.0.0.1:.local/share/fonts/"
+fi
+"${SSH[@]}" 'sudo poweroff' || true
+wait $QEMU || true
+qemu-img convert -O qcow2 "$BUNDLE/Data/disk.qcow2" "$WORK/disk.qcow2" && mv "$WORK/disk.qcow2" "$BUNDLE/Data/disk.qcow2"
+
+MAC=$(printf '02:%02x:%02x:%02x:%02x:%02x' $((RANDOM % 256)) $((RANDOM % 256)) $((RANDOM % 256)) $((RANDOM % 256)) $((RANDOM % 256)))
+python3 -I - "$BUNDLE" "$NAME" "$MAC" "$PORT" <<'EOF'
+import plistlib, sys, uuid
+bundle, name, mac, port = sys.argv[1:5]
+plistlib.dump({
+    "Backend": "QEMU", "ConfigurationVersion": 4,
+    "Information": {"Name": name, "UUID": str(uuid.uuid4()).upper(), "Icon": "ubuntu", "IconCustom": False,
+                    "Notes": "Ubuntu 26.04 arm64 (Xfce on Xorg, Swift 6.4.1) for the SwiftUI GTK backend, emulated on iPad (SwiftUI/Tools/ipad)."},
+    "System": {"Architecture": "aarch64", "Target": "virt", "CPU": "max", "CPUCount": 4, "CPUFlagsAdd": [], "CPUFlagsRemove": [],
+               "ForceMulticore": True, "JITCacheSize": 0, "MemorySize": 6144},
+    "QEMU": {"AdditionalArguments": [], "BalloonDevice": False, "DebugLog": False, "Hypervisor": False, "PS2Controller": False,
+             "RNGDevice": True, "RTCLocalTime": False, "TPMDevice": False, "TSO": False, "UEFIBoot": True},
+    "Display": [{"Hardware": "virtio-gpu-pci", "DynamicResolution": True, "NativeResolution": False,
+                 "DownscalingFilter": "Linear", "UpscalingFilter": "Nearest"}],
+    "Drive": [{"Identifier": str(uuid.uuid4()).upper(), "ImageName": "disk.qcow2", "ImageType": "Disk",
+               "Interface": "VirtIO", "InterfaceVersion": 1, "ReadOnly": False}],
+    "Input": {"MaximumUsbShare": 3, "UsbBusSupport": "3.0", "UsbSharing": False},
+    "Network": [{"Hardware": "virtio-net-pci", "IsolateFromHost": False, "MacAddress": mac, "Mode": "Emulated",
+                 "PortForward": [{"Protocol": "TCP", "HostAddress": "", "HostPort": int(port), "GuestAddress": "", "GuestPort": 22}]}],
+    "Serial": [], "Sound": [],
+    "Sharing": {"ClipboardSharing": False, "DirectoryShareMode": "None", "DirectoryShareReadOnly": False},
+}, open(bundle + "/config.plist", "wb"))
+EOF
+du -sh "$BUNDLE"
+echo "Done. Copy it to the device: $(dirname "$0")/utm push \"$BUNDLE\""

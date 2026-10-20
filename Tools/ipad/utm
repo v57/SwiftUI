@@ -1,0 +1,61 @@
+#!/bin/bash
+# Runs the test VMs in UTM on an iPad or iPhone (QEMU with JIT, no hypervisor on iPadOS), from the Mac.
+#   utm build          builds UTM from $UTM_SRC (default ~/Developer/UTM, with its sysroot-ios-arm64) and installs it
+#   utm launch         starts UTM with JIT: launched stopped, a debugger attaches and detaches (an icon tap has no JIT)
+#   utm start <name>   starts a VM in the running UTM (our build's utm://start; one VM per UTM launch on iOS)
+#   utm stop <name>    stops it (to start another VM, `utm launch` again first)
+#   utm push <x.utm>   copies a VM bundle into UTM's Documents on the device (UTM lists it after a relaunch)
+#   utm ip             the device's address (its USB-C link when cabled, else Wi-Fi; UTM's forwarded VM ports listen there)
+#   utm devices        the connected devices
+# The device is $IPAD_UDID, else the first connected physical iPad. Use the VMs through the usual scripts:
+#   WINDOWS_VM_HOST=$(Tools/ipad/utm ip) WINDOWS_VM_PORT=2222 Windows/scripts/vm build
+set -e
+DIR="$(cd "$(dirname "$0")" && pwd)"
+UTM_SRC="${UTM_SRC:-$HOME/Developer/UTM}"
+BUNDLE_ID="${UTM_BUNDLE_ID:-dev.v57.UTM}"
+
+udid() {
+  if [ -n "$IPAD_UDID" ]; then echo "$IPAD_UDID"; return; fi
+  xcrun devicectl list devices 2>/dev/null | awk '/physical/ && /iPad/ { for (i = 1; i <= NF; i++) if ($i == "(UDID)") { print $(i-1); exit } }'
+}
+
+DEV="$(udid)"
+[ -n "$DEV" ] || [ "$1" = devices ] || { echo "no iPad connected (set IPAD_UDID)" >&2; exit 1; }
+
+case "$1" in
+  devices) xcrun devicectl list devices | grep -E "Identifier|physical" ;;
+  build)
+    cd "$UTM_SRC"
+    [ -f CodeSigning.xcconfig ] || { echo "$UTM_SRC/CodeSigning.xcconfig missing (see Documentation/iOSDevelopment.md)" >&2; exit 1; }
+    xcodebuild -project UTM.xcodeproj -scheme iOS -configuration Release -destination "id=$DEV" \
+      -derivedDataPath build/DerivedData -allowProvisioningUpdates -skipPackagePluginValidation -skipMacroValidation \
+      build > build-ios.log 2>&1 || { grep -E " error:|failed" build-ios.log | head -20; exit 1; }
+    xcrun devicectl device install app --device "$DEV" build/DerivedData/Build/Products/Release-iphoneos/UTM.app | head -2
+    ;;
+  launch)
+    json="$(mktemp -t utm-launch)"
+    xcrun devicectl device process launch --device "$DEV" --terminate-existing --start-stopped \
+      --json-output "$json" "$BUNDLE_ID" >/dev/null
+    pid="$(plutil -extract result.process.processIdentifier raw "$json")"
+    rm -f "$json"
+    # lldb stays attached only for startup; the process keeps CS_DEBUGGED (and so JIT) after the detach.
+    xcrun lldb -b -o "command script import $DIR/tether.py" -o "tether $DEV $pid" 2>&1 | grep "^tether:"
+    ;;
+  start|stop)
+    [ -n "$2" ] || { echo "usage: utm $1 <VM name>" >&2; exit 1; }
+    name="$(python3 -I -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$2")"
+    xcrun devicectl device process launch --device "$DEV" --payload-url "utm://$1?name=$name" "$BUNDLE_ID" >/dev/null
+    ;;
+  push)
+    src="${2%/}"; [ -d "$src" ] || { echo "usage: utm push <bundle.utm>" >&2; exit 1; }
+    xcrun devicectl device copy to --device "$DEV" --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
+      --source "$src" --destination "Documents/$(basename "$src")" | tail -1
+    ;;
+  ip)
+    if [ -n "$IPAD_HOST" ]; then echo "$IPAD_HOST"; exit 0; fi
+    name="$(xcrun devicectl device info details --device "$DEV" 2>/dev/null | awk -F': ' '/Device Name/ { print $2; exit }')"
+    host="$(echo "$name" | tr ' ' '-').local"
+    dscacheutil -q host -a name "$host" | awk '/ip_address/ { print $2; exit }'
+    ;;
+  *) sed -n '2,11p' "$0"; exit 1 ;;
+esac

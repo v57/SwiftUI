@@ -10,11 +10,15 @@
 #   run <product> [env...]   build, then (re)start the product on the VM's desktop, window at 60,60
 #   shot <app> <out.png>     screenshot of an app's window (by process name) into a local file
 #   click <x> <y>      left click at screen coordinates;  type <text>;  key <keysym>
+# SWIFTUI_VM_HOST[:SWIFTUI_VM_PORT] drive a VM elsewhere instead (UTM on an iPad: Tools/ipad/utm).
 set -e
 . "$(dirname "$0")/env.sh"
 cmd="$1"; shift || true
 
+SSH_PORT="${SWIFTUI_VM_PORT:-22}"
+
 vm_ip() {
+  if [ -n "$SWIFTUI_VM_HOST" ]; then echo "$SWIFTUI_VM_HOST"; return; fi
   local mac
   mac=$(plutil -extract Network.0.MacAddress raw "$SWIFTUI_VM_BUNDLE/config.plist")
   # dhcpd_leases drops leading zeros of each octet.
@@ -26,14 +30,14 @@ remote() {
   local ip
   ip=$(vm_ip)
   [ -n "$ip" ] || { echo "VM address unknown (is it running? Linux/scripts/vm start)" >&2; exit 1; }
-  ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$SWIFTUI_VM_USER@$ip" \
+  ssh -p "$SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$SWIFTUI_VM_USER@$ip" \
     "export DISPLAY=:0 XAUTHORITY=/run/user/\$(id -u)/gdm/Xauthority DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus PATH=$SWIFTUI_VM_SWIFT:\$PATH; $*"
 }
 
 sync_source() {
   local ip
   ip=$(vm_ip)
-  rsync -az --delete --exclude .build --exclude .build-android --exclude .build-linux --exclude .git --exclude Ports \
+  rsync -az -e "ssh -p $SSH_PORT" --delete --exclude .build --exclude .build-android --exclude .build-linux --exclude .git --exclude Ports \
     --exclude 'Android/build' --exclude 'Android/*/build' --exclude .gradle --exclude '*.ttf' \
     "$SWIFTUI_ROOT/" "$SWIFTUI_VM_USER@$ip:SwiftUI/"
 }
@@ -94,7 +98,7 @@ case "$cmd" in
   shot)
     app="$1"; out="$2"
     remote "w=\$(xdotool search --onlyvisible --pid \$(pgrep -x $app | head -1) | tail -1); import -window \$w /tmp/shot.png"
-    scp -q "$SWIFTUI_VM_USER@$(vm_ip):/tmp/shot.png" "$out"; echo "$out" ;;
+    scp -q -P "$SSH_PORT" "$SWIFTUI_VM_USER@$(vm_ip):/tmp/shot.png" "$out"; echo "$out" ;;
   click) remote "xdotool mousemove $1 $2; sleep 0.1; xdotool click 1" ;;
   type) remote "xdotool type --delay 30 $(printf '%q' "$*")" ;;
   key) remote "xdotool key $1" ;;
