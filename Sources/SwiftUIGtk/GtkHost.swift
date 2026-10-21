@@ -126,7 +126,9 @@ public final class GtkHost {
         tickID = 0
         endEditing(commit: false)
         if let settings = gtk_settings_get_default() {
-            g_signal_handlers_disconnect_matched(UnsafeMutableRawPointer(settings), G_SIGNAL_MATCH_DATA, 0, 0, nil, nil, unretained(self))
+            // G_SIGNAL_MATCH_DATA; GLib 2.86+ marks GSignalMatchType a flag enum, which Swift imports without the constants
+            let matchData = GSignalMatchType(rawValue: 1 << 4)
+            g_signal_handlers_disconnect_matched(UnsafeMutableRawPointer(settings), matchData, 0, 0, nil, nil, unretained(self))
         }
         graph.tearDown()
     }
