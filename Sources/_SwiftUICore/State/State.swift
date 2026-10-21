@@ -243,7 +243,13 @@ extension Binding: _GraphComparable {
 
 nonisolated func runtimeWarning(_ message: @autoclosure () -> String) {
     #if DEBUG
+    #if os(Windows)
     // C stdio, not FileHandle: a Windows GUI process has no standard error, and FileHandle.write traps there.
     fputs("[SwiftUI] \(message())\n", stderr)
+    #else
+    // glibc's `stderr` is a mutable global, which strict concurrency rejects; write to descriptor 2 directly.
+    let line = "[SwiftUI] \(message())\n"
+    _ = line.withCString { write(2, $0, strlen($0)) }
+    #endif
     #endif
 }
