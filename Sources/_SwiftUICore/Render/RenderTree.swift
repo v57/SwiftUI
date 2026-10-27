@@ -236,6 +236,9 @@ public struct RenderActions {
     /// Edit > Paste (`onPasteCommand`): accepted type identifiers and the handler.
     public var pasteTypes: [String] = []
     public var paste: (@MainActor ([AnyObject]) -> Void)?
+    /// The backend's raw input over the view (`_onPlatformInput`; GTK: `GtkInputEvent`): every button, the wheel, and
+    /// keys while it has focus. Returns whether the view took it.
+    public var platformInput: (@MainActor (Any) -> Bool)?
     public init() {}
 }
 

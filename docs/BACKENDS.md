@@ -81,6 +81,10 @@ Set `AppRuntime.runner` to a function that opens one platform window per `Window
 * GTK owns the main loop: the main dispatch queue is drained from libdispatch's eventfd and
   `RunLoop.main` timers are armed as GLib timeouts (`GtkMainLoop`).
 * `SWIFTUI_GTK_DEBUG=1|2|3` logs clicks / render-tree dumps / content updates and frames.
+* Raw input (not Apple API): `onGtkInput { (event: GtkInputEvent) -> Bool }` gives a view every button's press
+  and release (with click counts), pointer motion, the wheel and, while it has focus (pressed last), keys with
+  their keysyms and hardware codes; core's `_onPlatformInput` carries it (`RenderActions.platformInput`). Remote's
+  picture uses it on Linux.
 * Test VM: `Linux/scripts/create-vm <ubuntu-desktop-arm64.iso>` (UTM bundle, unattended
   install); `Linux/scripts/vm run GalleryGtk`, `vm shot GalleryGtk out.png`, `vm click x y`.
 * Window chrome: a `GtkHeaderBar` holds the title and toolbar items; content that runs up into the

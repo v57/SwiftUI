@@ -248,6 +248,12 @@ public final class GtkHost {
             endEditing(commit: false)
         }
         if let captured, captured === node || node.descendants.contains(where: { $0 === captured }) { self.captured = nil }
+        for input in [input.focus, input.capture] {
+            if let input, input === node || node.descendants.contains(where: { $0 === input }) {
+                if self.input.focus === input { self.input.focus = nil }
+                if self.input.capture === input { self.input.capture = nil }
+            }
+        }
         hovered.removeAll { hovered in hovered === node || node.descendants.contains { $0 === hovered } }
         lastWantsFocus[ObjectIdentifier(node)] = nil
     }
@@ -305,6 +311,8 @@ public final class GtkHost {
 
     private var captured: GtkNode?
     private var capturedInside = false
+    /// Views taking raw input (`onGtkInput`): the one with the keyboard and the one holding the pointer.
+    private var input = GtkInputRouting()
     private var hovered: [GtkNode] = []
     private var repeatTask: Task<Void, Never>?
     private var cursorName = "default"
@@ -328,6 +336,20 @@ public final class GtkHost {
         if editing != nil { endEditing(commit: true) }
         gtk_widget_grab_focus(drawingArea)
         let path = hitPath(point)
+        if let node = path.last(where: { $0.node.handlesPointer && $0.node.isEnabled })?.node, node.actions.platformInput != nil {
+            if input.focus !== node { sendInput(.focusLost, to: input.focus, state: event.state) }
+            input.focus = node
+            input.capture = node
+            input.buttons.insert(event.button)
+            sendInput(
+                .buttonDown(button: Int(event.button), clicks: input.clicks(for: event, at: point)), to: node,
+                at: point, state: event.state)
+            return true
+        }
+        if let focus = input.focus {
+            input.focus = nil
+            sendInput(.focusLost, to: focus, state: event.state)
+        }
         GtkDebug.log(backend.root.dump(), level: 2)
         GtkDebug.log("press \(event.button) at \(point): \(path.map { "\($0.node.kindName)@\($0.point)" }.joined(separator: " > "))")
         if event.button == 3 {
@@ -385,6 +407,14 @@ public final class GtkHost {
 
     func moved(_ event: GdkEventMotion) {
         let point = CGPoint(x: event.x, y: event.y)
+        if let node = input.capture {
+            return sendInput(.motion, to: node, at: point, state: event.state)
+        }
+        if captured == nil, let node = hitPath(point).last(where: { $0.node.handlesPointer })?.node,
+            node.actions.platformInput != nil
+        {
+            sendInput(.motion, to: node, at: point, state: event.state)
+        }
         guard let node = captured else { return updateHover(point) }
         let local = node.convertFromWindow(point)
         let inside = node.bounds.contains(local)
@@ -407,6 +437,13 @@ public final class GtkHost {
     }
 
     func buttonReleased(_ event: GdkEventButton) -> Bool {
+        if let node = input.capture {
+            input.buttons.remove(event.button)
+            if input.buttons.isEmpty { input.capture = nil }
+            sendInput(
+                .buttonUp(button: Int(event.button)), to: node, at: CGPoint(x: event.x, y: event.y), state: event.state)
+            return true
+        }
         guard event.button == 1, let node = captured else { return true }
         captured = nil
         stopRepeating()
@@ -623,6 +660,22 @@ public final class GtkHost {
     }
 
     func scrolled(_ event: GdkEventScroll) -> Bool {
+        let point = CGPoint(x: event.x, y: event.y)
+        if let node = input.capture ?? hitPath(point).last(where: { $0.node.handlesPointer })?.node,
+            node.actions.platformInput != nil
+        {
+            let precise = event.direction == GDK_SCROLL_SMOOTH
+            let (wheelX, wheelY): (Double, Double) =
+                switch event.direction {
+                case GDK_SCROLL_UP: (0, -1)
+                case GDK_SCROLL_DOWN: (0, 1)
+                case GDK_SCROLL_LEFT: (-1, 0)
+                case GDK_SCROLL_RIGHT: (1, 0)
+                default: (event.delta_x, event.delta_y)
+                }
+            sendInput(.scroll(dx: wheelX, dy: wheelY, precise: precise), to: node, at: point, state: event.state)
+            return true
+        }
         var dx = 0.0, dy = 0.0
         switch event.direction {
         case GDK_SCROLL_UP: dy = -1
@@ -728,6 +781,19 @@ public final class GtkHost {
 
     /// Key events of the window (forwarded by the window controller) and of the drawing area.
     func keyEvent(_ event: GdkEventKey) -> Bool {
+        if let node = input.focus, editing == nil, let handler = node.actions.platformInput {
+            let unshifted = GtkInputRouting.unshiftedKeyval(event)
+            let kind: GtkInputEvent.Kind =
+                event.type == GDK_KEY_PRESS
+                ? .keyDown(
+                    keyval: event.keyval, unshiftedKeyval: unshifted, keycode: event.hardware_keycode,
+                    text: event.string.map { String(cString: $0) } ?? "")
+                : .keyUp(keyval: event.keyval, unshiftedKeyval: unshifted, keycode: event.hardware_keycode)
+            if handler(GtkInputEvent(kind: kind, location: .zero, state: event.state)) {
+                flushNow()
+                return true
+            }
+        }
         guard let key = Self.keyEquivalent(event.keyval) else { return false }
         let modifiers = Self.modifiers(event.state)
         let isPress = event.type == GDK_KEY_PRESS
@@ -768,6 +834,14 @@ public final class GtkHost {
             return true
         }
         return false
+    }
+
+    /// Delivers a raw input event to a view taking them (`onGtkInput`); `point` is in the window.
+    private func sendInput(_ kind: GtkInputEvent.Kind, to node: GtkNode?, at point: CGPoint? = nil, state: guint) {
+        guard let node, let handler = node.actions.platformInput else { return }
+        let location = point.map { node.convertFromWindow($0) } ?? .zero
+        _ = handler(GtkInputEvent(kind: kind, location: location, state: state))
+        flushNow()
     }
 
     // MARK: Text editing

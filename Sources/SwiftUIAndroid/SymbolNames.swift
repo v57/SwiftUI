@@ -190,6 +190,7 @@ enum SymbolNames {
         "forward": g("fast_forward"),
         "forward.end": g("skip_next"),
         "gauge.medium": g("speed"),
+        "gauge.with.dots.needle.33percent": g("speed"),
         "gear": g("settings"),
         "gearshape": g("settings"),
         "gearshape.2": g("settings_applications"),
