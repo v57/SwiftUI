@@ -22,6 +22,8 @@ public enum GtkAppRunner {
         gtk_init(nil, nil)
         if let name = ProcessInfo.processInfo.environment["SWIFTUI_GTK_DARK"] {
             sui_set_prefer_dark((name == "1").gboolean)
+        } else {
+            followDesktopColorScheme()
         }
         systemPrefersDark = sui_prefers_dark() != 0
         GtkText.install()
@@ -114,6 +116,26 @@ public enum GtkAppRunner {
         UserDefaults.standard.synchronize()
         if controllers.isEmpty { gtk_main_quit() }
     }
+
+    /// The desktop's Dark style (`color-scheme`, which GTK 3 itself ignores) asks for GTK's dark theme, at launch and
+    /// when it changes (Ubuntu also switches the theme to Yaru-dark; GNOME and Fedora only set color-scheme).
+    private static func followDesktopColorScheme() {
+        guard sui_color_scheme_dark() >= 0, let interface = sui_interface_settings() else { return }
+        let themeIsDark = sui_prefers_dark() != 0
+        if sui_color_scheme_dark() == 1, !themeIsDark { sui_set_prefer_dark(1) }
+        let changed: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutablePointer<gchar>?, UnsafeMutableRawPointer?) -> Void = { _, _, _ in
+            MainActor.assumeIsolated {
+                let dark = sui_color_scheme_dark() == 1 || GtkAppRunner.themeIsDark
+                GtkAppRunner.systemPrefersDark = dark
+                GtkAppRunner.updatePreferredColorScheme()
+            }
+        }
+        self.themeIsDark = themeIsDark
+        _ = connect(UnsafeMutableRawPointer(interface), "changed::color-scheme", nil, changed)
+    }
+
+    /// Whether the GTK theme itself is dark (`Yaru-dark`) or asks for it, before the desktop's style was applied.
+    private static var themeIsDark = false
 
     /// A new window: its content's first update (in its init) asked for its color scheme before it was listed.
     private static func add(_ controller: GtkWindowController) {

@@ -138,6 +138,34 @@ static inline char *sui_default_font_name(void) {
     return name;
 }
 
+/// The desktop's interface settings (`org.gnome.desktop.interface`) when its schema has `color-scheme` (GNOME 42 and
+/// later), else NULL; one shared object, so its `changed::color-scheme` signal can be watched.
+static inline GSettings *sui_interface_settings(void) {
+    static GSettings *settings = NULL;
+    static gboolean looked = FALSE;
+    if (!looked) {
+        looked = TRUE;
+        GSettingsSchemaSource *source = g_settings_schema_source_get_default();
+        GSettingsSchema *schema = source ? g_settings_schema_source_lookup(source, "org.gnome.desktop.interface", TRUE) : NULL;
+        if (schema != NULL) {
+            if (g_settings_schema_has_key(schema, "color-scheme")) settings = g_settings_new("org.gnome.desktop.interface");
+            g_settings_schema_unref(schema);
+        }
+    }
+    return settings;
+}
+
+/// The desktop's Dark style: 1 when `color-scheme` is `prefer-dark` (GNOME 42+ sets it and may leave the GTK 3 theme
+/// light), 0 when it's another value, -1 without the setting.
+static inline int sui_color_scheme_dark(void) {
+    GSettings *interface = sui_interface_settings();
+    if (interface == NULL) return -1;
+    gchar *scheme = g_settings_get_string(interface, "color-scheme");
+    int dark = scheme != NULL && g_strcmp0(scheme, "prefer-dark") == 0;
+    g_free(scheme);
+    return dark;
+}
+
 static inline gboolean sui_prefers_dark(void) {
     gboolean dark = FALSE;
     gchar *theme = NULL;
