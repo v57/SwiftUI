@@ -99,9 +99,12 @@ enum LogSink {
         default: "notice"
         }
         let line = "[\(subsystem)\(category.isEmpty ? "" : ":\(category)")] \(level): \(message)\n"
-        fputs(line, stderr)
         #if os(Windows)
+        fputs(line, stderr)
         line.withCString(encodedAs: UTF16.self) { OutputDebugStringW($0) }
+        #else
+        // glibc's `stderr` is a mutable global, which strict concurrency rejects.
+        FileHandle.standardError.write(Data(line.utf8))
         #endif
     }
 }
