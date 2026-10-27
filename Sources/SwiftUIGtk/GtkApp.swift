@@ -36,7 +36,7 @@ public enum GtkAppRunner {
         AppRuntime.presentWindow = { description, onClose in
             let controller = GtkWindowController(description: description, value: nil)
             controller.onClose = onClose
-            controllers.append(controller)
+            add(controller)
             return controller
         }
         AppRuntime.focusPresentedWindow = { token in
@@ -53,9 +53,9 @@ public enum GtkAppRunner {
         let first = windows.firstIndex(where: \.opensAtLaunch)
         let presented = windows.indices.filter { windows[$0].launchBehavior == .presented && $0 != first }
         if let index = first ?? (presented.isEmpty && !windows.isEmpty ? 0 : nil) {
-            controllers.append(GtkWindowController(description: windows[index], value: nil))
+            add(GtkWindowController(description: windows[index], value: nil))
         }
-        for index in presented { controllers.append(GtkWindowController(description: windows[index], value: nil)) }
+        for index in presented { add(GtkWindowController(description: windows[index], value: nil)) }
         GtkMainLoop.serviceTimers()
         GtkScript.startIfRequested()
         gtk_main()
@@ -78,13 +78,19 @@ public enum GtkAppRunner {
             gtk_window_present(sui_window(raw(existing.window)))
             return
         }
-        controllers.append(GtkWindowController(description: description, value: value))
+        add(GtkWindowController(description: description, value: value))
     }
 
     static func closed(_ controller: GtkWindowController) {
         controllers.removeAll { $0 === controller }
         UserDefaults.standard.synchronize()
         if controllers.isEmpty { gtk_main_quit() }
+    }
+
+    /// A new window: its content's first update (in its init) asked for its color scheme before it was listed.
+    private static func add(_ controller: GtkWindowController) {
+        controllers.append(controller)
+        updatePreferredColorScheme()
     }
 
     /// GTK's dark preference is the screen's, not a window's: the windows' `preferredColorScheme` (the newest

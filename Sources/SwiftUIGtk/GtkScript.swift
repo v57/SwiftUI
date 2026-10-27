@@ -123,6 +123,9 @@ enum GtkScript {
             MainActor.assumeIsolated {
                 guard Int(bitPattern: data) == GtkScript.generation, let path = GtkScript.shotPath else { return }
                 GtkScript.shotPath = nil
+                // The fallback step is stale now: taking the shot runs the main loop (settle), where it could
+                // otherwise fire, go on and exit before the file is written (slow pages).
+                GtkScript.generation += 1
                 GtkScript.screenshot(path: path)
                 GtkScript.schedule(after: 0)
             }
@@ -133,9 +136,14 @@ enum GtkScript {
     }
 
     private static var shotPath: String?
+    private static var stepping = false
 
     /// Runs commands until one waits.
     private static func step() {
+        // Commands run the main loop (settle, waits); a step timer firing in there belongs to this step.
+        guard !stepping else { return }
+        stepping = true
+        defer { stepping = false }
         // No frame came for a screenshot (an unmapped window): take it as things are.
         if let path = pendingShot ?? shotPath {
             pendingShot = nil
