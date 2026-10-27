@@ -83,3 +83,62 @@ Set `AppRuntime.runner` to a function that opens one platform window per `Window
 * `SWIFTUI_GTK_DEBUG=1|2|3` logs clicks / render-tree dumps / content updates and frames.
 * Test VM: `Linux/scripts/create-vm <ubuntu-desktop-arm64.iso>` (UTM bundle, unattended
   install); `Linux/scripts/vm run GalleryGtk`, `vm shot GalleryGtk out.png`, `vm click x y`.
+* Window chrome: a `GtkHeaderBar` holds the title and toolbar items; content that runs up into the
+  title bar (`.windowStyle(.hiddenTitleBar)`, `.toolbarBackgroundVisibility(.hidden, for: .windowToolbar)`)
+  swaps it for an empty title bar and floats the header bar's buttons over the content's top-right
+  corner (`windowTitleBarArea` tells the content where they are; presses nothing takes in that row
+  drag the window). The app's commands (`WindowMenu.standardMenus`, shared with WinUI) form a
+  `GtkMenuBar` with Ctrl shortcuts; content that draws its own menus (`windowMenuBar`) hides it.
+* `preferredColorScheme` sets GTK's `gtk-application-prefer-dark-theme` (the newest window that
+  asks wins); `SWIFTUI_GTK_DARK=1|0` overrides the theme's preference at launch.
+
+### Script mode
+
+`<app> --script <file>` (or `SWIFTUI_SCRIPT=<file>`) runs a script against the app, as the WinUI
+host's `--script`: one command per line, `#` comments, coordinates in points from the window's top
+left (header bar included, as screenshots show it). It works under Xvfb (`xvfb-run -a <app> --script
+...`), since screenshots are drawn by GTK rather than read from the screen.
+
+| Command | |
+|---|---|
+| `wait <ms>` | wait |
+| `waitfor <text> [ms]` | wait until a text shows (default 5 s; a failure counts) |
+| `screenshot <png>` | the window as GTK draws it (after the next frame) |
+| `screen <png>` | the whole X screen (popups, dialogs) |
+| `dump <txt> [all]` | window, header buttons, menus and render tree with frames; `all` keeps hidden views |
+| `tap <text>` | click a text, placeholder, field text, form row label or `image:<symbol>`; else a header button by label or tooltip |
+| `tapat x y` / `click x y`, `rclick x y`, `hover x y`, `scroll x y dy [dx]` | pointer input at a point |
+| `type <text>` | type into the focused field (or the first one) |
+| `fill <field>\|<text>` | focus a field (placeholder, text, `#n` or form label) and type |
+| `keys <text>` | key presses through GTK (`\n`, `\t`, `\e`) |
+| `key <combo>` | e.g. `ctrl+w`, `ctrl+shift+k`, `Escape` (GDK key names) |
+| `menu <Menu/Item>` | run a menu bar item |
+| `back` | the header bar's back button |
+| `window <n\|title>`, `windows`, `resize w h` | pick, list and size windows |
+| `expect <text>` | like `waitfor` without waiting |
+| `log <text>`, `exit` | report; quit (status 1 when an expectation failed) |
+
+Smoke scripts live in `Linux/tests` (`gallery.script`, `presentations.script`, `component.script`).
+
+### Apps on Linux
+
+An app's package builds it on Linux as an **executable product named after the app**, from its Xcode
+app folder, like the Windows `<App>WinUI` library (the same target settings; Linux needs no host):
+
+```swift
+#elseif os(Linux)
+package.targets.append(
+  .executableTarget(
+    name: "<App>App", dependencies: [/* the app's kits */, .product(name: "SwiftUI", package: "SwiftUI")],
+    path: "<App>", exclude: ["Assets.xcassets", "<App>.entitlements"],
+    swiftSettings: [/* as the Windows target, including the -import-module flags */]))
+package.products.append(.executable(name: "<App>", targets: ["<App>App"]))
+#endif
+```
+
+Build and run it in place (`V57_LOCAL=1 swift build --product <App>` against the sibling checkouts) or
+stage it with `Linux/scripts/build-app --package <dir> <App>`: `.build/linux/<App>/` gets the
+executable, its resource bundles, the Material Symbols font, an `Info.plist` (bundle identifier and
+version from the Xcode project, so `UserDefaults` are the app's own) and a `.desktop` file
+(`--install` adds it to the user's applications, `--static` links the Swift runtime in, `--run` and
+`--script <file>` run it, under Xvfb when there is no display).
