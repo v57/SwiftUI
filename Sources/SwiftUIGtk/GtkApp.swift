@@ -197,6 +197,9 @@ final class GtkWindowController {
     private var hiddenTitleBar: Bool
     private var toolbarBackgroundHidden = false
     private var hidesTitle = false
+    private var subtitle: String?
+    /// The `.principal` toolbar item, centered in the header bar in place of the title.
+    private var principalWidget: UnsafeMutablePointer<GtkWidget>?
     private var barProvider: UnsafeMutablePointer<GtkCssProvider>?
 
     final class ToolbarItem {
@@ -254,7 +257,8 @@ final class GtkWindowController {
         host.graph.onNavigationTitleChange = { [weak self] title in self?.setTitle(title) }
         host.graph.onNavigationSubtitleChange = { [weak self] subtitle in
             guard let self else { return }
-            gtk_header_bar_set_subtitle(sui_header_bar(raw(self.headerBar)), subtitle)
+            self.subtitle = subtitle
+            self.updateTitleBar()
         }
         host.graph.onToolbarChange = { [weak self] toolbar in
             self?.updateToolbar(toolbar)
@@ -382,6 +386,8 @@ final class GtkWindowController {
         let bar = sui_header_bar(raw(headerBar))
         let floating = contentInTitleBar
         gtk_header_bar_set_title(bar, floating || hidesTitle ? nil : title)
+        // toolbar(removing: .title) removes the subtitle too, as on the Mac.
+        gtk_header_bar_set_subtitle(bar, floating || hidesTitle ? nil : subtitle)
         guard titleBarState.map({ $0 != (floating, hidesTitle) }) ?? true else { return }
         let wasFloating = titleBarState?.0 ?? false
         titleBarState = (floating, hidesTitle)
@@ -486,9 +492,20 @@ final class GtkWindowController {
     }
 
     private func updateToolbar(_ toolbar: WindowToolbar) {
+        let bar = sui_header_bar(raw(headerBar))
+        // The centered item comes off first (kept alive by a reference until the end), so a removed item is never
+        // the header bar's custom title when it's destroyed.
+        let detachedTitle = principalWidget
+        if let detachedTitle {
+            g_object_ref(UnsafeMutableRawPointer(detachedTitle))
+            gtk_header_bar_set_custom_title(bar, nil)
+            principalWidget = nil
+        }
+        defer { detachedTitle.map { g_object_unref(UnsafeMutableRawPointer($0)) } }
         var keep: Set<String> = []
         var start: [UnsafeMutablePointer<GtkWidget>] = []
         var end: [UnsafeMutablePointer<GtkWidget>] = []
+        var principal: UnsafeMutablePointer<GtkWidget>?
         var actions: [String: @MainActor () -> Void] = [:]
         for entry in toolbar.items where !entry.isSidebarItem {
             keep.insert(entry.id)
@@ -517,10 +534,19 @@ final class GtkWindowController {
                     item = makeHostedItem(entry)
                     toolbarItems[entry.id] = item
                 }
+                // Its ideal width (a segmented control's every segment), within a limit for fields that would
+                // take any width; the principal item may take more, as it has the middle to itself.
                 let size = item.host!.sizeThatFits(.unspecified)
-                gtk_widget_set_size_request(item.widget, Int32(min(max(size.width, 24), 360).rounded(.up)), Int32(max(size.height, 24).rounded(.up)))
+                let limit: CGFloat = entry.placement == .principal ? 800 : 360
+                gtk_widget_set_size_request(item.widget, Int32(min(max(size.width, 24), limit).rounded(.up)), Int32(max(size.height, 24).rounded(.up)))
             }
-            if Self.isLeading(entry.placement) { start.append(item.widget) } else { end.append(item.widget) }
+            if entry.placement == .principal, principal == nil {
+                principal = item.widget
+            } else if Self.isLeading(entry.placement) {
+                start.append(item.widget)
+            } else {
+                end.append(item.widget)
+            }
         }
         toolbarActions = actions
         for (id, item) in toolbarItems where !keep.contains(id) {
@@ -529,15 +555,18 @@ final class GtkWindowController {
         }
         // Re-pack in order (end items are packed right to left); packed widgets are kept alive
         // across the removal by a temporary reference.
-        let bar = sui_header_bar(raw(headerBar))
         var repacked: [UnsafeMutablePointer<GtkWidget>] = []
-        for widget in start + end where gtk_widget_get_parent(widget) != nil {
+        for widget in start + end + [principal].compactMap({ $0 }) where gtk_widget_get_parent(widget) != nil {
             g_object_ref(UnsafeMutableRawPointer(widget))
             gtk_container_remove(sui_container(raw(headerBar)), widget)
             repacked.append(widget)
         }
         for widget in start { gtk_header_bar_pack_start(bar, widget) }
         for widget in end.reversed() { gtk_header_bar_pack_end(bar, widget) }
+        if let principal {
+            gtk_header_bar_set_custom_title(bar, principal)
+            principalWidget = principal
+        }
         for widget in repacked { g_object_unref(UnsafeMutableRawPointer(widget)) }
         gtk_widget_show_all(headerBar)
     }
