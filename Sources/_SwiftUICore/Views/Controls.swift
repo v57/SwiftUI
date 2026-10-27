@@ -690,7 +690,9 @@ final class ControlLayoutComputer: LayoutComputer {
         var width = max(metrics.minSize.width, proposal.width ?? metrics.idealWidth)
         if !width.isFinite { width = metrics.idealWidth }
         var height = flexibleHeight ? max(metrics.minSize.height, proposal.height ?? metrics.minSize.height) : metrics.minSize.height
-        if !height.isFinite { height = metrics.minSize.height }
+        // An editor grows without bound, as a color does: a stack that asks for its largest height (an infinite
+        // proposal) gets it, so the editor takes the stack's room left over instead of its minimum, centered.
+        if !height.isFinite && !flexibleHeight { height = metrics.minSize.height }
         return CGSize(width: width, height: height)
     }
     override func isEquivalent(to other: LayoutComputer) -> Bool {
