@@ -1,0 +1,39 @@
+# Presentations and timers in GalleryGtk: sheet, alert, confirmation dialog, menu, toolbar button, Timer.publish and
+# .task.  Run: xvfb-run -a .build/debug/GalleryGtk --script Linux/tests/presentations.script
+waitfor Presentations
+tap Presentations
+waitfor Show sheet
+tap Show sheet
+waitfor A sheet
+screenshot /tmp/shots/presentations-01-sheet.png
+tap Close
+wait 500
+tap Show alert
+waitfor Delete everything?
+screenshot /tmp/shots/presentations-02-alert.png
+tap Delete
+waitfor Last choice: deleted
+# The alert fades out: its dim takes clicks until it's gone.
+wait 600
+tap Confirmation dialog
+waitfor Oranges
+tap Oranges
+waitfor Last choice: oranges
+wait 600
+tap Menu
+waitfor Second
+screenshot /tmp/shots/presentations-03-menu.png
+tap Second
+waitfor Last choice: second
+tap Share
+waitfor Last choice: toolbar
+back
+waitfor Timers & tasks
+wait 600
+tap Timers & tasks
+wait 1000
+dump /tmp/shots/timers.txt
+waitfor Task: finished on the main actor 4000
+waitfor Timer ticks: 2 4000
+screenshot /tmp/shots/presentations-04-timers.png
+exit
