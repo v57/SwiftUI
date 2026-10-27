@@ -1,6 +1,9 @@
 import CryptoKit
 import Foundation
 import SQLite3
+#if os(Linux)
+import SecretService
+#endif
 import Testing
 import os
 
@@ -14,9 +17,9 @@ struct StandInFrameworkTests {
         #expect(try AES.GCM.open(box, using: key) == Data("secret".utf8))
     }
 
-    #if os(Windows)
-    @Test func secureEnclaveKeysReopenFromTheirBlob() throws {
-        #expect(SecureEnclave.isAvailable)
+    #if os(Windows) || os(Linux)
+    // Linux needs a Secret Service (a desktop session's keyring) for the sealing key.
+    @Test(.enabled(if: SecureEnclave.isAvailable)) func secureEnclaveKeysReopenFromTheirBlob() throws {
         let key = try SecureEnclave.P256.Signing.PrivateKey()
         let blob = key.dataRepresentation
         #expect(!blob.isEmpty)
@@ -25,6 +28,25 @@ struct StandInFrameworkTests {
         let signature = try reopened.signature(for: Data("message".utf8))
         #expect(key.publicKey.isValidSignature(signature, for: Data("message".utf8)))
         #expect(throws: (any Error).self) { try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: Data(blob.reversed())) }
+    }
+    #endif
+
+    #if os(Linux)
+    @Test(.enabled(if: SecureEnclave.isAvailable)) func secretServiceKeepsItems() throws {
+        let service = "dev.v57.compat-test.\(UUID().uuidString)"
+        defer { try? SecretService.delete(service: service, account: "a") }
+        defer { try? SecretService.delete(service: service, account: "b") }
+        #expect(try SecretService.read(service: service, account: "a") == nil)
+        try SecretService.write(Data([0, 1, 2, 255]), service: service, account: "a")
+        try SecretService.write(Data("first".utf8), service: service, account: "b")
+        try SecretService.write(Data("second".utf8), service: service, account: "b")
+        #expect(try SecretService.read(service: service, account: "a") == Data([0, 1, 2, 255]))
+        #expect(try SecretService.read(service: service, account: "b") == Data("second".utf8))
+        let all = try SecretService.all(service: service).sorted { $0.account < $1.account }
+        #expect(all.map(\.account) == ["a", "b"])
+        try SecretService.delete(service: service, account: "a")
+        try SecretService.delete(service: service, account: "a")
+        #expect(try SecretService.read(service: service, account: "a") == nil)
     }
     #endif
 

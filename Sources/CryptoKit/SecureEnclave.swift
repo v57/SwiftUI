@@ -2,17 +2,21 @@ import Foundation
 
 #if os(Windows)
 import WinSDK
+#elseif os(Linux)
+import SecretService
 #endif
 
 /// Device-bound keys, standing in for the Secure Enclave. A key's `dataRepresentation` is its private key sealed
-/// to this device's user (DPAPI on Windows): it opens only on this machine, for this account, which is what code
-/// that stores a Secure Enclave key blob relies on. Unlike the Secure Enclave the private key is in memory while
-/// the key is used.
+/// to this device's user (DPAPI on Windows; on Linux AES-GCM under a key kept in the user's Secret Service): it
+/// opens only on this machine, for this account, which is what code that stores a Secure Enclave key blob relies
+/// on. Unlike the Secure Enclave the private key is in memory while the key is used.
 public enum SecureEnclave {
-    /// Whether keys can be sealed to the device (Windows: DPAPI).
+    /// Whether keys can be sealed to the device (Windows: DPAPI; Linux: a Secret Service answers).
     public static var isAvailable: Bool {
         #if os(Windows)
         true
+        #elseif os(Linux)
+        DeviceSeal.linuxKey != nil
         #else
         false
         #endif
@@ -87,6 +91,10 @@ enum DeviceSeal {
     static func seal(_ data: Data) throws -> Data {
         #if os(Windows)
         return try crypt(data, protect: true)
+        #elseif os(Linux)
+        guard let key = linuxKey else { throw SecureEnclave.Error.unavailable }
+        guard let sealed = try? AES.GCM.seal(data, using: key).combined else { throw SecureEnclave.Error.sealFailed }
+        return Data([linuxVersion]) + sealed
         #else
         throw SecureEnclave.Error.unavailable
         #endif
@@ -95,6 +103,12 @@ enum DeviceSeal {
     static func open(_ data: Data) throws -> Data {
         #if os(Windows)
         return try crypt(data, protect: false)
+        #elseif os(Linux)
+        guard let key = linuxKey else { throw SecureEnclave.Error.unavailable }
+        guard data.first == linuxVersion, let box = try? AES.GCM.SealedBox(combined: data.dropFirst()),
+              let opened = try? AES.GCM.open(box, using: key)
+        else { throw SecureEnclave.Error.unsealFailed }
+        return opened
         #else
         throw SecureEnclave.Error.unavailable
         #endif
@@ -113,6 +127,35 @@ enum DeviceSeal {
             defer { LocalFree(pointer) }
             return Data(bytes: pointer, count: Int(output.cbData))
         }
+    }
+    #endif
+
+    #if os(Linux)
+    /// The first byte of a Linux seal: AES-GCM (nonce, ciphertext, tag) under `linuxKey`.
+    private static let linuxVersion: UInt8 = 1
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var cachedKey: SymmetricKey?
+
+    /// This user's sealing key: 256 random bits kept in the Secret Service's login collection, made on first use;
+    /// nil when no Secret Service answers.
+    static var linuxKey: SymmetricKey? {
+        lock.lock()
+        defer { lock.unlock() }
+        if let cachedKey { return cachedKey }
+        let service = "dev.v57.device-seal", account = "key"
+        do {
+            if let stored = try SecretService.read(service: service, account: account), stored.count == 32 {
+                cachedKey = SymmetricKey(data: stored)
+            } else {
+                let key = SymmetricKey(size: .bits256)
+                let bytes = key.withUnsafeBytes { Data($0) }
+                try SecretService.write(bytes, service: service, account: account, label: "v57 device key")
+                cachedKey = key
+            }
+        } catch {
+            return nil
+        }
+        return cachedKey
     }
     #endif
 }

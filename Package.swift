@@ -197,6 +197,17 @@ package.targets += [.systemLibrary(name: "CGtk3", pkgConfig: "gtk+-3.0", provide
 for target in package.targets where target.name == "SwiftUIGtk" {
     target.dependencies += ["CGtk3"]
 }
+// SecretService: the freedesktop Secret Service through libsecret (`apt install libsecret-1-dev`), where Apple
+// platforms use the keychain: VaultKit's keychain items and the SecureEnclave stand-in's sealing key.
+package.targets += [
+    .systemLibrary(name: "CLibSecret", pkgConfig: "libsecret-1", providers: [.apt(["libsecret-1-dev"])]),
+    .target(name: "CSecretService", dependencies: ["CLibSecret"]),
+    .target(name: "SecretService", dependencies: ["CSecretService"]),
+]
+package.products += [.library(name: "SecretService", targets: ["SecretService"])]
+for target in package.targets where ["CryptoKit", "CompatTests"].contains(target.name) {
+    target.dependencies += ["SecretService"]
+}
 // GTK smoke-test app (the Android Gallery's sources).
 package.targets += [.executableTarget(name: "GalleryGtk", dependencies: ["SwiftUI"])]
 package.products += [.executable(name: "GalleryGtk", targets: ["GalleryGtk"])]
