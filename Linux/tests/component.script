@@ -1,0 +1,13 @@
+# Smoke test for the ComponentKit catalog on GTK (Component): opens, visits a few pages, saves screenshots and
+# view trees to /tmp/shots.  Run: xvfb-run -a .build/debug/Component --script <this file>
+waitfor Buttons
+screenshot /tmp/shots/component-01-root.png
+dump /tmp/shots/component-01-root.txt
+tap Toggles & Chips
+wait 1000
+screenshot /tmp/shots/component-02-toggles.png
+tap Text Fields
+wait 1000
+screenshot /tmp/shots/component-03-fields.png
+dump /tmp/shots/component-03-fields.txt
+exit

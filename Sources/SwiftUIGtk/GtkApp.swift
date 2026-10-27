@@ -3,12 +3,14 @@ import Foundation
 import CGtk3
 import _SwiftUICore
 
-/// Runs an `App` with GTK 3: one `GtkWindow` (with a header bar for the title and toolbar) per
-/// scene window, and `gtk_main` as the main loop.
+/// Runs an `App` with GTK 3: one `GtkWindow` (with a header bar for the title and toolbar, and a
+/// menu bar for the app's commands) per scene window, and `gtk_main` as the main loop.
 @MainActor
 public enum GtkAppRunner {
     static var scenes: [WindowDescription] = []
     static var controllers: [GtkWindowController] = []
+    /// The appearance GTK had at launch (restored when no window asks for one).
+    private static var systemPrefersDark: Bool?
 
     public static func install() {
         AppRuntime.runner = { windows in
@@ -21,6 +23,7 @@ public enum GtkAppRunner {
         if let name = ProcessInfo.processInfo.environment["SWIFTUI_GTK_DARK"] {
             sui_set_prefer_dark((name == "1").gboolean)
         }
+        systemPrefersDark = sui_prefers_dark() != 0
         GtkText.install()
         GtkMainLoop.install()
         scenes = windows
@@ -30,14 +33,33 @@ public enum GtkAppRunner {
                 controller.close()
             }
         }
-        for description in windows where description.opensAtLaunch {
-            controllers.append(GtkWindowController(description: description, value: nil))
+        AppRuntime.presentWindow = { description, onClose in
+            let controller = GtkWindowController(description: description, value: nil)
+            controller.onClose = onClose
+            controllers.append(controller)
+            return controller
         }
-        if controllers.isEmpty, let first = windows.first {
-            controllers.append(GtkWindowController(description: first, value: nil))
+        AppRuntime.focusPresentedWindow = { token in
+            guard let controller = token as? GtkWindowController else { return }
+            gtk_window_present(sui_window(raw(controller.window)))
         }
+        AppRuntime.closePresentedWindow = { token in (token as? GtkWindowController)?.close() }
+        AppRuntime.performWindowDrag = {
+            controllers.first { gtk_window_is_active(sui_window(raw($0.window))) != 0 }?.beginMoveDrag()
+        }
+        DefaultsSaver.start()
+        // Like SwiftUI, the first window scene opens at launch, plus scenes presented at launch (a welcome window
+        // in place of a suppressed main one); with neither, the first scene.
+        let first = windows.firstIndex(where: \.opensAtLaunch)
+        let presented = windows.indices.filter { windows[$0].launchBehavior == .presented && $0 != first }
+        if let index = first ?? (presented.isEmpty && !windows.isEmpty ? 0 : nil) {
+            controllers.append(GtkWindowController(description: windows[index], value: nil))
+        }
+        for index in presented { controllers.append(GtkWindowController(description: windows[index], value: nil)) }
         GtkMainLoop.serviceTimers()
+        GtkScript.startIfRequested()
         gtk_main()
+        UserDefaults.standard.synchronize()
         exit(0)
     }
 
@@ -61,20 +83,65 @@ public enum GtkAppRunner {
 
     static func closed(_ controller: GtkWindowController) {
         controllers.removeAll { $0 === controller }
+        UserDefaults.standard.synchronize()
         if controllers.isEmpty { gtk_main_quit() }
+    }
+
+    /// GTK's dark preference is the screen's, not a window's: the windows' `preferredColorScheme` (the newest
+    /// window that asks wins) sets it, and with none the launch appearance comes back.
+    static func updatePreferredColorScheme() {
+        let wanted = controllers.reversed().lazy.compactMap(\.preferredColorScheme).first
+        let dark = wanted.map { $0 == .dark } ?? systemPrefersDark ?? false
+        if (sui_prefers_dark() != 0) != dark { sui_set_prefer_dark(dark.gboolean) }
     }
 }
 
-/// One scene window: a `GtkWindow` with a `GtkHeaderBar` (title, toolbar items) and a host.
+/// Saves the defaults every couple of seconds: swift-corelibs-foundation writes them only on `synchronize()`.
+@MainActor
+enum DefaultsSaver {
+    private static var timer: DispatchSourceTimer?
+
+    static func start() {
+        guard timer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + 2, repeating: 2, leeway: .milliseconds(500))
+        timer.setEventHandler { UserDefaults.standard.synchronize() }
+        timer.resume()
+        self.timer = timer
+    }
+}
+
+/// One scene window: a `GtkWindow` with a `GtkHeaderBar` (title, toolbar items), a menu bar and a host.
+///
+/// Content that runs up into the title bar (a hidden title bar, or `toolbarBackgroundVisibility(.hidden, for:
+/// .windowToolbar)`, as the kits' own bars do) gets the whole window: the header bar then floats over the content's
+/// top trailing corner without a background or title, with the toolbar and the window's buttons, and the content
+/// learns where it is from `windowTitleBarArea`; the rest of that row drags the window.
 @MainActor
 final class GtkWindowController {
     let description: WindowDescription
     let value: AnyHashable?
     let window: UnsafeMutablePointer<GtkWidget>
     let headerBar: UnsafeMutablePointer<GtkWidget>
+    /// The header bar's event box while it floats over the content (it drags the window).
+    private let floatingBar: UnsafeMutablePointer<GtkWidget>
+    /// The window's titlebar while the content runs up into it: an empty, hidden widget (the window keeps its
+    /// client-side decorations).
+    private let emptyTitlebar: UnsafeMutablePointer<GtkWidget>
+    private let overlay: UnsafeMutablePointer<GtkWidget>
     let host: GtkHost
+    private(set) lazy var menuBar = GtkMenuBar(controller: self)
     private var toolbarItems: [String: ToolbarItem] = [:]
+    private var toolbarActions: [String: @MainActor () -> Void] = [:]
     private var title: String
+    /// Called once the window closed (windows presented from code).
+    var onClose: (@MainActor () -> Void)?
+    /// `preferredColorScheme` of the content.
+    private(set) var preferredColorScheme: ColorScheme?
+    private var hiddenTitleBar: Bool
+    private var toolbarBackgroundHidden = false
+    private var hidesTitle = false
+    private var barProvider: UnsafeMutablePointer<GtkCssProvider>?
 
     final class ToolbarItem {
         let widget: UnsafeMutablePointer<GtkWidget>
@@ -87,20 +154,77 @@ final class GtkWindowController {
         }
     }
 
+    /// The window's title as shown (the navigation title, else the scene's).
+    var currentTitle: String { title }
+
+    /// A plain window has no menu bar row (the Mac's menus are the app's, not the window's).
+    var showsMenuBarRow: Bool { description.kind != .plain && description.kind != .hiddenTitleBar }
+
     init(description: WindowDescription, value: AnyHashable?) {
         self.description = description
         self.value = value
         title = description.title
+        hiddenTitleBar = description.kind == .hiddenTitleBar
         window = gtk_window_new(GTK_WINDOW_TOPLEVEL)
+        gtk_window_set_title(sui_window(raw(window)), description.title)
         headerBar = gtk_header_bar_new()
         gtk_header_bar_set_show_close_button(sui_header_bar(raw(headerBar)), 1)
         gtk_header_bar_set_title(sui_header_bar(raw(headerBar)), description.title)
+        floatingBar = gtk_event_box_new()
+        gtk_widget_set_halign(floatingBar, GTK_ALIGN_END)
+        gtk_widget_set_valign(floatingBar, GTK_ALIGN_START)
+        gtk_widget_set_no_show_all(floatingBar, 1)
+        g_object_ref_sink(UnsafeMutableRawPointer(floatingBar))
+        emptyTitlebar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)
+        g_object_ref_sink(UnsafeMutableRawPointer(emptyTitlebar))
+        g_object_ref_sink(UnsafeMutableRawPointer(headerBar))
         gtk_window_set_titlebar(sui_window(raw(window)), headerBar)
         host = GtkHost { backend in description.makeGraphForValue(backend, value) }
-        gtk_container_add(sui_container(raw(window)), host.widget)
-        // Like SwiftUI (and the AppKit runner): the content's minimum size bounds the window; the
-        // default size is `defaultSize`, else the ideal size for panels and content-sized windows,
-        // else 900x450 grown to the minimum.
+        overlay = gtk_overlay_new()
+        let column = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        gtk_box_pack_start(sui_box(raw(column)), menuBar.widget, 0, 0, 0)
+        gtk_box_pack_start(sui_box(raw(column)), host.widget, 1, 1, 0)
+        gtk_container_add(sui_container(raw(overlay)), column)
+        gtk_overlay_add_overlay(sui_overlay(raw(overlay)), floatingBar)
+        gtk_container_add(sui_container(raw(window)), overlay)
+        host.graph.setEnvironment { [window] environment in
+            // dismissWindow() closes this window.
+            environment.dismissWindow = DismissWindowAction(_current: { gtk_window_close(sui_window(raw(window))) })
+        }
+        host.menuShortcut = { [weak self] shortcut in self?.menuBar.perform(shortcut) ?? false }
+        host.titleBarDrag = { [weak self] event in self?.titleBarPress(event) ?? false }
+        host.titleBarDragHeight = { [weak self] in self?.titleBarDragHeight ?? 0 }
+        host.onDidUpdate = { [weak self] in self?.menuBar.refresh() }
+        host.graph.onNavigationTitleChange = { [weak self] title in self?.setTitle(title) }
+        host.graph.onNavigationSubtitleChange = { [weak self] subtitle in
+            guard let self else { return }
+            gtk_header_bar_set_subtitle(sui_header_bar(raw(self.headerBar)), subtitle)
+        }
+        host.graph.onToolbarChange = { [weak self] toolbar in
+            self?.updateToolbar(toolbar)
+            self?.hidesTitle = toolbar.chrome.removesTitle
+            self?.updateTitleBar()
+        }
+        host.graph.onWindowConfigurationChange = { [weak self] configuration in
+            guard let self else { return }
+            toolbarBackgroundHidden = configuration.isToolbarBackgroundHidden == true
+            menuBar.contentDrawsMenus = configuration.isMenuBarHidden == true
+            if preferredColorScheme != configuration.preferredColorScheme {
+                preferredColorScheme = configuration.preferredColorScheme
+                GtkAppRunner.updatePreferredColorScheme()
+            }
+            updateTitleBar()
+        }
+        menuBar.refresh()
+        updateTitleBar()
+        sizeWindow()
+        connectSignals()
+        gtk_widget_show_all(window)
+    }
+
+    /// Like SwiftUI (and the AppKit runner): the content's minimum size bounds the window; the default size is
+    /// `defaultSize`, else the ideal size for panels and content-sized windows, else 900x450 grown to the minimum.
+    private func sizeWindow() {
         let minimum = host.sizeThatFits(ProposedViewSize(width: 0, height: 0))
         gtk_widget_set_size_request(host.widget, Int32(min(minimum.width, 4000).rounded(.up)), Int32(min(minimum.height, 4000).rounded(.up)))
         let size: CGSize
@@ -119,14 +243,6 @@ final class GtkWindowController {
                 gtk_window_set_resizable(sui_window(raw(window)), 0)
             }
         }
-        host.graph.onNavigationTitleChange = { [weak self] title in self?.setTitle(title) }
-        host.graph.onNavigationSubtitleChange = { [weak self] subtitle in
-            guard let self else { return }
-            gtk_header_bar_set_subtitle(sui_header_bar(raw(self.headerBar)), subtitle)
-        }
-        host.graph.onToolbarChange = { [weak self] toolbar in self?.updateToolbar(toolbar) }
-        connectSignals()
-        gtk_widget_show_all(window)
     }
 
     private func connectSignals() {
@@ -136,7 +252,10 @@ final class GtkWindowController {
                 let controller = object(data, as: GtkWindowController.self)
                 controller.host.tearDown()
                 for item in controller.toolbarItems.values { item.host?.tearDown() }
+                controller.onClose?()
+                controller.onClose = nil
                 GtkAppRunner.closed(controller)
+                GtkAppRunner.updatePreferredColorScheme()
             }
         }
         connect(raw(window), "destroy", data, destroy)
@@ -155,6 +274,19 @@ final class GtkWindowController {
             }
         }
         connect(raw(window), "notify::is-active", data, focus)
+        // The floating header bar: its size is the title bar row's, and presses on its empty part drag the window.
+        let allocate: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutablePointer<GdkRectangle>?, UnsafeMutableRawPointer?) -> Void = { _, rect, data in
+            guard let rect else { return }
+            MainActor.assumeIsolated {
+                object(data, as: GtkWindowController.self).floatingBarAllocated(CGSize(width: CGFloat(rect.pointee.width), height: CGFloat(rect.pointee.height)))
+            }
+        }
+        connect(raw(floatingBar), "size-allocate", data, allocate)
+        let press: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutablePointer<GdkEventButton>?, UnsafeMutableRawPointer?) -> gboolean = { _, event, data in
+            guard let event else { return 0 }
+            return MainActor.assumeIsolated { object(data, as: GtkWindowController.self).titleBarPress(event.pointee) }.gboolean
+        }
+        connect(raw(floatingBar), "button-press-event", data, press)
     }
 
     func close() {
@@ -163,7 +295,124 @@ final class GtkWindowController {
 
     private func setTitle(_ title: String?) {
         self.title = title ?? description.title
-        gtk_header_bar_set_title(sui_header_bar(raw(headerBar)), self.title)
+        gtk_window_set_title(sui_window(raw(window)), self.title)
+        updateTitleBar()
+    }
+
+    /// Escape or Back: dismisses the top presentation (sheet, alert, ...), else pops the navigation stack.
+    func back() -> Bool {
+        var handled = host.graph.dismissTopPresentation()
+        if !handled, let pop = toolbarActions["navigation.back"] {
+            pop()
+            handled = true
+        }
+        host.flushNow()
+        return handled
+    }
+
+    // MARK: Title bar
+
+    /// The content runs up into the title bar: a hidden title bar, or the window toolbar's background hidden.
+    private var contentInTitleBar: Bool { hiddenTitleBar || toolbarBackgroundHidden }
+    private var titleBarState: (Bool, Bool)?
+    private var titleBarArea = WindowTitleBarArea(height: 0, leading: 0, trailing: 0)
+    private var lastPress: (button: guint, x: Double, y: Double, time: guint32)?
+
+    private func updateTitleBar() {
+        let bar = sui_header_bar(raw(headerBar))
+        let floating = contentInTitleBar
+        gtk_header_bar_set_title(bar, floating || hidesTitle ? nil : title)
+        guard titleBarState.map({ $0 != (floating, hidesTitle) }) ?? true else { return }
+        let wasFloating = titleBarState?.0 ?? false
+        titleBarState = (floating, hidesTitle)
+        if floating != wasFloating {
+            if floating {
+                gtk_window_set_titlebar(sui_window(raw(window)), emptyTitlebar)
+                gtk_widget_hide(emptyTitlebar)
+                gtk_container_add(sui_container(raw(floatingBar)), headerBar)
+                setFloatingStyle(true)
+                gtk_widget_show_all(headerBar)
+                gtk_widget_show(floatingBar)
+            } else {
+                gtk_widget_hide(floatingBar)
+                gtk_container_remove(sui_container(raw(floatingBar)), headerBar)
+                setFloatingStyle(false)
+                gtk_window_set_titlebar(sui_window(raw(window)), headerBar)
+                gtk_widget_show_all(headerBar)
+            }
+        }
+        let area = floating ? titleBarArea : nil
+        host.graph.setEnvironment { $0.windowTitleBarArea = area }
+    }
+
+    /// Without a background, title or bottom border while it floats over the content.
+    private func setFloatingStyle(_ floating: Bool) {
+        let context = gtk_widget_get_style_context(headerBar)
+        if floating {
+            if barProvider == nil {
+                barProvider = gtk_css_provider_new()
+                gtk_css_provider_load_from_data(barProvider, "headerbar { background: none; border: none; box-shadow: none; }", -1, nil)
+            }
+            gtk_style_context_add_provider(context, OpaquePointer(barProvider), guint(GTK_STYLE_PROVIDER_PRIORITY_APPLICATION))
+            gtk_style_context_remove_class(context, "titlebar")
+        } else if let barProvider {
+            gtk_style_context_remove_provider(context, OpaquePointer(barProvider))
+            gtk_style_context_add_class(context, "titlebar")
+        }
+    }
+
+    private func floatingBarAllocated(_ size: CGSize) {
+        let area = WindowTitleBarArea(height: size.height, leading: 0, trailing: size.width)
+        guard area != titleBarArea else { return }
+        titleBarArea = area
+        guard contentInTitleBar else { return }
+        host.graph.setEnvironment { $0.windowTitleBarArea = area }
+        host.flushSoon()
+    }
+
+    /// A press nothing else took in the title bar row (the floating bar's empty part, or content in the row): drags
+    /// the window; a double click maximizes or restores it.
+    func titleBarPress(_ event: GdkEventButton) -> Bool {
+        guard contentInTitleBar, event.button == 1 else { return false }
+        if event.type == GDK_2BUTTON_PRESS {
+            if gtk_window_is_maximized(sui_window(raw(window))) != 0 {
+                gtk_window_unmaximize(sui_window(raw(window)))
+            } else {
+                gtk_window_maximize(sui_window(raw(window)))
+            }
+            return true
+        }
+        guard event.type == GDK_BUTTON_PRESS else { return false }
+        gtk_window_begin_move_drag(sui_window(raw(window)), Int32(event.button), Int32(event.x_root), Int32(event.y_root), event.time)
+        return true
+    }
+
+    /// The height of the row content may drag the window from (zero unless the content runs up into it).
+    var titleBarDragHeight: CGFloat { contentInTitleBar ? titleBarArea.height : 0 }
+
+    /// `WindowDragGesture` and `performWindowDrag`: starts moving the window with the current press.
+    func beginMoveDrag() {
+        guard let event = gtk_get_current_event() else { return }
+        defer { gdk_event_free(event) }
+        var x = 0.0, y = 0.0
+        gdk_event_get_root_coords(event, &x, &y)
+        gtk_window_begin_move_drag(sui_window(raw(window)), 1, Int32(x), Int32(y), gdk_event_get_time(event))
+    }
+
+    /// The window's frame (its allocation without the client-side decorations' shadow margins), in the toplevel's
+    /// coordinates: what screenshots show.
+    var visibleFrame: CGRect {
+        var rects: [GtkAllocation] = []
+        var allocation = GtkAllocation()
+        if !contentInTitleBar, gtk_widget_get_visible(headerBar) != 0 {
+            gtk_widget_get_allocation(headerBar, &allocation)
+            rects.append(allocation)
+        }
+        gtk_widget_get_allocation(overlay, &allocation)
+        rects.append(allocation)
+        let minX = rects.map(\.x).min()!, minY = rects.map(\.y).min()!
+        let maxX = rects.map { $0.x + $0.width }.max()!, maxY = rects.map { $0.y + $0.height }.max()!
+        return CGRect(x: CGFloat(minX), y: CGFloat(minY), width: CGFloat(maxX - minX), height: CGFloat(maxY - minY))
     }
 
     // MARK: Toolbar
@@ -180,10 +429,12 @@ final class GtkWindowController {
         var keep: Set<String> = []
         var start: [UnsafeMutablePointer<GtkWidget>] = []
         var end: [UnsafeMutablePointer<GtkWidget>] = []
+        var actions: [String: @MainActor () -> Void] = [:]
         for entry in toolbar.items where !entry.isSidebarItem {
             keep.insert(entry.id)
             let item: ToolbarItem
             if let button = entry.button {
+                actions[entry.id] = button.action
                 let signature = "button|\(button.title ?? "")|\(button.systemImage ?? "")|\(entry.placement)"
                 if let existing = toolbarItems[entry.id], existing.signature == signature {
                     item = existing
@@ -211,6 +462,7 @@ final class GtkWindowController {
             }
             if Self.isLeading(entry.placement) { start.append(item.widget) } else { end.append(item.widget) }
         }
+        toolbarActions = actions
         for (id, item) in toolbarItems where !keep.contains(id) {
             remove(item)
             toolbarItems[id] = nil

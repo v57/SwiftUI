@@ -35,6 +35,17 @@ static inline GtkScrolledWindow *sui_scrolled_window(gpointer object) { return G
 static inline GtkSearchEntry *sui_search_entry(gpointer object) { return GTK_SEARCH_ENTRY(object); }
 static inline GtkMenuButton *sui_menu_button(gpointer object) { return GTK_MENU_BUTTON(object); }
 
+static inline GtkMenuItem *sui_menu_item(gpointer object) { return GTK_MENU_ITEM(object); }
+static inline GtkMenuShell *sui_menu_shell(gpointer object) { return GTK_MENU_SHELL(object); }
+static inline GtkCheckMenuItem *sui_check_menu_item(gpointer object) { return GTK_CHECK_MENU_ITEM(object); }
+static inline GtkBin *sui_bin(gpointer object) { return GTK_BIN(object); }
+static inline GtkAccelLabel *sui_accel_label(gpointer object) { return GTK_ACCEL_LABEL(object); }
+
+/// gdk_pixbuf_save is variadic.
+static inline gboolean sui_pixbuf_save_png(GdkPixbuf *pixbuf, const char *path, GError **error) {
+    return gdk_pixbuf_save(pixbuf, path, "png", error, NULL);
+}
+
 static inline GdkEventType sui_event_type(GdkEvent *event) { return event->type; }
 
 /// A style context for a (CSS node) path such as {"button"} or {"scale", "trough", "slider"},

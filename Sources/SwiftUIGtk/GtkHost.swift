@@ -27,6 +27,14 @@ public final class GtkHost {
     private var isTornDown = false
     /// Paints the theme's window background under the content.
     var drawsBackground = true
+    /// The window's menu bar shortcuts, tried before the views' keyboard shortcuts.
+    var menuShortcut: ((KeyboardShortcut) -> Bool)?
+    /// A press nothing took in the title bar row (content that runs up into it): the window drags it.
+    var titleBarDrag: ((GdkEventButton) -> Bool)?
+    /// The height of that row from the top of the content (zero: none).
+    var titleBarDragHeight: (() -> CGFloat)?
+    /// After each graph update (the window refreshes its menus, which read app state).
+    var onDidUpdate: (() -> Void)?
 
     public init(makeGraph: (any RenderBackend) -> ViewGraph) {
         widget = gtk_overlay_new()
@@ -47,6 +55,7 @@ public final class GtkHost {
         graph.onNeedsAnimationFrame = { [weak self] in self?.startTicking() }
         applyColorScheme()
         connectSignals()
+        Self.live.append(Weak(self))
         GtkDebug.log("theme foreground=\(GtkTheme.foreground) background=\(GtkTheme.windowBackground) accent=\(GtkTheme.accent) metrics=\(GtkTheme.metrics)")
     }
 
@@ -117,9 +126,15 @@ public final class GtkHost {
         }
     }
 
+    /// Every host not yet torn down (windows' content and hosted toolbar items), for script mode.
+    struct Weak { weak var host: GtkHost?; init(_ host: GtkHost) { self.host = host } }
+    static var live: [Weak] = []
+    static var all: [GtkHost] { live.compactMap(\.host) }
+
     public func tearDown() {
         guard !isTornDown else { return }
         isTornDown = true
+        Self.live.removeAll { $0.host == nil || $0.host === self }
         if idleSource != 0 { g_source_remove(idleSource) }
         if tickID != 0 { gtk_widget_remove_tick_callback(drawingArea, tickID) }
         idleSource = 0
@@ -158,6 +173,7 @@ public final class GtkHost {
     func flush() {
         guard !isTornDown, graph.needsUpdate else { return }
         graph.update()
+        onDidUpdate?()
         GtkMainLoop.serviceTimers()
     }
 
@@ -168,6 +184,7 @@ public final class GtkHost {
         }
         guard !isTornDown else { return }
         graph.update()
+        onDidUpdate?()
         setNeedsDisplay()
         GtkMainLoop.serviceTimers()
     }
@@ -289,18 +306,22 @@ public final class GtkHost {
     private var repeatTask: Task<Void, Never>?
     private var cursorName = "default"
 
-    private func hitPath(_ point: CGPoint) -> [GtkNode.Hit] {
+    func hitPath(_ point: CGPoint) -> [GtkNode.Hit] {
         backend.root.hitTest(point) ?? []
     }
 
-    private func geometricPath(_ point: CGPoint) -> [GtkNode.Hit] {
+    func geometricPath(_ point: CGPoint) -> [GtkNode.Hit] {
         backend.root.nodesContaining(point)
     }
 
-    private func buttonPressed(_ event: GdkEventButton) -> Bool {
-        // Double/triple-click events duplicate the presses already delivered.
-        guard event.type == GDK_BUTTON_PRESS else { return true }
+    func buttonPressed(_ event: GdkEventButton) -> Bool {
         let point = CGPoint(x: event.x, y: event.y)
+        // Double/triple-click events duplicate the presses already delivered (a double click in the title bar row
+        // maximizes the window).
+        guard event.type == GDK_BUTTON_PRESS else {
+            if event.type == GDK_2BUTTON_PRESS, isTitleBarDrag(point, button: event.button) { _ = titleBarDrag?(event) }
+            return true
+        }
         if editing != nil { endEditing(commit: true) }
         gtk_widget_grab_focus(drawingArea)
         let path = hitPath(point)
@@ -313,7 +334,10 @@ public final class GtkHost {
             }
             return true
         }
-        guard event.button == 1, let target = path.last(where: { $0.node.handlesPointer && $0.node.isEnabled }) else { return true }
+        guard event.button == 1, let target = path.last(where: { $0.node.handlesPointer && $0.node.isEnabled }) else {
+            if isTitleBarDrag(point, button: event.button) { _ = titleBarDrag?(event) }
+            return true
+        }
         let node = target.node
         captured = node
         capturedInside = true
@@ -350,7 +374,13 @@ public final class GtkHost {
         return true
     }
 
-    private func moved(_ event: GdkEventMotion) {
+    /// A press in the title bar row that no view takes.
+    private func isTitleBarDrag(_ point: CGPoint, button: guint) -> Bool {
+        guard button == 1, let height = titleBarDragHeight?(), point.y < height else { return false }
+        return !hitPath(point).contains { $0.node.handlesPointer && $0.node.isEnabled }
+    }
+
+    func moved(_ event: GdkEventMotion) {
         let point = CGPoint(x: event.x, y: event.y)
         guard let node = captured else { return updateHover(point) }
         let local = node.convertFromWindow(point)
@@ -373,7 +403,7 @@ public final class GtkHost {
         flushNow()
     }
 
-    private func buttonReleased(_ event: GdkEventButton) -> Bool {
+    func buttonReleased(_ event: GdkEventButton) -> Bool {
         guard event.button == 1, let node = captured else { return true }
         captured = nil
         stopRepeating()
@@ -448,7 +478,7 @@ public final class GtkHost {
         repeatTask = nil
     }
 
-    private func updateHover(_ point: CGPoint) {
+    func updateHover(_ point: CGPoint) {
         let path = geometricPath(point)
         let tracked = path.filter { entry in
             let actions = entry.node.actions
@@ -589,7 +619,7 @@ public final class GtkHost {
         if model.flashCount > 0 { lastScroll[ObjectIdentifier(node)] = monotonicSeconds() }
     }
 
-    private func scrolled(_ event: GdkEventScroll) -> Bool {
+    func scrolled(_ event: GdkEventScroll) -> Bool {
         var dx = 0.0, dy = 0.0
         switch event.direction {
         case GDK_SCROLL_UP: dy = -1
@@ -711,7 +741,7 @@ public final class GtkHost {
             return true
         }
         guard isPress else { return false }
-        if graph.performKeyboardShortcut(KeyboardShortcut(key, modifiers: modifiers)) {
+        if menuShortcut?(KeyboardShortcut(key, modifiers: modifiers)) == true || graph.performKeyboardShortcut(KeyboardShortcut(key, modifiers: modifiers)) {
             flushNow()
             return true
         }

@@ -128,6 +128,16 @@ final class GtkTextEditor {
         return String(cString: chars)
     }
 
+    /// Replaces the text as typing would (script mode): the change reaches the binding.
+    func setText(_ text: String) {
+        if let entry {
+            gtk_entry_set_text(sui_entry(raw(entry)), text)
+            gtk_editable_set_position(sui_editable(raw(entry)), -1)
+        } else if let textView, let buffer = gtk_text_view_get_buffer(sui_text_view(raw(textView))) {
+            gtk_text_buffer_set_text(buffer, text, -1)
+        }
+    }
+
     func focus() {
         gtk_widget_grab_focus(focusWidget)
         if let entry { gtk_editable_set_position(sui_editable(raw(entry)), -1) }

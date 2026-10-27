@@ -295,3 +295,54 @@ extension View {
         _windowConfiguration { if visibility != .automatic { $0.isMenuBarHidden = visibility == .hidden } }
     }
 }
+
+extension WindowMenu {
+    /// The app's `.commands` placed into a window's standard menus, as menu bars off the Mac show them: File, Edit,
+    /// View, the app's own menus, Window and Help (empty, with neither commands nor standard items). `newWindow` and
+    /// `closeWindow` are the backend's standard File items (nil: none). Leading, trailing and doubled dividers are
+    /// dropped and empty menus left out.
+    @MainActor
+    public static func standardMenus(newWindow: MenuItem?, closeWindow: MenuItem?) -> [WindowMenu] {
+        guard !AppRuntime.commands.isEmpty else { return [] }
+        let entries = AppRuntime.commandEntries()
+        func group(_ placement: CommandGroupPlacement, _ standard: [MenuItem] = []) -> [MenuItem] {
+            var before: [MenuItem] = [], after: [MenuItem] = [], replacement: [MenuItem]?
+            for case .group(let groupPlacement, let position, let content) in entries where groupPlacement == placement {
+                let items = content()
+                switch position {
+                case .before: before += items
+                case .after: after += items
+                case .replacing: replacement = (replacement ?? []) + items
+                }
+            }
+            return before + (replacement ?? standard) + after
+        }
+        var result: [WindowMenu] = []
+        result.append(WindowMenu(title: "File", items: group(.newItem, newWindow.map { [$0] } ?? []) + [.divider] + group(.saveItem)
+            + group(.importExport) + group(.printItem) + [.divider] + (closeWindow.map { [$0] } ?? []) + group(.appTermination)))
+        result.append(WindowMenu(title: "Edit", items: group(.undoRedo) + [.divider] + group(.pasteboard) + group(.textEditing)
+            + group(.textFormatting)))
+        result.append(WindowMenu(title: "View", items: group(.toolbar) + group(.sidebar)))
+        var titles: [String] = []
+        for case .menu(let title, _) in entries where !titles.contains(title) { titles.append(title) }
+        for title in titles {
+            var items: [MenuItem] = []
+            for case .menu(let menuTitle, let content) in entries where menuTitle == title { items += content() }
+            result.append(WindowMenu(title: title, items: items))
+        }
+        result.append(WindowMenu(title: "Window", items: group(.windowSize) + group(.windowArrangement) + group(.windowList)
+            + group(.singleWindowList)))
+        result.append(WindowMenu(title: "Help", items: group(.appInfo) + group(.appSettings) + group(.help)))
+        return result.map { WindowMenu(title: $0.title, items: tidy($0.items)) }.filter { !$0.items.isEmpty }
+    }
+
+    private static func tidy(_ items: [MenuItem]) -> [MenuItem] {
+        var result: [MenuItem] = []
+        for item in items {
+            if case .divider = item, result.isEmpty || { if case .divider = result.last! { true } else { false } }() { continue }
+            result.append(item)
+        }
+        while let last = result.last, case .divider = last { result.removeLast() }
+        return result
+    }
+}

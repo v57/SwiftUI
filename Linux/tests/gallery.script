@@ -1,0 +1,14 @@
+# Smoke test for GalleryGtk: the text input page (focus, typing, fill by form label). Shots in /tmp/shots.
+waitfor Text input
+tap Text input
+waitfor Name
+tap Name
+keys Ada Lovelace
+expect Hello, Ada Lovelace
+fill URL|https://v57.dev
+expect https://v57.dev
+screenshot /tmp/shots/gallery-text.png
+dump /tmp/shots/gallery-text.txt
+back
+waitfor Animation
+exit
