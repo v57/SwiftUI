@@ -47,7 +47,17 @@ final class GtkMenuBar {
         let close: MenuItem = .button(title: "Close Window", systemImage: nil, shortcut: KeyboardShortcut("w", modifiers: .command),
                                       isEnabled: true, isDestructive: false, action: { gtk_window_close(sui_window(raw(window))) })
         let hasWindowGroup = GtkAppRunner.scenes.contains { !$0.isSingle && $0.valueType == nil && $0.role == .main }
-        let menus = WindowMenu.standardMenus(newWindow: hasWindowGroup ? newWindow : nil, closeWindow: close)
+        var menus = WindowMenu.standardMenus(newWindow: hasWindowGroup ? newWindow : nil, closeWindow: close)
+        // A `Settings` scene is GNOME's Edit ▸ Preferences… (the Mac's app menu has no place here).
+        if GtkAppRunner.scenes.contains(where: { $0.role == .settings }) {
+            let preferences: MenuItem = .button(title: "Preferences…", systemImage: nil, shortcut: KeyboardShortcut(",", modifiers: .command),
+                                                isEnabled: true, isDestructive: false, action: { GtkAppRunner.openSettings() })
+            if let edit = menus.firstIndex(where: { $0.title == "Edit" }) {
+                menus[edit] = WindowMenu(title: "Edit", items: menus[edit].items + [.divider, preferences])
+            } else if !menus.isEmpty {
+                menus.insert(WindowMenu(title: "Edit", items: [preferences]), at: min(1, menus.count))
+            }
+        }
         // Actions and shortcuts are taken from the latest evaluation (their closures read current state).
         actions = [:]
         shortcuts = []

@@ -28,6 +28,7 @@ public enum GtkAppRunner {
         GtkMainLoop.install()
         scenes = windows
         AppRuntime.openWindow = { id, value in open(id: id, value: value) }
+        AppRuntime.openSettings = { openSettings() }
         AppRuntime.dismissWindow = { id, value in
             for controller in controllers where (id == nil || controller.description.id == id) && (value == nil || controller.value == value) {
                 controller.close()
@@ -79,6 +80,16 @@ public enum GtkAppRunner {
             return
         }
         add(GtkWindowController(description: description, value: value))
+    }
+
+    /// The `Settings` scene's window (`openSettings`, SettingsLink, Edit ▸ Preferences…): one, brought to the front.
+    static func openSettings() {
+        guard let description = scenes.first(where: { $0.role == .settings }) else { return }
+        if let existing = controllers.first(where: { $0.description.role == .settings }) {
+            gtk_window_present(sui_window(raw(existing.window)))
+            return
+        }
+        add(GtkWindowController(description: description, value: nil))
     }
 
     static func closed(_ controller: GtkWindowController) {
