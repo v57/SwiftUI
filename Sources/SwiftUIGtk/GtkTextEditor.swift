@@ -264,10 +264,9 @@ final class GtkTextEditor {
         }
         scrollFraction = fraction
         expectedHeight = contentHeight
-        settleDeadline = monotonicSeconds() + 8
+        settleDeadline = monotonicSeconds() + 15
         isSettling = true
-        lastUpper = -1
-        steadyPolls = 0
+        validatedLines = 0
         gtk_widget_set_opacity(container, 0)
         let poll: @convention(c) (gpointer?) -> gboolean = { data in
             MainActor.assumeIsolated { object(data, as: GtkTextEditor.self).settlePoll() }.gboolean
@@ -282,8 +281,8 @@ final class GtkTextEditor {
     private var expectedHeight: CGFloat = 0
     private var settleDeadline: Double = 0
     private var settleSource: guint = 0
-    private var lastUpper: Double = -1
-    private var steadyPolls = 0
+    /// The lines from the top GTK has laid out.
+    private var validatedLines: gint = 0
 
     /// Every 50 ms while settling: once GTK laid every line out (its height is the canvas's, or stopped growing),
     /// scrolls the mark's line to its place and shows the text view.
@@ -296,12 +295,21 @@ final class GtkTextEditor {
         }
         let adjustment = gtk_scrolled_window_get_vadjustment(sui_scrolled_window(raw(container)))
         let upper = gtk_adjustment_get_upper(adjustment)
-        steadyPolls = upper == lastUpper ? steadyPolls + 1 : 0
-        lastUpper = upper
-        let laidOut = upper >= Double(expectedHeight) - 1 || steadyPolls >= 6
-        guard laidOut || monotonicSeconds() > settleDeadline else { return true }
         var iter = GtkTextIter()
         gtk_text_buffer_get_iter_at_mark(buffer, &iter, mark)
+        // A line GTK hasn't laid out yet has no height; it lays them out from the top.
+        let view = sui_text_view(raw(textView))
+        let markLine = gtk_text_iter_get_line(&iter)
+        var line = GtkTextIter()
+        while validatedLines <= markLine {
+            gtk_text_buffer_get_iter_at_line(buffer, &line, validatedLines)
+            var y: gint = 0, height: gint = 0
+            gtk_text_view_get_line_yrange(view, &line, &y, &height)
+            guard height > 0 else { break }
+            validatedLines += 1
+        }
+        let laidOut = validatedLines > markLine || upper >= Double(expectedHeight) - 1
+        guard laidOut || monotonicSeconds() > settleDeadline else { return true }
         var rect = GdkRectangle()
         gtk_text_view_get_iter_location(sui_text_view(raw(textView)), &iter, &rect)
         let page = gtk_adjustment_get_page_size(adjustment)
