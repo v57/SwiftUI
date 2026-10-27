@@ -1,0 +1,127 @@
+#!/bin/bash
+# Builds a SwiftUI app for Linux (GTK) and stages it as a runnable folder. Runs on the Linux machine itself (in the
+# test VM: `Linux/scripts/vm ssh 'cd ~/v57/SwiftUI && Linux/scripts/build-app --package ../Component Component'`).
+#   1. `swift build --product <Product>` in the app's package (V57_LOCAL=1 builds against the sibling checkouts),
+#   2. stages <package>/.build/linux/<Product>/: the executable, its SwiftPM resource bundles, the Material Symbols
+#      font (Image(systemName:)), an Info.plist (the bundle identifier and version from the Xcode project, so the
+#      app's defaults are its own) and a <Product>.desktop file (an app icon PNG from its asset catalog, if any),
+#   3. optionally installs the .desktop file for the user (--install) and runs the app (--run, --script <file>).
+# Usage: Linux/scripts/build-app [--package <dir>] [-c debug|release] [--static] [--install] [--run] [--script <file>]
+#                                [--jobs n] <Product>
+#   --static links the Swift runtime and Foundation into the executable (a folder that runs without the toolchain).
+# On Linux an app is an executable product named after the app, built from its Xcode app folder: see
+# docs/BACKENDS.md ("Apps on Linux").
+set -euo pipefail
+root="$(cd "$(dirname "$0")/../.." && pwd)"
+package="$root"
+configuration=debug
+static=0
+install=0
+run=0
+script=""
+jobs=4
+product=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --package) package="$(cd "$2" && pwd)"; shift 2 ;;
+    -c|--configuration) configuration="$2"; shift 2 ;;
+    --static) static=1; shift ;;
+    --install) install=1; shift ;;
+    --run) run=1; shift ;;
+    --script) script="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; run=1; shift 2 ;;
+    -j|--jobs) jobs="$2"; shift 2 ;;
+    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+    -*) echo "build-app: unknown option $1" >&2; exit 2 ;;
+    *) product="$1"; shift ;;
+  esac
+done
+if [ -z "$product" ]; then
+  echo "usage: build-app [--package <dir>] [-c debug|release] [--static] [--install] [--run] [--script <file>] <Product>" >&2
+  exit 2
+fi
+
+flags=(--package-path "$package" -c "$configuration" -j "$jobs")
+[ "$static" = 1 ] && flags+=(--static-swift-stdlib)
+echo "Building $product ($configuration)"
+swift build "${flags[@]}" --product "$product"
+bin="$(swift build "${flags[@]}" --show-bin-path)"
+[ -x "$bin/$product" ] || { echo "build-app: $bin/$product missing" >&2; exit 1; }
+
+out="$package/.build/linux/$product"
+rm -rf "${out:?}"
+mkdir -p "$out"
+cp "$bin/$product" "$out/"
+# Resource bundles (`<Package>_<Target>.resources`): GtkImages and Bundle.module look next to the executable.
+for bundle in "$bin"/*.resources; do
+  [ -e "$bundle" ] && cp -R "$bundle" "$out/"
+done
+
+# The symbol font: GtkText loads MaterialSymbolsOutlined.ttf next to the executable when it isn't installed.
+for font in "$root/Android/swiftui/src/main/assets/MaterialSymbolsOutlined.ttf" \
+            "$HOME/.local/share/fonts/MaterialSymbolsOutlined.ttf" \
+            /usr/share/fonts/truetype/material*/MaterialSymbolsOutlined.ttf; do
+  if [ -s "$font" ]; then cp "$font" "$out/"; break; fi
+done
+[ -s "$out/MaterialSymbolsOutlined.ttf" ] || echo "build-app: no MaterialSymbolsOutlined.ttf (Linux/scripts/fetch-assets); symbols show placeholders" >&2
+
+# Name, identifier and version from the app's Xcode project (its first target's), as Windows/scripts/build-app.ps1.
+name="$product"
+identifier="dev.v57.$(echo "$product" | tr '[:upper:]' '[:lower:]')"
+version="1.0"
+project="$(find "$package" -maxdepth 3 -name project.pbxproj -not -path '*/.build/*' 2>/dev/null | head -1)"
+if [ -n "$project" ]; then
+  value="$(grep -m1 -oE 'PRODUCT_BUNDLE_IDENTIFIER = "?[A-Za-z0-9.-]+' "$project" | sed -E 's/.*= "?//')" || true
+  [ -n "$value" ] && identifier="$value"
+  value="$(grep -m1 -oE 'MARKETING_VERSION = "?[0-9.]+' "$project" | sed -E 's/.*= "?//')" || true
+  [ -n "$value" ] && version="$value"
+fi
+cat > "$out/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key><string>$identifier</string>
+    <key>CFBundleName</key><string>$name</string>
+    <key>CFBundleShortVersionString</key><string>$version</string>
+</dict>
+</plist>
+PLIST
+
+# The largest PNG of the app's AppIcon set, if it has one (Icon Composer icons have none).
+icon=""
+largest=0
+while IFS= read -r png; do
+  size="$(stat -c %s "$png")"
+  if [ "$size" -gt "$largest" ]; then largest="$size"; icon="$png"; fi
+done < <(find "$package" -path '*/.build' -prune -o -path '*AppIcon.appiconset/*.png' -print 2>/dev/null)
+desktop="$out/$identifier.desktop"
+{
+  echo "[Desktop Entry]"
+  echo "Type=Application"
+  echo "Name=$name"
+  echo "Exec=\"$out/$product\" %U"
+  echo "Path=$out"
+  echo "StartupWMClass=$product"
+  echo "Categories=Development;"
+  if [ -n "$icon" ]; then
+    cp "$icon" "$out/$product.png"
+    echo "Icon=$out/$product.png"
+  fi
+} > "$desktop"
+echo "Staged: $out ($identifier $version)"
+
+if [ "$install" = 1 ]; then
+  mkdir -p "$HOME/.local/share/applications"
+  cp "$desktop" "$HOME/.local/share/applications/"
+  update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+  echo "Installed: ~/.local/share/applications/$(basename "$desktop")"
+fi
+
+if [ "$run" = 1 ]; then
+  arguments=()
+  [ -n "$script" ] && arguments+=(--script "$script")
+  if [ -z "${DISPLAY:-}" ] && command -v xvfb-run >/dev/null; then
+    exec xvfb-run -a -s "-screen 0 1600x1000x24" "$out/$product" "${arguments[@]}"
+  fi
+  exec "$out/$product" "${arguments[@]}"
+fi
