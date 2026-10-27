@@ -65,16 +65,72 @@ enum GtkScript {
         FileHandle.standardError.write(Data(("[script] " + message + "\n").utf8))
     }
 
+    /// Bumped by each scheduled step: a step whose generation is stale doesn't run (a screenshot taken after the
+    /// next frame steps on at once, and its fallback timeout then finds nothing to do).
+    private static var generation = 0
+
     private static func schedule(after milliseconds: Int) {
-        let callback: @convention(c) (gpointer?) -> gboolean = { _ in
-            MainActor.assumeIsolated { GtkScript.step() }
+        generation += 1
+        let callback: @convention(c) (gpointer?) -> gboolean = { data in
+            MainActor.assumeIsolated {
+                guard Int(bitPattern: data) == GtkScript.generation else { return }
+                GtkScript.step()
+            }
             return 0
         }
-        g_timeout_add_full(G_PRIORITY_DEFAULT, guint(max(0, milliseconds)), callback, nil, nil)
+        g_timeout_add_full(G_PRIORITY_DEFAULT, guint(max(0, milliseconds)), callback, UnsafeMutableRawPointer(bitPattern: generation), nil)
     }
+
+    private static var pendingShot: String?
+
+    /// Takes the screenshot once GTK has painted the next frame (its layout done), or after a second when no frame
+    /// comes (an unmapped window).
+    private static func screenshotAfterNextFrame(path: String) -> Int {
+        guard let controller = window(), let clock = gtk_widget_get_frame_clock(controller.window) else {
+            screenshot(path: path)
+            return 0
+        }
+        pendingShot = path
+        if paintClock != UnsafeMutableRawPointer(clock) {
+            let afterPaint: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void = { _, _ in
+                MainActor.assumeIsolated { GtkScript.framePainted() }
+            }
+            connect(UnsafeMutableRawPointer(clock), "after-paint", nil, afterPaint)
+            paintClock = UnsafeMutableRawPointer(clock)
+        }
+        gtk_widget_queue_draw(controller.window)
+        return 1000
+    }
+
+    private static var paintClock: UnsafeMutableRawPointer?
+
+    private static func framePainted() {
+        guard let path = pendingShot else { return }
+        pendingShot = nil
+        // After this frame's handlers: the shot itself draws the window again.
+        let callback: @convention(c) (gpointer?) -> gboolean = { data in
+            MainActor.assumeIsolated {
+                guard Int(bitPattern: data) == GtkScript.generation, let path = GtkScript.shotPath else { return }
+                GtkScript.shotPath = nil
+                GtkScript.screenshot(path: path)
+                GtkScript.schedule(after: 0)
+            }
+            return 0
+        }
+        shotPath = path
+        g_idle_add_full(G_PRIORITY_DEFAULT, callback, UnsafeMutableRawPointer(bitPattern: generation), nil)
+    }
+
+    private static var shotPath: String?
 
     /// Runs commands until one waits.
     private static func step() {
+        // No frame came for a screenshot (an unmapped window): take it as things are.
+        if let path = pendingShot ?? shotPath {
+            pendingShot = nil
+            shotPath = nil
+            screenshot(path: path)
+        }
         while index < lines.count {
             let line = lines[index].trimmingCharacters(in: .whitespaces)
             index += 1
@@ -116,7 +172,7 @@ enum GtkScript {
             let deadline = pendingDeadline[line] ?? monotonicSeconds() + Double(timeout) / 1000
             return waitFor(parts.joined(separator: " "), until: deadline)
         case "screenshot":
-            screenshot(path: argument)
+            return screenshotAfterNextFrame(path: argument)
         case "screen":
             screen(path: argument)
         case "dump":

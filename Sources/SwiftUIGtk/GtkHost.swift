@@ -195,6 +195,7 @@ public final class GtkHost {
     private var displayScale: CGFloat = 0
 
     private func setSize(_ size: CGSize) {
+        GtkDebug.log("allocate \(size)", level: 3)
         // The window's scale factor (HiDPI) as `displayScale`; known once the widget is realized.
         let scale = CGFloat(max(1, gtk_widget_get_scale_factor(drawingArea)))
         if scale != displayScale {
@@ -271,11 +272,13 @@ public final class GtkHost {
     // MARK: Drawing
 
     private func draw(_ cr: Cairo) {
+        let start = GtkDebug.enabled ? monotonicSeconds() : 0
         if drawsBackground {
             GtkTheme.windowBackground.set(cr)
             cairo_paint(cr)
         }
         backend.root.draw(cr, backend: backend)
+        GtkDebug.log("draw \(Int(size.width))x\(Int(size.height)) in \(Int((monotonicSeconds() - start) * 1000)) ms", level: 2)
     }
 
     // MARK: Animation

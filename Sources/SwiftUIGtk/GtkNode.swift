@@ -182,6 +182,16 @@ final class GtkNode {
         cairo_save(cr)
         var matrix = transform
         cairo_transform(cr, &matrix)
+        // Views wholly outside the area being redrawn (scrolled out of sight, outside a damaged region) are skipped.
+        if let margin = cullMargin {
+            var x1 = 0.0, y1 = 0.0, x2 = 0.0, y2 = 0.0
+            cairo_clip_extents(cr, &x1, &y1, &x2, &y2)
+            let clip = CGRect(x: x1, y: y1, width: x2 - x1, height: y2 - y1)
+            if !clip.intersects(bounds.insetBy(dx: -margin, dy: -margin)) {
+                cairo_restore(cr)
+                return
+            }
+        }
         let opacity = presentation.opacity
         if opacity < 1 { cairo_push_group(cr) }
         drawContent(cr, backend: backend)
@@ -190,6 +200,27 @@ final class GtkNode {
             cairo_paint_with_alpha(cr, max(0, opacity))
         }
         cairo_restore(cr)
+    }
+
+    /// How far a node draws outside its frame, when it is known to draw nothing beyond that (nil: it may, as
+    /// containers whose children overflow them and canvases do).
+    private var cullMargin: CGFloat? {
+        switch content {
+        case .text, .image, .color, .toggle, .slider, .textField, .datePicker, .colorWell:
+            return children.isEmpty ? 8 : nil
+        case .shape(let shape):
+            guard children.isEmpty else { return nil }
+            var margin = shape.lineWidth + (shape.strokeStyle?.lineWidth ?? 0) + 2
+            if let shadow = shape.shadow { margin += shadow.radius * 2 + max(abs(shadow.offset.width), abs(shadow.offset.height)) }
+            return margin
+        case .effect(.shadow(let shadow)):
+            let size = frame.size
+            guard children.allSatisfy({ $0.presentation.isIdentity && $0.frame.minX >= 0 && $0.frame.minY >= 0
+                && $0.frame.maxX <= size.width + 0.5 && $0.frame.maxY <= size.height + 0.5 && $0.cullMargin != nil }) else { return nil }
+            return shadow.radius * 2 + max(abs(shadow.offset.width), abs(shadow.offset.height)) + 8
+        default:
+            return nil
+        }
     }
 
     private func drawChildren(_ cr: Cairo, backend: GtkBackend, _ nodes: ArraySlice<GtkNode>? = nil) {
@@ -269,13 +300,8 @@ final class GtkNode {
             cairo_clip(cr)
             drawChildren(cr, backend: backend)
         case .shadow(let shadow):
-            cairo_push_group(cr)
+            GtkShadows.draw(self, shadow: shadow, in: cr, backend: backend) { context in self.drawChildren(context, backend: backend) }
             drawChildren(cr, backend: backend)
-            let content = cairo_pop_group(cr)
-            GtkDrawing.drawShadow(of: content, shadow: shadow, in: cr, size: size)
-            cairo_set_source(cr, content)
-            cairo_paint(cr)
-            cairo_pattern_destroy(content)
         case .mask:
             guard let source = children.last, case .effect(.maskSource) = source.content else { return drawChildren(cr, backend: backend) }
             cairo_push_group(cr)
