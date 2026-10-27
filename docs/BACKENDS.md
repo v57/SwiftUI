@@ -76,6 +76,13 @@ Set `AppRuntime.runner` to a function that opens one platform window per `Window
   (`gtk_render_*` on style contexts for CSS node paths such as `scale trough slider`).
 * Text fields are drawn on the canvas and become a native `GtkEntry`/`GtkTextView` (in a
   `GtkFixed` overlay) only while edited, so native widgets never cover SwiftUI presentations.
+  A `TextEditor` on the canvas (`GtkTextArea`) keeps its text laid out once and draws only the visible lines
+  from its own scroll offset (the wheel scrolls it unfocused); a click places the caret where it lands and the
+  text view takes over at the same offset (transparent, the canvas drawing text and caret, until GTK has laid
+  out the lines above). The selection binding (`TextEditor(text:selection:)`, for an `AttributedString` too) goes
+  both ways, and `textEditorLineNumbers(.visible)` (not Apple API) adds a line-number gutter, on the canvas
+  and in the text view's left border window, from each one's line geometry. An edit retags only the
+  foreground runs that changed.
 * Hit testing follows the AppKit backend: text without links, colors, shapes and images are
   click-through; buttons/controls and pointer-handling effects own their frame.
 * GTK owns the main loop: the main dispatch queue is drained from libdispatch's eventfd and

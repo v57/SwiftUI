@@ -737,6 +737,8 @@ struct _TextInput: View {
     var selection: Binding<TextSelection?>? = nil
     /// A `TextEditor` of an attributed string (`text` is its characters).
     var styledText: Binding<AttributedString>? = nil
+    /// The selection of a `TextEditor` of an attributed string (an `AttributedTextSelection`).
+    var styledSelection: AnyStyledSelection? = nil
 
     var body: Never { primitiveBody(Self.self) }
 
@@ -781,8 +783,11 @@ struct _TextInput: View {
             }
             #endif
             if let styled = field.styledText { resolved.foregroundRuns = foregroundRuns(of: styled.wrappedValue, in: env) }
-            resolved.tracksSelection = field.selection != nil
-            if let selection = field.selection?.wrappedValue, case .selection(let range) = selection.indices {
+            resolved.showsLineNumbers = field.kind == .editor && env.textEditorLineNumbers == .visible
+            resolved.tracksSelection = field.selection != nil || field.styledSelection != nil
+            if let styled = field.styledText, let selection = field.styledSelection {
+                resolved.selection = selection.utf16Range(styled.wrappedValue)
+            } else if let selection = field.selection?.wrappedValue, case .selection(let range) = selection.indices {
                 let text = field.text.wrappedValue
                 if let lower = range.lowerBound.samePosition(in: text.utf16), let upper = range.upperBound.samePosition(in: text.utf16) {
                     let start = text.utf16.distance(from: text.utf16.startIndex, to: lower)
@@ -801,6 +806,9 @@ struct _TextInput: View {
             guard let viewAttribute else { return }
             AnyAttribute.withoutDependencies {
                 let field = viewAttribute.value
+                if let styled = field.styledText, let selection = field.styledSelection {
+                    return selection.set(offsets, styled.wrappedValue)
+                }
                 guard let selection = field.selection else { return }
                 let utf16 = field.text.wrappedValue.utf16
                 let count = utf16.count
@@ -1117,10 +1125,17 @@ struct _FormRowLayout: Layout {
     }
 }
 
+/// A `TextEditor`'s `AttributedTextSelection` binding as UTF-16 offsets of its text (the type needs macOS 15).
+struct AnyStyledSelection {
+    let utf16Range: (AttributedString) -> Range<Int>
+    let set: (Range<Int>, AttributedString) -> Void
+}
+
 public struct TextEditor: View {
     let text: Binding<String>
     var selection: Binding<TextSelection?>?
     var styledText: Binding<AttributedString>?
+    var styledSelection: AnyStyledSelection?
     public init(text: Binding<String>) { self.text = text }
     /// A text editor whose selection (and caret) the binding follows and sets.
     public init(text: Binding<String>, selection: Binding<TextSelection?>) {
@@ -1135,7 +1150,20 @@ public struct TextEditor: View {
             get: { String(text.wrappedValue.characters) },
             set: { text.wrappedValue = TextEditor.replacingCharacters(of: text.wrappedValue, with: $0) })
     }
-    public var body: some View { _TextInput(text: text, prompt: "", kind: .editor, selection: selection, styledText: styledText) }
+    /// A text editor of an attributed string whose selection (and caret) the binding follows and sets.
+    @available(macOS 15.0, iOS 18.0, *)
+    public init(text: Binding<AttributedString>, selection: Binding<AttributedTextSelection>) {
+        self.init(text: text)
+        styledSelection = AnyStyledSelection(
+            utf16Range: { selection.wrappedValue.utf16Range(in: $0) },
+            set: { range, text in
+                guard selection.wrappedValue.utf16Range(in: text) != range else { return }
+                selection.wrappedValue = AttributedTextSelection(utf16: range, in: text)
+            })
+    }
+    public var body: some View {
+        _TextInput(text: text, prompt: "", kind: .editor, selection: selection, styledText: styledText, styledSelection: styledSelection)
+    }
 
     /// `old` with its characters replaced by `new`'s: the unchanged start and end keep their attributes.
     static func replacingCharacters(of old: AttributedString, with new: String) -> AttributedString {

@@ -121,6 +121,81 @@ public struct TextSelection: Hashable, Sendable {
 
 public enum TextSelectionAffinity: Hashable, Sendable { case automatic, upstream, downstream }
 
+/// The selection of a `TextEditor` of an attributed string (`TextEditor(text:selection:)`): an insertion point or
+/// ranges of the text's indices.
+@available(macOS 15.0, iOS 18.0, *)
+public struct AttributedTextSelection: Equatable, Sendable {
+    public enum Indices: Equatable, Sendable {
+        case insertionPoint(AttributedString.Index)
+        case ranges(RangeSet<AttributedString.Index>)
+    }
+
+    /// Nil: the start of the text.
+    var storage: Indices?
+
+    /// An insertion point at the start of the text.
+    public init() {}
+    public init(insertionPoint: AttributedString.Index) { storage = .insertionPoint(insertionPoint) }
+    public init(range: Range<AttributedString.Index>) {
+        storage = range.isEmpty ? .insertionPoint(range.lowerBound) : .ranges(RangeSet(range))
+    }
+    public init(ranges: RangeSet<AttributedString.Index>) {
+        if let first = ranges.ranges.first, ranges.ranges.count == 1, first.isEmpty {
+            storage = .insertionPoint(first.lowerBound)
+        } else {
+            storage = ranges.ranges.isEmpty ? nil : .ranges(ranges)
+        }
+    }
+
+    /// The selection's indices in `text` (the text it was made for).
+    public func indices(in text: AttributedString) -> Indices { storage ?? .insertionPoint(text.startIndex) }
+
+    /// The attributes at the selection's start, which typing would give new text.
+    public func typingAttributes(in text: AttributedString) -> AttributeContainer {
+        let index: AttributedString.Index
+        switch indices(in: text) {
+        case .insertionPoint(let point): index = point
+        case .ranges(let ranges): index = ranges.ranges.first?.lowerBound ?? text.startIndex
+        }
+        guard !text.characters.isEmpty else { return AttributeContainer() }
+        let at = index < text.endIndex ? index : text.characters.index(before: text.endIndex)
+        return text[at..<text.characters.index(after: at)].runs.first?.attributes ?? AttributeContainer()
+    }
+
+    /// The selection as UTF-16 offsets into `text`'s characters (the first range of several).
+    func utf16Range(in text: AttributedString) -> Range<Int> {
+        let scalars = text.unicodeScalars
+        func offset(_ index: AttributedString.Index) -> Int {
+            let clamped = min(max(index, text.startIndex), text.endIndex)
+            return scalars[text.startIndex..<clamped].reduce(0) { $0 + $1.utf16.count }
+        }
+        switch indices(in: text) {
+        case .insertionPoint(let point):
+            let at = offset(point)
+            return at..<at
+        case .ranges(let ranges):
+            guard let first = ranges.ranges.first else { return 0..<0 }
+            let lower = offset(first.lowerBound)
+            return lower..<(lower + scalars[first].reduce(0) { $0 + $1.utf16.count })
+        }
+    }
+
+    /// The selection of the UTF-16 offsets `range` in `text`'s characters.
+    init(utf16 range: Range<Int>, in text: AttributedString) {
+        let string = String(text.characters)
+        let utf16 = string.utf16
+        func index(_ offset: Int) -> AttributedString.Index {
+            let stringIndex = utf16.index(utf16.startIndex, offsetBy: min(max(0, offset), utf16.count))
+            // Rounded down to a scalar boundary (an offset inside a surrogate pair).
+            let scalarIndex = stringIndex.samePosition(in: string.unicodeScalars) ?? string.unicodeScalars.index(before: stringIndex)
+            let scalarCount = string.unicodeScalars.distance(from: string.unicodeScalars.startIndex, to: scalarIndex)
+            return text.unicodeScalars.index(text.startIndex, offsetBy: scalarCount)
+        }
+        let lower = index(range.lowerBound)
+        self.init(range: lower..<max(lower, index(range.upperBound)))
+    }
+}
+
 extension View {
     /// Which side of a line break the caret prefers; recorded only (AppKit picks it).
     public func textSelectionAffinity(_ affinity: TextSelectionAffinity) -> some View { self }

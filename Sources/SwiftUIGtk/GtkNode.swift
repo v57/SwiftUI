@@ -27,6 +27,12 @@ final class GtkNode {
     var nativeWidget: UnsafeMutablePointer<GtkWidget>?
     /// The node's text editor while it is being edited.
     var editor: GtkTextEditor?
+    /// A `TextEditor`: its text laid out for the canvas, and how far it is scrolled (the native text view takes the
+    /// offset while editing and gives it back).
+    var textArea: GtkTextArea?
+    var textScroll: CGFloat = 0
+    /// The selection the canvas last scrolled to.
+    var revealedSelection: Range<Int>?
 
     init() {}
 
@@ -256,7 +262,13 @@ final class GtkNode {
             GtkTheme.drawToggle(toggle, in: cr, size: size, pressed: isPressed, hovered: isHovered && toggle.isEnabled)
         case .textField(let field):
             GtkTheme.drawEntryFrame(field, in: cr, size: size, focused: editor != nil)
-            if editor == nil { GtkDrawing.drawFieldText(field, in: cr, size: size) }
+            if editor == nil || editor?.isSettling == true {
+                if field.isTextArea, !field.text.isEmpty || field.showsLineNumbers {
+                    drawTextArea(field, cr, backend: backend)
+                } else {
+                    GtkDrawing.drawFieldText(field, in: cr, size: size)
+                }
+            }
         case .slider(let slider):
             GtkTheme.drawSlider(slider, in: cr, size: size, pressed: isPressed, hovered: isHovered && slider.isEnabled)
         case .scrollView(let model):
@@ -512,6 +524,75 @@ final class GtkNode {
         if !flags.isEmpty { line += " [" + flags.joined(separator: ",") + "]" }
         for child in children { line += "\n" + child.dump(indent: indent + 1) }
         return line
+    }
+
+    // MARK: Text editors
+
+    /// A `TextEditor`'s text frame: the gutter's width, and the text's insets in the node (the gutter included).
+    func textAreaGeometry(_ field: ResolvedTextField) -> (gutter: CGFloat, insets: EdgeInsets) {
+        var insets = field.style == .plain ? EdgeInsets() : GtkTheme.metrics.entryInsets
+        var gutter: CGFloat = 0
+        if field.showsLineNumbers {
+            let lines = field.text.utf8.reduce(1) { $1 == 0x0A ? $0 + 1 : $0 }
+            gutter = GtkLineNumbers.width(font: field.font, lineCount: lines)
+            insets.leading += gutter
+        }
+        return (gutter, insets)
+    }
+
+    /// The editor's text laid out for its current width.
+    @discardableResult
+    func layoutTextArea(_ field: ResolvedTextField) -> GtkTextArea {
+        let area = textArea ?? GtkTextArea()
+        textArea = area
+        let insets = textAreaGeometry(field).insets
+        area.update(field, width: max(1, frame.width - insets.leading - insets.trailing))
+        return area
+    }
+
+    /// The largest scroll offset of a `TextEditor`.
+    func maxTextScroll(_ field: ResolvedTextField) -> CGFloat {
+        let area = layoutTextArea(field)
+        let insets = textAreaGeometry(field).insets
+        return max(0, area.height + insets.top + insets.bottom - frame.height)
+    }
+
+    private func drawTextArea(_ field: ResolvedTextField, _ cr: Cairo, backend: GtkBackend) {
+        let size = frame.size
+        let (gutter, insets) = textAreaGeometry(field)
+        let area = layoutTextArea(field)
+        textScroll = min(max(0, textScroll), max(0, area.height + insets.top + insets.bottom - size.height))
+        cairo_save(cr)
+        cairo_rectangle(cr, 0, 0, Double(size.width), Double(size.height))
+        cairo_clip(cr)
+        if field.showsLineNumbers {
+            area.drawLineNumbers(
+                in: cr, font: field.font, gutterWidth: gutter, top: insets.top, scroll: textScroll, visibleHeight: size.height,
+                color: field.color, currentLine: field.selectionLine)
+        }
+        cairo_rectangle(cr, Double(insets.leading), 0, Double(max(0, size.width - insets.leading)), Double(size.height))
+        cairo_clip(cr)
+        area.draw(
+            in: cr, origin: CGPoint(x: insets.leading, y: insets.top), scroll: textScroll, visibleHeight: size.height,
+            color: field.color, opacity: field.isEnabled ? 1 : 0.5)
+        if editor != nil, let offset = field.selectionCharacterOffset {
+            // The caret, while the text view (with the keyboard) settles under the canvas.
+            let caret = area.caretRect(ofCharacter: offset)
+            cairo_rectangle(cr, Double(insets.leading + caret.minX), Double(insets.top + caret.minY - textScroll), 1, Double(caret.height))
+            field.color.set(cr)
+            cairo_fill(cr)
+        }
+        cairo_restore(cr)
+        // The scroll indicator, while scrolling.
+        let content = area.height + insets.top + insets.bottom
+        if content > size.height + 0.5, backend.host?.scrollIndicatorsVisible(for: self) == true {
+            let thickness: CGFloat = 4, inset: CGFloat = 3
+            let length = max(24, size.height * size.height / content)
+            let y = inset + (size.height - length - inset * 2) * min(max(textScroll / (content - size.height), 0), 1)
+            roundedRect(cr, CGRect(x: size.width - thickness - inset, y: y, width: thickness, height: length), radius: thickness / 2)
+            GtkTheme.foreground.set(cr, opacity: 0.45)
+            cairo_fill(cr)
+        }
     }
 
     var descendants: [GtkNode] { children.flatMap { [$0] + $0.descendants } }

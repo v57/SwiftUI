@@ -563,6 +563,23 @@ extension View {
     public func textEditorStyle<S: TextEditorStyle>(_ style: S) -> some View { environment(\.textEditorStyle, style._kind) }
 }
 
+struct TextEditorLineNumbersKey: EnvironmentKey { static let defaultValue = Visibility.automatic }
+extension EnvironmentValues {
+    var textEditorLineNumbers: Visibility {
+        get { self[TextEditorLineNumbersKey.self] }
+        set { self[TextEditorLineNumbersKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// Not Apple API: text editors in the content number their lines in a gutter at their leading edge, drawn by the
+    /// backend from the text view's own line geometry (wrapped lines get one number; the caret's line is emphasized).
+    /// `.automatic` and `.hidden` show none. GTK draws it; other backends ignore it so far.
+    public func textEditorLineNumbers(_ visibility: Visibility) -> some View {
+        environment(\.textEditorLineNumbers, visibility)
+    }
+}
+
 // MARK: - TabView
 
 public enum TabViewStyleKind: Hashable, Sendable { case automatic, grouped, tabBarOnly, sidebarAdaptable }

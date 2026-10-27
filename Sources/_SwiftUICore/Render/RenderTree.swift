@@ -113,6 +113,8 @@ public struct ResolvedTextField: Equatable, Sendable {
     public var tracksSelection = false
     /// The selection the binding holds, in UTF-16 offsets (nil: none set).
     public var selection: Range<Int>?
+    /// Text editors: a gutter numbers the lines (`textEditorLineNumbers`).
+    public var showsLineNumbers = false
     /// `TextEditor(text: Binding<AttributedString>)`: the text's foreground colors, by Unicode scalar offsets.
     public var foregroundRuns: [ForegroundRun] = []
 

@@ -139,8 +139,10 @@ public final class GtkHost {
         Self.live.removeAll { $0.host == nil || $0.host === self }
         if idleSource != 0 { g_source_remove(idleSource) }
         if tickID != 0 { gtk_widget_remove_tick_callback(drawingArea, tickID) }
+        if indicatorHideSource != 0 { g_source_remove(indicatorHideSource) }
         idleSource = 0
         tickID = 0
+        indicatorHideSource = 0
         endEditing(commit: false)
         if let settings = gtk_settings_get_default() {
             // G_SIGNAL_MATCH_DATA; GLib 2.86+ marks GSignalMatchType a flag enum, which Swift imports without the constants
@@ -230,6 +232,17 @@ public final class GtkHost {
             let wanted = lastWantsFocus[id] ?? false
             lastWantsFocus[id] = field.wantsFocus
             node.editor?.apply(field)
+            if field.isTextArea, node.editor == nil, node.frame.width > 0, field.selection != node.revealedSelection {
+                // A selection the app set (go to line) scrolls the canvas to it.
+                if node.revealedSelection != nil || field.selection?.lowerBound != 0, let offset = field.selectionCharacterOffset {
+                    let line = node.layoutTextArea(field).lineRect(ofCharacter: offset)
+                    let top = node.textAreaGeometry(field).insets.top + line.top
+                    if top < node.textScroll || top + line.height > node.textScroll + node.frame.height {
+                        node.textScroll = min(max(0, top - node.frame.height / 3), node.maxTextScroll(field))
+                    }
+                }
+                node.revealedSelection = field.selection
+            }
             if field.wantsFocus && !wanted && node.editor == nil {
                 pendingFocus = node
             } else if !field.wantsFocus && wanted, node.editor != nil {
@@ -383,7 +396,7 @@ public final class GtkHost {
         case .textField:
             node.isPressed = false
             captured = nil
-            beginEditing(node)
+            beginEditing(node, at: target.point)
         case .datePicker(let picker):
             node.isPressed = false
             captured = nil
@@ -689,9 +702,24 @@ public final class GtkHost {
         default: dx = event.delta_x; dy = event.delta_y
         }
         if event.state & GDK_SHIFT_MASK.rawValue != 0, dx == 0 { swap(&dx, &dy) }
+        let hits = hitPath(CGPoint(x: event.x, y: event.y))
         let path = geometricPath(CGPoint(x: event.x, y: event.y))
-        for entry in path.reversed() {
+        // A text editor under the pointer (by hit testing: a transparent group laid over it would take the point
+        // in the geometric path), else the scroll views around the point.
+        let editors = hits.filter { if case .textField(let field) = $0.node.content { field.isTextArea } else { false } }
+        for entry in editors.reversed() + path.reversed() {
             let node = entry.node
+            if case .textField(let field) = node.content, field.isTextArea, node.editor == nil, dy != 0 {
+                // A text editor drawn on the canvas scrolls its text (the native view takes the offset when edited).
+                let step = pow(Double(max(node.frame.height, 1)), 2.0 / 3.0)
+                let target = min(max(0, node.textScroll + CGFloat(dy * step)), node.maxTextScroll(field))
+                guard target != node.textScroll else { continue }
+                node.textScroll = target
+                lastScroll[ObjectIdentifier(node)] = monotonicSeconds()
+                scheduleIndicatorHide()
+                setNeedsDisplay()
+                return true
+            }
             guard let model = node.scrollModel, model.isScrollEnabled else { continue }
             // GTK's scroll step: viewport^(2/3) per wheel notch.
             let stepX = pow(Double(max(node.frame.width, 1)), 2.0 / 3.0), stepY = pow(Double(max(node.frame.height, 1)), 2.0 / 3.0)
@@ -746,6 +774,22 @@ public final class GtkHost {
             return 0
         }
         g_timeout_add_full(G_PRIORITY_DEFAULT, 800, hide, unretained(self), nil)
+    }
+
+    private var indicatorHideSource: guint = 0
+
+    /// Redraws once a text editor's scroll indicator times out.
+    private func scheduleIndicatorHide() {
+        if indicatorHideSource != 0 { g_source_remove(indicatorHideSource) }
+        let hide: @convention(c) (gpointer?) -> gboolean = { data in
+            MainActor.assumeIsolated {
+                let host = object(data, as: GtkHost.self)
+                host.indicatorHideSource = 0
+                host.setNeedsDisplay()
+            }
+            return 0
+        }
+        indicatorHideSource = g_timeout_add_full(G_PRIORITY_DEFAULT, 850, hide, unretained(self), nil)
     }
 
     // MARK: Keyboard
@@ -852,7 +896,8 @@ public final class GtkHost {
 
     private(set) var editing: GtkTextEditor?
 
-    func beginEditing(_ node: GtkNode) {
+    /// Edits a text field in a native widget; `point` (in the node) is where it was clicked.
+    func beginEditing(_ node: GtkNode, at point: CGPoint? = nil) {
         guard case .textField(let field) = node.content, field.isEnabled, !isTornDown else { return }
         if let editing, editing.node === node {
             editing.focus()
@@ -866,6 +911,29 @@ public final class GtkHost {
         layoutNativeWidgets()
         gtk_widget_show_all(editor.container)
         editor.focus()
+        if field.isTextArea {
+            // The text view shows the text where the canvas showed it, the caret at the click (or the selection).
+            let area = node.layoutTextArea(field)
+            let insets = node.textAreaGeometry(field).insets
+            if let point {
+                editor.placeCaret(atCharacter: area.characterOffset(at: CGPoint(x: point.x - insets.leading, y: point.y - insets.top + node.textScroll)))
+            } else if let offset = field.selectionCharacterOffset {
+                editor.placeCaret(atCharacter: offset)
+                let line = area.lineRect(ofCharacter: offset)
+                let top = insets.top + line.top
+                if top < node.textScroll || top + line.height > node.textScroll + node.frame.height {
+                    node.textScroll = min(max(0, top - node.frame.height / 3), node.maxTextScroll(field))
+                }
+            }
+            if node.textScroll > 0 {
+                // The first whole line at the top, where the canvas shows it.
+                let line = area.lineTop(below: node.textScroll - insets.top)
+                let room = max(1, node.frame.height - insets.top - insets.bottom - line.height)
+                editor.scroll(
+                    toCharacter: line.offset, at: (line.y + insets.top - node.textScroll) / room,
+                    contentHeight: area.height + insets.top + insets.bottom)
+            }
+        }
         node.actions.focusChanged?(true)
         graph.setFocusedNode(node.node)
         setNeedsDisplay()
@@ -877,6 +945,12 @@ public final class GtkHost {
         editing = nil
         let node = current.node
         node?.editor = nil
+        if let node, case .textField(let field) = node.content, field.isTextArea, !current.isSettling, let top = current.topParagraph {
+            // The canvas goes on from where the text view was scrolled (by the text at the top: GTK may not have laid
+            // out the lines above yet).
+            let area = node.layoutTextArea(field)
+            node.textScroll = area.lineRect(ofCharacter: top.offset).top + top.lineOffset
+        }
         current.destroy()
         guard !isTornDown else { return }
         node?.actions.focusChanged?(false)

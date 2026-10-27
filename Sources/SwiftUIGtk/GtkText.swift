@@ -14,7 +14,7 @@ enum GtkText {
     static let symbolFamily = "Material Symbols Outlined"
     private(set) static var hasSymbolFont = false
 
-    private static var context: OpaquePointer!
+    static var context: OpaquePointer!
 
     static func install() {
         guard context == nil else { return }
