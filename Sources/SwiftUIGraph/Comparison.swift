@@ -174,7 +174,9 @@ public enum GraphComparison {
 }
 
 /// Minimal lock-protected box (`Synchronization.Mutex` needs macOS 15; we support 14).
-#if canImport(os)
+// Apple's os only: off Apple platforms `os` is a stand-in this target doesn't depend on (canImport sees it in the
+// build all the same, and the link then misses it).
+#if canImport(os) && canImport(Darwin)
 import os
 
 final class LockedValue<Value>: @unchecked Sendable {
