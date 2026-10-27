@@ -1,6 +1,7 @@
 #if os(Linux)
 import Foundation
 import CGtk3
+import CoreGraphics
 import _SwiftUICore
 
 /// A decoded image (`GdkPixbuf`), the backend's `PlatformImage` object.
@@ -79,6 +80,73 @@ enum GtkImages {
         guard written != 0, let pixbuf = gdk_pixbuf_loader_get_pixbuf(loader) else { return nil }
         g_object_ref(UnsafeMutableRawPointer(pixbuf))
         return GtkPixbuf(pixbuf: pixbuf)
+    }
+
+    /// Bitmap images (`Image(decorative: cgImage, scale:)`, e.g. video frames) as cairo surfaces: the last few drawn
+    /// are kept, so a redraw without a new image doesn't copy its pixels again.
+    private static var surfaces: [(image: CGImage, surface: OpaquePointer)] = []
+
+    /// Draws a bitmap image stretched into a `size` box, optionally as a template in `tint`.
+    static func draw(_ image: CGImage, in cr: Cairo, size: CGSize, tint: Color.Resolved?) {
+        guard size.width > 0, size.height > 0, let surface = surface(for: image) else { return }
+        cairo_save(cr)
+        if tint != nil { cairo_push_group(cr) }
+        cairo_save(cr)
+        cairo_scale(cr, Double(size.width) / Double(image.width), Double(size.height) / Double(image.height))
+        cairo_set_source_surface(cr, surface, 0, 0)
+        cairo_pattern_set_filter(cairo_get_source(cr), image.shouldInterpolate ? CAIRO_FILTER_GOOD : CAIRO_FILTER_NEAREST)
+        cairo_paint(cr)
+        cairo_restore(cr)
+        if let tint {
+            let pattern = cairo_pop_group(cr)
+            tint.set(cr)
+            cairo_mask(cr, pattern)
+            cairo_pattern_destroy(pattern)
+        }
+        cairo_restore(cr)
+    }
+
+    private static func surface(for image: CGImage) -> OpaquePointer? {
+        if let cached = surfaces.first(where: { $0.image === image }) { return cached.surface }
+        let opaque = [.none, .noneSkipFirst, .noneSkipLast].contains(image.alphaInfo)
+        guard let surface = cairo_image_surface_create(opaque ? CAIRO_FORMAT_RGB24 : CAIRO_FORMAT_ARGB32, Int32(image.width), Int32(image.height)) else { return nil }
+        guard cairo_surface_status(surface) == CAIRO_STATUS_SUCCESS, let pixels = cairo_image_surface_get_data(surface) else {
+            cairo_surface_destroy(surface)
+            return nil
+        }
+        let stride = Int(cairo_image_surface_get_stride(surface))
+        let order = image.bitmapInfo.rawValue & CGBitmapInfo.byteOrderMask.rawValue
+        // Cairo's pixels are premultiplied BGRA words in native (little-endian) order: CoreGraphics' 32-bit little
+        // "first" layouts, copied row by row.
+        if image.bitsPerPixel == 32, order == CGBitmapInfo.byteOrder32Little.rawValue,
+            [.premultipliedFirst, .noneSkipFirst].contains(image.alphaInfo), let data = image.dataProvider?.data
+        {
+            let rowBytes = image.width * 4
+            data.withUnsafeBytes { source in
+                guard let base = source.baseAddress else { return }
+                for row in 0..<image.height where row * image.bytesPerRow + rowBytes <= source.count {
+                    (pixels + row * stride).update(from: base.advanced(by: row * image.bytesPerRow).assumingMemoryBound(to: UInt8.self), count: rowBytes)
+                }
+            }
+        } else {
+            let rgba = image._rgbaBytes()
+            for row in 0..<image.height {
+                let line = pixels + row * stride
+                for column in 0..<image.width {
+                    let index = (row * image.width + column) * 4
+                    let alpha = UInt32(rgba[index + 3])
+                    func premultiplied(_ value: UInt8) -> UInt8 { UInt8((UInt32(value) * alpha + 127) / 255) }
+                    line[column * 4] = premultiplied(rgba[index + 2])
+                    line[column * 4 + 1] = premultiplied(rgba[index + 1])
+                    line[column * 4 + 2] = premultiplied(rgba[index])
+                    line[column * 4 + 3] = UInt8(alpha)
+                }
+            }
+        }
+        cairo_surface_mark_dirty(surface)
+        surfaces.append((image, surface))
+        if surfaces.count > 4 { cairo_surface_destroy(surfaces.removeFirst().surface) }
+        return surface
     }
 
     /// Draws a pixbuf stretched into a `size` box, optionally as a template in `tint`.

@@ -1,6 +1,7 @@
 #if os(Linux)
 import Foundation
 import CGtk3
+import CoreGraphics
 import _SwiftUICore
 
 /// Cairo rendering of render-node content.
@@ -84,6 +85,7 @@ enum GtkDrawing {
             guard let pixbuf = GtkImages.load(named: name) else { return }
             GtkImages.draw(pixbuf, in: cr, size: size, tint: tint)
         case .platform(let platform):
+            if let bitmap = platform.object as? CGImage { return GtkImages.draw(bitmap, in: cr, size: size, tint: tint) }
             guard let pixbuf = platform.object as? GtkPixbuf else { return }
             GtkImages.draw(pixbuf, in: cr, size: size, tint: tint)
         }
