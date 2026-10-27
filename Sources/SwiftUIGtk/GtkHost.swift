@@ -35,6 +35,8 @@ public final class GtkHost {
     var titleBarDragHeight: (() -> CGFloat)?
     /// After each graph update (the window refreshes its menus, which read app state).
     var onDidUpdate: (() -> Void)?
+    /// Widgets of `GtkWidgetRepresentable` views, placed over the canvas in `fixed`.
+    var platformWidgets = GtkPlatformWidgets()
 
     public init(makeGraph: (any RenderBackend) -> ViewGraph) {
         widget = gtk_overlay_new()
@@ -235,6 +237,8 @@ public final class GtkHost {
             }
         case .scrollView(let model):
             applyScrollModel(model, to: node)
+        case .platformView:
+            platformContentDidChange(node)
         default:
             break
         }
@@ -896,6 +900,7 @@ public final class GtkHost {
 
     /// Positions native widgets over their nodes (after layout, scrolling and animation frames).
     func layoutNativeWidgets() {
+        layoutPlatformWidgets()
         guard let editing, let node = editing.node else { return }
         let (rect, visible) = node.windowRect()
         if visible.height < min(rect.height, 8) || visible.width < 8 {
