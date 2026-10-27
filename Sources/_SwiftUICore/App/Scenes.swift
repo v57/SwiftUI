@@ -85,6 +85,8 @@ extension Scene {
     }
     /// Window frames are restored between launches unless disabled.
     public func restorationBehavior(_ behavior: SceneRestorationBehavior) -> some Scene { self }
+    /// External events (opened files and URLs) go to the open windows' `onOpenURL` handlers.
+    public func handlesExternalEvents(matching conditions: Set<String>) -> some Scene { self }
     public func windowLevel(_ level: WindowLevel) -> some Scene {
         _ModifiedScene(base: self) { $0.level = level }
     }
