@@ -150,7 +150,7 @@ if standIns {
         .target(
             name: "CryptoKit", dependencies: [.product(name: "Crypto", package: "swift-crypto")],
             linkerSettings: [.linkedLibrary("crypt32", .when(platforms: [.windows]))]),
-        // SQLite3: the toolchain's SQLite.
+        // SQLite3: the toolchain's SQLite (the system's on Linux).
         .target(name: "SQLite3", dependencies: [.product(name: "SwiftToolchainCSQLite", package: "swift-toolchain-sqlite")]),
         // os: Logger, os_log, signposts (dropped) and OSAllocatedUnfairLock.
         .target(name: "os"),
@@ -209,6 +209,14 @@ package.targets += [
 package.products += [.library(name: "SecretService", targets: ["SecretService"])]
 for target in package.targets where ["CryptoKit", "CompatTests"].contains(target.name) {
     target.dependencies += ["SecretService"]
+}
+// SQLite3: the system's SQLite, which knows a result column's table (SQLITE_ENABLE_COLUMN_METADATA, as Apple's has;
+// the toolchain's doesn't): Database's editable results need it.
+package.targets += [
+    .systemLibrary(name: "CSQLite3System", pkgConfig: "sqlite3", providers: [.apt(["libsqlite3-dev"])]),
+]
+for target in package.targets where target.name == "SQLite3" {
+    target.dependencies = ["CSQLite3System"]
 }
 // GTK smoke-test app (the Android Gallery's sources).
 package.targets += [.executableTarget(name: "GalleryGtk", dependencies: ["SwiftUI"])]
