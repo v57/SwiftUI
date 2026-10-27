@@ -113,6 +113,18 @@ public struct ResolvedTextField: Equatable, Sendable {
     public var tracksSelection = false
     /// The selection the binding holds, in UTF-16 offsets (nil: none set).
     public var selection: Range<Int>?
+    /// `TextEditor(text: Binding<AttributedString>)`: the text's foreground colors, by Unicode scalar offsets.
+    public var foregroundRuns: [ForegroundRun] = []
+
+    /// A range of the text drawn in one color.
+    public struct ForegroundRun: Equatable, Sendable {
+        public var range: Range<Int>
+        public var color: Color.Resolved
+        public init(range: Range<Int>, color: Color.Resolved) {
+            self.range = range
+            self.color = color
+        }
+    }
 }
 
 public struct ResolvedSlider: Equatable, Sendable {

@@ -151,6 +151,38 @@ enum GtkText {
         var url: URL
     }
 
+    /// Pango attributes coloring `string`'s runs (Unicode scalar offsets, as `ResolvedTextField` gives them). The
+    /// caller unrefs the list.
+    static func foregroundAttributes(_ runs: [ResolvedTextField.ForegroundRun], in string: String) -> OpaquePointer {
+        let attributes = pango_attr_list_new()!
+        func color16(_ value: Float) -> UInt16 { UInt16(max(0, min(1, value)) * 65535) }
+        // UTF-8 offsets of the runs' bounds, in one pass over the string.
+        var scalar = 0, byte = 0
+        var scalars = string.unicodeScalars.makeIterator()
+        func advance(to target: Int) -> Int {
+            while scalar < target, let next = scalars.next() {
+                byte += UTF8.width(next)
+                scalar += 1
+            }
+            return byte
+        }
+        for run in runs.sorted(by: { $0.range.lowerBound < $1.range.lowerBound }) where run.range.lowerBound >= scalar {
+            let start = advance(to: run.range.lowerBound), end = advance(to: run.range.upperBound)
+            guard end > start else { continue }
+            let c = run.color
+            for attribute in [
+                pango_attr_foreground_new(color16(c.red), color16(c.green), color16(c.blue)),
+                pango_attr_foreground_alpha_new(max(1, color16(c.opacity))),
+            ] {
+                guard let attribute else { continue }
+                attribute.pointee.start_index = guint(start)
+                attribute.pointee.end_index = guint(end)
+                pango_attr_list_insert(attributes, attribute)
+            }
+        }
+        return attributes
+    }
+
     /// A configured layout for `text`, wrapped at `width` (nil: one line per paragraph). The
     /// caller unrefs it.
     static func layout(_ text: ResolvedText, width: CGFloat?, links: UnsafeMutablePointer<[LinkRange]>? = nil) -> OpaquePointer {

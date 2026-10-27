@@ -91,10 +91,42 @@ final class GtkTextEditor {
             gtk_entry_set_alignment(sui_entry(raw(entry)), alignment)
         }
         if let textView, let buffer = gtk_text_view_get_buffer(sui_text_view(raw(textView))) {
-            if text != field.text { gtk_text_buffer_set_text(buffer, field.text, -1) }
+            if text != field.text {
+                gtk_text_buffer_set_text(buffer, field.text, -1)
+                appliedRuns = []
+            }
+            applyForeground(field.foregroundRuns, to: buffer)
         }
         gtk_widget_set_sensitive(focusWidget, field.isEnabled.gboolean)
         applyStyle(field)
+    }
+
+    /// The foreground runs the text view's tags show, and a tag per color.
+    private var appliedRuns: [ResolvedTextField.ForegroundRun] = []
+    private var foregroundTags: [String: UnsafeMutablePointer<GtkTextTag>] = [:]
+
+    /// Colors the text view's text as a styled `TextEditor`'s runs say.
+    private func applyForeground(_ runs: [ResolvedTextField.ForegroundRun], to buffer: UnsafeMutablePointer<GtkTextBuffer>) {
+        guard runs != appliedRuns else { return }
+        appliedRuns = runs
+        var start = GtkTextIter(), end = GtkTextIter()
+        gtk_text_buffer_get_bounds(buffer, &start, &end)
+        for tag in foregroundTags.values { gtk_text_buffer_remove_tag(buffer, tag, &start, &end) }
+        for run in runs {
+            let c = run.color
+            let key = "\(c.red),\(c.green),\(c.blue),\(c.opacity)"
+            let tag: UnsafeMutablePointer<GtkTextTag>
+            if let existing = foregroundTags[key] {
+                tag = existing
+            } else {
+                var rgba = GdkRGBA(red: Double(c.red), green: Double(c.green), blue: Double(c.blue), alpha: Double(c.opacity))
+                tag = sui_text_buffer_foreground_tag(buffer, &rgba)
+                foregroundTags[key] = tag
+            }
+            gtk_text_buffer_get_iter_at_offset(buffer, &start, gint(run.range.lowerBound))
+            gtk_text_buffer_get_iter_at_offset(buffer, &end, gint(run.range.upperBound))
+            gtk_text_buffer_apply_tag(buffer, tag, &start, &end)
+        }
     }
 
     /// Font and color of the field (CSS on the widget).

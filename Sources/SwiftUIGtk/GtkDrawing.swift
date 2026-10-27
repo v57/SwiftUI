@@ -132,6 +132,11 @@ enum GtkDrawing {
         pango_layout_set_font_description(layout, description)
         pango_font_description_free(description)
         pango_layout_set_text(layout, string, -1)
+        if !isPlaceholder, !field.isSecure, !field.foregroundRuns.isEmpty {
+            let attributes = GtkText.foregroundAttributes(field.foregroundRuns, in: string)
+            pango_layout_set_attributes(layout, attributes)
+            pango_attr_list_unref(attributes)
+        }
         let width = max(0, size.width - insets.leading - insets.trailing)
         pango_layout_set_width(layout, Int32(width * CGFloat(PANGO_SCALE)))
         let multiline = field.isMultiline || field.wraps

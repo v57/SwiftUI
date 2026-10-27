@@ -733,8 +733,23 @@ struct _TextInput: View {
     let prompt: String
     let kind: Kind
     var selection: Binding<TextSelection?>? = nil
+    /// A `TextEditor` of an attributed string (`text` is its characters).
+    var styledText: Binding<AttributedString>? = nil
 
     var body: Never { primitiveBody(Self.self) }
+
+    /// The foreground colors of `text`'s runs, by Unicode scalar offsets.
+    static func foregroundRuns(of text: AttributedString, in environment: EnvironmentValues) -> [ResolvedTextField.ForegroundRun] {
+        var runs: [ResolvedTextField.ForegroundRun] = []
+        var offset = 0
+        for run in text.runs {
+            let count = text.unicodeScalars[run.range].count
+            defer { offset += count }
+            guard count > 0, let color = run[TextAttributes.ForegroundColorAttribute.self] else { continue }
+            runs.append(ResolvedTextField.ForegroundRun(range: offset..<(offset + count), color: color.resolve(in: environment)))
+        }
+        return runs
+    }
 
     static func _makeView(view: _GraphValue<Self>, inputs: _ViewInputs) -> _ViewOutputs {
         let kind = AnyAttribute.withoutDependencies { view.attribute.value.kind }
@@ -763,6 +778,7 @@ struct _TextInput: View {
             case nil: break
             }
             #endif
+            if let styled = field.styledText { resolved.foregroundRuns = foregroundRuns(of: styled.wrappedValue, in: env) }
             resolved.tracksSelection = field.selection != nil
             if let selection = field.selection?.wrappedValue, case .selection(let range) = selection.indices {
                 let text = field.text.wrappedValue
@@ -1102,13 +1118,44 @@ struct _FormRowLayout: Layout {
 public struct TextEditor: View {
     let text: Binding<String>
     var selection: Binding<TextSelection?>?
+    var styledText: Binding<AttributedString>?
     public init(text: Binding<String>) { self.text = text }
     /// A text editor whose selection (and caret) the binding follows and sets.
     public init(text: Binding<String>, selection: Binding<TextSelection?>) {
         self.text = text
         self.selection = selection
     }
-    public var body: some View { _TextInput(text: text, prompt: "", kind: .editor, selection: selection) }
+    /// A text editor of an attributed string: its runs' foreground colors are drawn (other attributes aren't). An
+    /// edit keeps the attributes of the text around it; inserted text has none.
+    public init(text: Binding<AttributedString>) {
+        styledText = text
+        self.text = Binding(
+            get: { String(text.wrappedValue.characters) },
+            set: { text.wrappedValue = TextEditor.replacingCharacters(of: text.wrappedValue, with: $0) })
+    }
+    public var body: some View { _TextInput(text: text, prompt: "", kind: .editor, selection: selection, styledText: styledText) }
+
+    /// `old` with its characters replaced by `new`'s: the unchanged start and end keep their attributes.
+    static func replacingCharacters(of old: AttributedString, with new: String) -> AttributedString {
+        let oldCharacters = old.characters
+        var prefix = 0
+        var oldIndex = oldCharacters.startIndex, newIndex = new.startIndex
+        while oldIndex < oldCharacters.endIndex, newIndex < new.endIndex, oldCharacters[oldIndex] == new[newIndex] {
+            oldCharacters.formIndex(after: &oldIndex)
+            new.formIndex(after: &newIndex)
+            prefix += 1
+        }
+        var oldEnd = oldCharacters.endIndex, newEnd = new.endIndex
+        while oldEnd > oldIndex, newEnd > newIndex {
+            let o = oldCharacters.index(before: oldEnd), n = new.index(before: newEnd)
+            guard oldCharacters[o] == new[n] else { break }
+            oldEnd = o
+            newEnd = n
+        }
+        var result = old
+        result.replaceSubrange(oldIndex..<oldEnd, with: AttributedString(String(new[newIndex..<newEnd])))
+        return result
+    }
 }
 
 // MARK: - Slider

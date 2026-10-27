@@ -188,4 +188,9 @@ static inline void sui_drain_fd(int fd) {
 
 static inline guint sui_keyval_to_lower(guint keyval) { return gdk_keyval_to_lower(keyval); }
 
+/// A text tag drawing its range in `color` (gtk_text_buffer_create_tag is variadic).
+static inline GtkTextTag *sui_text_buffer_foreground_tag(GtkTextBuffer *buffer, const GdkRGBA *color) {
+    return gtk_text_buffer_create_tag(buffer, NULL, "foreground-rgba", color, NULL);
+}
+
 #endif
