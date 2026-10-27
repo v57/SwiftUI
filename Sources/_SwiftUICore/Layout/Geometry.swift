@@ -207,6 +207,12 @@ public struct Alignment: Equatable, Sendable {
     public static let topTrailing = Alignment(horizontal: .trailing, vertical: .top)
     public static let bottomLeading = Alignment(horizontal: .leading, vertical: .bottom)
     public static let bottomTrailing = Alignment(horizontal: .trailing, vertical: .bottom)
+    public static let centerFirstTextBaseline = Alignment(horizontal: .center, vertical: .firstTextBaseline)
+    public static let centerLastTextBaseline = Alignment(horizontal: .center, vertical: .lastTextBaseline)
+    public static let leadingFirstTextBaseline = Alignment(horizontal: .leading, vertical: .firstTextBaseline)
+    public static let leadingLastTextBaseline = Alignment(horizontal: .leading, vertical: .lastTextBaseline)
+    public static let trailingFirstTextBaseline = Alignment(horizontal: .trailing, vertical: .firstTextBaseline)
+    public static let trailingLastTextBaseline = Alignment(horizontal: .trailing, vertical: .lastTextBaseline)
 }
 
 /// Alignments whose default value depends on the size alone (not on other guides).

@@ -531,6 +531,44 @@ public struct ContainerRelativeShape: InsettableShape {
     public func inset(by amount: CGFloat) -> _InsetShape<ContainerRelativeShape> { _InsetShape(base: self, inset: amount) }
 }
 
+extension Edge {
+    /// A corner of a rectangle (`ConcentricRectangle`).
+    public enum Corner: Hashable, Sendable {
+        case topLeading, topTrailing, bottomLeading, bottomTrailing
+
+        /// How a corner is rounded: a fixed radius, or concentric with the container's corner (off Apple's devices
+        /// there is no display corner to follow, so a concentric corner takes its minimum).
+        public struct Style: Hashable, Sendable {
+            var radius: CGFloat
+            public static var concentric: Style { Style(radius: 0) }
+            public static func concentric(minimum: Style) -> Style { minimum }
+            public static func concentric(minimum: CGFloat) -> Style { Style(radius: minimum) }
+            public static func fixed(_ radius: CGFloat) -> Style { Style(radius: radius) }
+        }
+    }
+}
+
+/// A rectangle whose corners are concentric with its container's (iOS 26): here the corners' minimum radii, as no
+/// display corner is known.
+public struct ConcentricRectangle: Shape {
+    var corners: RectangleCornerRadii
+
+    public init(corners: Edge.Corner.Style = .concentric, isUniform: Bool = false) {
+        let r = corners.radius
+        self.corners = RectangleCornerRadii(topLeading: r, bottomLeading: r, bottomTrailing: r, topTrailing: r)
+    }
+
+    public init(topLeadingCorner: Edge.Corner.Style = .concentric, topTrailingCorner: Edge.Corner.Style = .concentric,
+                bottomLeadingCorner: Edge.Corner.Style = .concentric, bottomTrailingCorner: Edge.Corner.Style = .concentric) {
+        corners = RectangleCornerRadii(topLeading: topLeadingCorner.radius, bottomLeading: bottomLeadingCorner.radius,
+                                       bottomTrailing: bottomTrailingCorner.radius, topTrailing: topTrailingCorner.radius)
+    }
+
+    public func path(in rect: CGRect) -> Path {
+        UnevenRoundedRectangle(cornerRadii: corners).path(in: rect)
+    }
+}
+
 // MARK: - Filled shape + stroke (`fill(...).stroke(...)`, macOS 14)
 
 extension _ShapeView {

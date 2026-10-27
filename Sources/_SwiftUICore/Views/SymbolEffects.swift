@@ -243,6 +243,11 @@ extension EnvironmentValues {
         get { self[ColorSchemeContrastKey.self] }
         set { self[ColorSchemeContrastKey.self] = newValue }
     }
+    /// The writable form of `colorSchemeContrast` (as Apple's, for passing a window's contrast on).
+    public var _colorSchemeContrast: ColorSchemeContrast {
+        get { self[ColorSchemeContrastKey.self] }
+        set { self[ColorSchemeContrastKey.self] = newValue }
+    }
     public var legibilityWeight: LegibilityWeight? {
         get { self[LegibilityWeightKey.self] }
         set { self[LegibilityWeightKey.self] = newValue }

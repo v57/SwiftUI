@@ -126,7 +126,7 @@ public struct ModifiedContent<Content, Modifier> {
     public var content: Content
     public var modifier: Modifier
 
-    public init(content: Content, modifier: Modifier) {
+    public nonisolated init(content: Content, modifier: Modifier) {
         self.content = content
         self.modifier = modifier
     }
@@ -173,7 +173,7 @@ extension ModifiedContent: ViewModifier where Content: ViewModifier, Modifier: V
 }
 
 extension View {
-    public func modifier<M>(_ modifier: M) -> ModifiedContent<Self, M> {
+    public nonisolated func modifier<M>(_ modifier: M) -> ModifiedContent<Self, M> {
         ModifiedContent(content: self, modifier: modifier)
     }
 }

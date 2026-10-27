@@ -42,7 +42,8 @@ struct _KeyedValue<Value> {
     let value: Value
 }
 
-public struct _EnvironmentKeyWritingModifier<Value>: ViewModifier, EnvironmentModifier {
+// The conformances are in an extension, so the type isn't main-actor isolated: `environment(_:_:)` is nonisolated.
+public struct _EnvironmentKeyWritingModifier<Value> {
     public var keyPath: WritableKeyPath<EnvironmentValues, Value>
     public var value: Value
 
@@ -50,7 +51,9 @@ public struct _EnvironmentKeyWritingModifier<Value>: ViewModifier, EnvironmentMo
         self.keyPath = keyPath
         self.value = value
     }
+}
 
+extension _EnvironmentKeyWritingModifier: ViewModifier, EnvironmentModifier {
     public typealias Body = Never
 
     // The modifier is only read in rules: its value may depend on layout (e.g. a font sized
@@ -91,7 +94,8 @@ struct _EnvironmentObjectModifier<Object: AnyObject>: ViewModifier, EnvironmentM
 }
 
 extension View {
-    public func environment<V>(_ keyPath: WritableKeyPath<EnvironmentValues, V>, _ value: V) -> some View {
+    // Nonisolated as Apple's: views are built from nonisolated code too (a value type's helper).
+    public nonisolated func environment<V>(_ keyPath: WritableKeyPath<EnvironmentValues, V>, _ value: V) -> some View {
         modifier(_EnvironmentKeyWritingModifier(keyPath: keyPath, value: value))
     }
 

@@ -249,19 +249,30 @@ public struct GeometryProxy {
 
     /// The bounds of a named coordinate space (`.scrollView`: the scroll view's visible region) in
     /// this view's local coordinates; nil when no such space encloses the view.
+    /// Nonisolated as Apple's (value types' helpers read it); geometry is read on the main thread.
+    public nonisolated func bounds(of coordinateSpace: NamedCoordinateSpace) -> CGRect? {
+        nonisolated(unsafe) let proxy = self
+        return _onMainActor { proxy._bounds(of: coordinateSpace) }
+    }
+
     @MainActor
-    public func bounds(of coordinateSpace: NamedCoordinateSpace) -> CGRect? {
+    private func _bounds(of coordinateSpace: NamedCoordinateSpace) -> CGRect? {
         guard let bounds = spaces?.bounds(of: coordinateSpace.name) else { return nil }
         return bounds.offsetBy(dx: -geometry.origin.x, dy: -geometry.origin.y)
     }
 
-    @MainActor
-    public func frame(in coordinateSpace: some CoordinateSpaceProtocol) -> CGRect {
+    public nonisolated func frame(in coordinateSpace: some CoordinateSpaceProtocol) -> CGRect {
         frame(in: coordinateSpace.coordinateSpace)
     }
 
-    @MainActor @_disfavoredOverload
-    public func frame(in coordinateSpace: CoordinateSpace) -> CGRect {
+    @_disfavoredOverload
+    public nonisolated func frame(in coordinateSpace: CoordinateSpace) -> CGRect {
+        nonisolated(unsafe) let proxy = self
+        return _onMainActor { proxy._frame(in: coordinateSpace) }
+    }
+
+    @MainActor
+    private func _frame(in coordinateSpace: CoordinateSpace) -> CGRect {
         switch coordinateSpace {
         case .local: return CGRect(origin: .zero, size: geometry.size)
         case .global:
