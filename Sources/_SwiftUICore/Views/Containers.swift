@@ -332,6 +332,11 @@ extension CoordinateSpaceProtocol where Self == NamedCoordinateSpace {
 
 struct _ScrollViewCoordinateSpaceName: Hashable {}
 
+/// Whether a GeometryReader's content is still being built (its proxy is empty until then).
+final class GeometryReaderBuildState {
+    var isBuilding = true
+}
+
 public struct GeometryReader<Content: View>: View {
     public var content: (GeometryProxy) -> Content
 
@@ -346,9 +351,14 @@ public struct GeometryReader<Content: View>: View {
         let geometry = inputs.geometry
         let spaces = inputs.coordinateSpaces
         // The content can be evaluated while the view graph is still being built (a descendant
-        // reading static information), before the parent has bound this reader's geometry.
+        // reading static information, such as a scroll view's axes or environment), before the parent
+        // has bound this reader's geometry: placing it then would build the parent's layout from the
+        // children still being made (an attribute cycle). Until the content is built the proxy is
+        // empty; it is invalidated then, so the content reads the placed geometry.
+        let building = GeometryReaderBuildState()
         let proxy = Attribute<GeometryProxy>(inputs.subgraph, isEqual: { $0 == $1 }) {
-            GeometryProxy(geometry: geometry.valueIfPresent ?? ViewGeometry(origin: .zero, size: .zero, proposal: .unspecified), spaces: spaces)
+            let placed = building.isBuilding ? nil : geometry.valueIfPresent
+            return GeometryProxy(geometry: placed ?? ViewGeometry(origin: .zero, size: .zero, proposal: .unspecified), spaces: spaces)
         }
         let contentView = Attribute<Content>(inputs.subgraph)
         contentView.setRule { [unowned contentView] in
@@ -361,6 +371,8 @@ public struct GeometryReader<Content: View>: View {
         contentInputs.stackAxis = nil
         let list = Content._makeViewList(view: _GraphValue(contentView), inputs: contentInputs.listInputs)
         let contentOutputs = contentInputs.makeUnary(list: list.list, layout: _ZStackLayout(alignment: .topLeading))
+        building.isBuilding = false
+        proxy.invalidate()
         let contentLayout = contentOutputs.layout
         contentGeometry.setRule {
             let placed = geometry.value
