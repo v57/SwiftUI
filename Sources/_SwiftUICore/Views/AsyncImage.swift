@@ -14,6 +14,22 @@ public struct ImageDecoder: @unchecked Sendable {
     let decode: @MainActor (Data, CGFloat) -> Image?
 }
 
+extension ImageDecoder {
+    /// The backend of the newest window (set when its view graph is made), for decoding outside a view's environment.
+    @MainActor weak static var backend: (any RenderBackend)?
+}
+
+extension Image {
+    /// Not Apple API: an image decoded from PNG, JPEG or other image file bytes by the backend (GdkPixbuf on GTK, the
+    /// host on Android and Windows, NSImage under AppKit), each `scale` pixels a point; nil when the bytes aren't an
+    /// image, or before a window is up. Apple platforms decode with `NSImage(data:)` / `UIImage(data:)` instead.
+    @MainActor
+    public init?(_platformData data: Data, scale: CGFloat = 1) {
+        guard let image = ImageDecoder.backend?.decodeImage(data, scale: scale) else { return nil }
+        self.init(_platformImage: image)
+    }
+}
+
 struct ImageDecoderKey: EnvironmentKey { static let defaultValue = ImageDecoder { _, _ in nil } }
 struct AsyncImageSessionKey: EnvironmentKey { static let defaultValue: URLSession? = nil }
 

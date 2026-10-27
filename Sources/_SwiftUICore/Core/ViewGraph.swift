@@ -75,6 +75,7 @@ public final class ViewGraph: AttributeGraphDelegate {
         Pasteboard.general.backend = backend
         TextMeasurer.backend = backend
         FileDialogs.backend = backend
+        ImageDecoder.backend = backend
         rootEnvironment._haptics = HapticPerformer { [weak backend] feedback in backend?.performHapticFeedback(feedback) }
         #if canImport(UniformTypeIdentifiers)
         rootEnvironment._pasteboardReader = PasteboardReader { [weak backend] in backend?.readPasteboard() ?? [] }
