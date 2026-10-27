@@ -58,10 +58,27 @@ public enum GtkAppRunner {
         }
         for index in presented { add(GtkWindowController(description: windows[index], value: nil)) }
         GtkMainLoop.serviceTimers()
+        openLaunchFiles()
         GtkScript.startIfRequested()
         gtk_main()
         UserDefaults.standard.synchronize()
         exit(0)
+    }
+
+    /// Files and folders on the command line (`app <path>…`, or file URLs as a .desktop file's `%U` passes them) go to the
+    /// windows' `onOpenURL` handlers once they are up, as the Mac's open events do. Options (`-name`, `--name`) and
+    /// the argument after one are not paths.
+    static func openLaunchFiles() {
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        let urls = arguments.indices.compactMap { index -> URL? in
+            let argument = arguments[index]
+            guard !argument.hasPrefix("-"), index == 0 || !arguments[index - 1].hasPrefix("-") else { return nil }
+            if argument.hasPrefix("file://") { return URL(string: argument) }
+            guard FileManager.default.fileExists(atPath: argument) else { return nil }
+            return URL(fileURLWithPath: argument).standardizedFileURL
+        }
+        guard !urls.isEmpty else { return }
+        DispatchQueue.main.async { AppRuntime.handleOpenURLs(urls) }
     }
 
     static func open(id: String?, value: AnyHashable?) {
