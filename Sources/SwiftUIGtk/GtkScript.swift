@@ -86,6 +86,17 @@ enum GtkScript {
     /// Takes the screenshot once GTK has painted the next frame (its layout done), or after a second when no frame
     /// comes (an unmapped window).
     private static func screenshotAfterNextFrame(path: String) -> Int {
+        // A window being mapped (or re-realized, as when content moves into the title bar) draws nothing yet.
+        let line = index - 1
+        if let controller = window(), gtk_widget_get_mapped(controller.window) == 0 || gtk_widget_get_mapped(controller.host.drawingArea) == 0 {
+            let deadline = pendingDeadline[line] ?? monotonicSeconds() + 3
+            if monotonicSeconds() < deadline {
+                pendingDeadline[line] = deadline
+                index = line
+                return 100
+            }
+        }
+        pendingDeadline[line] = nil
         guard let controller = window(), let clock = gtk_widget_get_frame_clock(controller.window) else {
             screenshot(path: path)
             return 0
@@ -582,6 +593,11 @@ enum GtkScript {
     private static func settle(_ controller: GtkWindowController) {
         for _ in 0..<200 where gtk_events_pending() != 0 { gtk_main_iteration_do(0) }
         gtk_container_check_resize(sui_container(raw(controller.window)))
+        // A resize still pending (the window settling at launch) would make GTK refuse to draw it: lay it out at its
+        // current size.
+        var allocation = GtkAllocation()
+        gtk_widget_get_allocation(controller.window, &allocation)
+        gtk_widget_size_allocate(controller.window, &allocation)
     }
 
     /// The X screen (popup menus, dialogs and popovers included).
