@@ -203,6 +203,7 @@ enum SymbolNames {
         "hand.tap": g("touch_app"),
         "hand.thumbsdown": g("thumb_down"),
         "hand.thumbsup": g("thumb_up"),
+        "hand.wave": g("waving_hand"),
         "headphones": g("headphones"),
         "heart": g("favorite"),
         "hexagon": g("hexagon"),

@@ -67,7 +67,7 @@ M = {
     "line.3.horizontal.decrease": "filter_list", "line.3.horizontal.decrease.circle": "filter_list",
     "slider.horizontal.3": "tune", "switch.2": "toggle_on", "togglepower": "power_settings_new",
     # ComponentKit catalog
-    "appletv": "tv", "filemenu.and.selection": "menu_open", "swatchpalette": "palette", "wind": "air", "checklist": "checklist", "trophy": "trophy", "puzzlepiece": "extension", "arrow.uturn.down": "u_turn_left", "menubar.dock.rectangle": "dock_to_bottom",
+    "appletv": "tv", "filemenu.and.selection": "menu_open", "swatchpalette": "palette", "wind": "air", "checklist": "checklist", "trophy": "trophy", "puzzlepiece": "extension", "arrow.uturn.down": "u_turn_left", "menubar.dock.rectangle": "dock_to_bottom", "hand.wave": "waving_hand",
     # Documents & files
     "doc": "description", "doc.text": "description", "doc.badge.plus": "note_add", "doc.on.doc": "content_copy",
     "doc.on.clipboard": "content_paste", "clipboard": "content_paste", "doc.text.magnifyingglass": "plagiarism",
