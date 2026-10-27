@@ -5,10 +5,13 @@
 #   stop               shut the VM down (ACPI power button)
 #   ip                 print the VM's address
 #   ssh [command...]   run a command in the VM (in its desktop session: DISPLAY=:0)
-#   sync               mirror this checkout into ~/SwiftUI in the VM
+#   sync               mirror this checkout into ~/v57/SwiftUI in the VM
+#   sync-repo <dir> [name]   mirror another repo into ~/v57/<name> (siblings sit side by side, so V57_LOCAL=1 builds
+#                      find ../SwiftUI, ../Component, ...); Xcode projects keep only project.pbxproj
 #   build <product>    sync and `swift build --product <product>` in the VM
 #   run <product> [env...]   build, then (re)start the product on the VM's desktop, window at 60,60
 #   shot <app> <out.png>     screenshot of an app's window (by process name) into a local file
+#   screen <out.png>   screenshot of the whole desktop
 #   click <x> <y>      left click at screen coordinates;  type <text>;  key <keysym>
 # SWIFTUI_VM_HOST[:SWIFTUI_VM_PORT] drive a VM elsewhere instead (UTM on an iPad: Tools/ipad/utm).
 set -e
@@ -23,7 +26,11 @@ vm_ip() {
   mac=$(plutil -extract Network.0.MacAddress raw "$SWIFTUI_VM_BUNDLE/config.plist")
   # dhcpd_leases drops leading zeros of each octet.
   mac=$(echo "$mac" | sed -E 's/(^|:)0([0-9a-f])/\1\2/g')
-  awk -v mac="1,$mac" 'BEGIN { RS = "}" } $0 ~ "hw_address=" mac "\n" { match($0, /ip_address=[0-9.]+/); ip = substr($0, RSTART + 11, RLENGTH - 11) } END { print ip }' /var/db/dhcpd_leases
+  # The newest lease wins: a MAC keeps old leases from other host networks.
+  awk -v mac="1,$mac" 'BEGIN { RS = "}" } $0 ~ "hw_address=" mac "\n" {
+      match($0, /ip_address=[0-9.]+/); ip = substr($0, RSTART + 11, RLENGTH - 11)
+      match($0, /lease=0x[0-9a-f]+/); lease = substr($0, RSTART + 6, RLENGTH - 6)
+      if (lease > best) { best = lease; out = ip } } END { print out }' /var/db/dhcpd_leases
 }
 
 remote() {
@@ -34,12 +41,18 @@ remote() {
     "export DISPLAY=:0 XAUTHORITY=/run/user/\$(id -u)/gdm/Xauthority DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus PATH=$SWIFTUI_VM_SWIFT:\$PATH; $*"
 }
 
-sync_source() {
+# rsync <local dir> <name>: mirror a repo into ~/v57/<name>, leaving build output and VCS data behind.
+sync_dir() {
   local ip
   ip=$(vm_ip)
-  rsync -az -e "ssh -p $SSH_PORT" --delete --exclude .build --exclude .build-android --exclude .build-linux --exclude .git --exclude Ports \
-    --exclude 'Android/build' --exclude 'Android/*/build' --exclude .gradle --exclude '*.ttf' \
-    "$SWIFTUI_ROOT/" "$SWIFTUI_VM_USER@$ip:SwiftUI/"
+  rsync -az -e "ssh -p $SSH_PORT" --rsync-path="mkdir -p v57 && rsync" --delete --exclude .build --exclude .build-android --exclude .build-linux --exclude .git \
+    --exclude /build --exclude DerivedData --exclude .claude --exclude 'Android/build' --exclude 'Android/*/build' \
+    --exclude .gradle --exclude xcuserdata --exclude project.xcworkspace ${3:+$3} \
+    "$1/" "$SWIFTUI_VM_USER@$ip:v57/$2/"
+}
+
+sync_source() {
+  sync_dir "$SWIFTUI_ROOT" SwiftUI "--exclude Ports --exclude *.ttf"
 }
 
 build_vzrun() {
@@ -85,13 +98,15 @@ case "$cmd" in
   ip) vm_ip ;;
   ssh) remote "$@" ;;
   sync) sync_source ;;
+  sync-repo)
+    dir="$(cd "$1" && pwd)"; sync_dir "$dir" "${2:-$(basename "$dir")}" ;;
   build)
     sync_source
-    remote "cd SwiftUI && swift build --product $1 2>&1 | grep -E 'error:|warning: unre|Compiling|Build' | grep -v '^\\[' | tail -40" ;;
+    remote "cd v57/SwiftUI && swift build --product $1 2>&1 | grep -E 'error:|warning: unre|Compiling|Build' | grep -v '^\\[' | tail -40" ;;
   run)
     product="$1"; shift
     sync_source
-    remote "cd SwiftUI && swift build --product $product 2>&1 | grep -E 'error:' | sort -u | head -40; \
+    remote "cd v57/SwiftUI && swift build --product $product 2>&1 | grep -E 'error:' | sort -u | head -40; \
       pkill -x $product; (env $* nohup .build/debug/$product > /tmp/$product.log 2>&1 &); \
       for i in \$(seq 1 50); do w=\$(xdotool search --onlyvisible --pid \$(pgrep -x $product | head -1) 2>/dev/null | tail -1); [ -n \"\$w\" ] && break; sleep 0.2; done; \
       xdotool windowmove \$w 60 60; echo window \$w; tail -5 /tmp/$product.log" ;;
@@ -99,6 +114,9 @@ case "$cmd" in
     app="$1"; out="$2"
     remote "w=\$(xdotool search --onlyvisible --pid \$(pgrep -x $app | head -1) | tail -1); import -window \$w /tmp/shot.png"
     scp -q -P "$SSH_PORT" "$SWIFTUI_VM_USER@$(vm_ip):/tmp/shot.png" "$out"; echo "$out" ;;
+  screen)
+    remote "import -window root /tmp/screen.png"
+    scp -q -P "$SSH_PORT" "$SWIFTUI_VM_USER@$(vm_ip):/tmp/screen.png" "$1"; echo "$1" ;;
   click) remote "xdotool mousemove $1 $2; sleep 0.1; xdotool click 1" ;;
   type) remote "xdotool type --delay 30 $(printf '%q' "$*")" ;;
   key) remote "xdotool key $1" ;;
