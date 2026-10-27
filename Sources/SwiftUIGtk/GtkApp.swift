@@ -279,21 +279,25 @@ final class GtkWindowController {
     }
 
     /// Like SwiftUI (and the AppKit runner): the content's minimum size bounds the window; the default size is
-    /// `defaultSize`, else the ideal size for panels and content-sized windows, else 900x450 grown to the minimum.
+    /// `defaultSize`, else the ideal size for panels, content-sized windows and Settings, else 900x450 grown to the
+    /// minimum.
     private func sizeWindow() {
+        // A Settings window fits its content unless the scene says otherwise, as on the Mac.
+        let resizability = description.role == .settings && description.resizability == .automatic
+            ? WindowResizability.contentSize : description.resizability
         let minimum = host.sizeThatFits(ProposedViewSize(width: 0, height: 0))
         gtk_widget_set_size_request(host.widget, Int32(min(minimum.width, 4000).rounded(.up)), Int32(min(minimum.height, 4000).rounded(.up)))
         let size: CGSize
         if let defaultSize = description.defaultSize {
             size = defaultSize
-        } else if description.kind == .utility || description.resizability == .contentSize {
+        } else if description.kind == .utility || resizability == .contentSize {
             size = host.sizeThatFits(.unspecified)
         } else {
             size = CGSize(width: max(minimum.width, 900), height: max(minimum.height, 450))
         }
         gtk_window_set_default_size(sui_window(raw(window)), Int32(size.width.rounded()), Int32(size.height.rounded()))
         gtk_window_set_position(sui_window(raw(window)), GTK_WIN_POS_CENTER)
-        if description.resizability == .contentSize {
+        if resizability == .contentSize {
             let maximum = host.sizeThatFits(ProposedViewSize(width: .infinity, height: .infinity))
             if maximum.width.isFinite, maximum.height.isFinite, maximum.width <= minimum.width + 0.5, maximum.height <= minimum.height + 0.5 {
                 gtk_window_set_resizable(sui_window(raw(window)), 0)
