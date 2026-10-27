@@ -156,12 +156,14 @@ if standIns {
         .target(name: "os"),
         // SwiftData: @Model, containers and contexts over a JSON file store (SwiftUISwiftData adds @Query).
         .target(name: "SwiftData", dependencies: ["SwiftUIMacros"]),
-        // Network: NWConnection (TCP, TLS through SChannel on Windows, connected UDP) and NWListener on sockets.
+        // Network: NWConnection (TCP, TLS through SChannel on Windows and OpenSSL on Linux, connected UDP) and NWListener on sockets.
         .target(
             name: "CNetworkSupport",
             linkerSettings: [
                 .linkedLibrary("ws2_32", .when(platforms: [.windows])), .linkedLibrary("secur32", .when(platforms: [.windows])),
                 .linkedLibrary("crypt32", .when(platforms: [.windows])),
+                // Linux: TLS on OpenSSL (tls.c).
+                .linkedLibrary("ssl", .when(platforms: [.linux])), .linkedLibrary("crypto", .when(platforms: [.linux])),
             ]),
         .target(name: "Network", dependencies: ["CNetworkSupport"]),
         // CoreGraphics: geometry, colors, paths, bitmap images and a software-drawn bitmap context.

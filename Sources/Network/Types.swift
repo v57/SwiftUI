@@ -1,6 +1,6 @@
 // Network stand-in (Linux, Windows): the part of Network.framework apps use for plain connections:
 // NWConnection (TCP with optional TLS, connected UDP), NWListener (TCP), endpoints and parameters. Sockets are
-// Winsock or BSD sockets driven by a thread per connection; TLS is SChannel on Windows.
+// Winsock or BSD sockets driven by a thread per connection; TLS is SChannel on Windows and OpenSSL on Linux.
 import Foundation
 
 /// A POSIX error code with Apple's names (the platform's `POSIXErrorCode` lacks the socket errors on Windows).

@@ -290,8 +290,148 @@ public final class TLSSession: @unchecked Sendable {
         if extra > 0 { pending = Array(input.suffix(extra)) }
     }
 }
+#elseif os(Linux)
+/// TLS over a byte stream with OpenSSL: it checks the server's certificate and name against the system's roots
+/// (`/etc/ssl/certs`), unless a verify block decides. `read` and `write` move the encrypted bytes, so the session
+/// works over any stream (a socket, an SSH channel).
+public final class TLSSession: @unchecked Sendable {
+    private let tls: OpaquePointer
+    /// Guards `tls`: OpenSSL's connections aren't thread-safe, and sending and receiving run on different threads.
+    private let lock = NSLock()
+    private var closed = false
+    /// The protocol the server picked with ALPN.
+    public private(set) var negotiatedProtocol: String?
+
+    /// Connects TLS over a socket.
+    static func connect(socket: Socket, serverName: String, options: sec_protocol_options_t) throws -> TLSSession {
+        try TLSSession(
+            serverName: serverName, alpn: options.applicationProtocols, verify: options.verify,
+            write: { try socket.send($0) }, read: { try socket.receive(maximum: 65_536) })
+    }
+
+    /// Connects TLS over any stream: `write` sends bytes, `read` returns the next ones (empty at the end).
+    public static func connect(
+        serverName: String, alpn: [String] = [], allowUntrusted: Bool = false,
+        write: (Data) throws -> Void, read: () throws -> Data
+    ) throws -> TLSSession {
+        try TLSSession(
+            serverName: serverName, alpn: alpn, verify: allowUntrusted ? { _, _, complete in complete(true) } : nil,
+            write: write, read: read)
+    }
+
+    private init(
+        serverName: String, alpn: [String], verify: sec_protocol_verify_t?, write: (Data) throws -> Void, read: () throws -> Data
+    ) throws {
+        var protocols: [UInt8] = []
+        for name in alpn where !name.isEmpty && name.utf8.count < 256 {
+            protocols.append(UInt8(name.utf8.count))
+            protocols += name.utf8
+        }
+        guard let tls = cns_tls_new(serverName, protocols, UInt32(protocols.count), verify == nil ? 1 : 0) else {
+            throw NWError.tls(-1)
+        }
+        self.tls = tls
+        while true {
+            let status = cns_tls_handshake(tls)
+            try write(takeOutput())
+            switch status {
+            case CNS_TLS_DONE:
+                var length: UInt32 = 0
+                if let name = cns_tls_alpn(tls, &length) {
+                    negotiatedProtocol = String(decoding: UnsafeBufferPointer(start: name, count: Int(length)), as: UTF8.self)
+                }
+                if let verify { try Self.decide(verify) }
+                return
+            case CNS_TLS_WANT_INPUT:
+                let chunk = try read()
+                guard !chunk.isEmpty else { throw NWError.posix(.ECONNRESET) }
+                feed(chunk)
+            case CNS_TLS_UNTRUSTED:
+                // errSSLXCertChainInvalid, as Apple's TLS reports an untrusted server.
+                throw NWError.tls(-9807)
+            default:
+                throw NWError.tls(Self.lastError)
+            }
+        }
+    }
+
+    deinit { cns_tls_free(tls) }
+
+    /// OpenSSL's error code, as a negative status that doesn't collide with Apple's.
+    private static var lastError: Int32 {
+        let code = cns_tls_last_error(nil, 0)
+        return code == 0 ? -1 : -Int32(truncatingIfNeeded: code & 0x7fff_ffff)
+    }
+
+    /// Asks the verify block, waiting for its answer.
+    private static func decide(_ verify: sec_protocol_verify_t) throws {
+        let answer = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var trusted = false
+        verify(sec_protocol_metadata_t(), sec_trust_t()) { ok in
+            trusted = ok
+            answer.signal()
+        }
+        answer.wait()
+        guard trusted else { throw NWError.tls(-9808) }
+    }
+
+    private func feed(_ data: Data) {
+        _ = data.withUnsafeBytes { cns_tls_feed(tls, $0.baseAddress, $0.count) }
+    }
+
+    /// The encrypted bytes OpenSSL has written.
+    private func takeOutput() -> Data {
+        var output = Data()
+        while true {
+            let count = cns_tls_output_count(tls)
+            guard count > 0 else { return output }
+            var buffer = [UInt8](repeating: 0, count: count)
+            let taken = buffer.withUnsafeMutableBytes { cns_tls_output(tls, $0.baseAddress, $0.count) }
+            guard taken > 0 else { return output }
+            output.append(contentsOf: buffer[0..<taken])
+        }
+    }
+
+    /// Encrypts application data into TLS records.
+    public func encrypt(_ data: Data) throws -> Data {
+        lock.lock()
+        defer { lock.unlock() }
+        let written = data.withUnsafeBytes { cns_tls_write(tls, $0.baseAddress, Int32($0.count)) }
+        guard written >= 0 else { throw NWError.tls(Self.lastError) }
+        // Also carries anything reading left behind (TLS 1.3 key update replies).
+        return takeOutput()
+    }
+
+    /// The next application data: reads and decrypts records until one carries data. Empty at the end.
+    public func decrypt(read: () throws -> Data) throws -> Data {
+        var buffer = [UInt8](repeating: 0, count: 16 * 1024)
+        while true {
+            lock.lock()
+            if closed {
+                lock.unlock()
+                return Data()
+            }
+            let count = buffer.withUnsafeMutableBytes { cns_tls_read(tls, $0.baseAddress, Int32($0.count)) }
+            if count == CNS_TLS_CLOSED { closed = true }
+            lock.unlock()
+            switch count {
+            case 1...:
+                return Data(buffer[0..<Int(count)])
+            case CNS_TLS_WANT_INPUT:
+                // Read without the lock, so sending isn't blocked while waiting for the peer.
+                let chunk = try read()
+                guard !chunk.isEmpty else { return Data() }
+                lock.withLock { feed(chunk) }
+            case CNS_TLS_CLOSED:
+                return Data()
+            default:
+                throw NWError.tls(Self.lastError)
+            }
+        }
+    }
+}
 #else
-/// TLS needs SChannel (Windows) here; elsewhere TLS connections fail.
+/// TLS needs SChannel (Windows) or OpenSSL (Linux) here; elsewhere TLS connections fail.
 public final class TLSSession: @unchecked Sendable {
     static func connect(socket: Socket, serverName: String, options: sec_protocol_options_t) throws -> TLSSession {
         throw NWError.tls(-1)
