@@ -3,7 +3,7 @@ import Foundation
 #if os(Windows)
 import WinSDK
 #elseif os(Linux)
-import SecretService
+internal import SecretService
 #endif
 
 /// Device-bound keys, standing in for the Secure Enclave. A key's `dataRepresentation` is its private key sealed

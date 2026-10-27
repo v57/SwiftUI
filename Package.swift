@@ -202,7 +202,7 @@ for target in package.targets where target.name == "SwiftUIGtk" {
 package.targets += [
     .systemLibrary(name: "CLibSecret", pkgConfig: "libsecret-1", providers: [.apt(["libsecret-1-dev"])]),
     .target(name: "CSecretService", dependencies: ["CLibSecret"]),
-    .target(name: "SecretService", dependencies: ["CSecretService"]),
+    .target(name: "SecretService", dependencies: ["CSecretService"], swiftSettings: [.enableExperimentalFeature("Extern")]),
 ]
 package.products += [.library(name: "SecretService", targets: ["SecretService"])]
 for target in package.targets where ["CryptoKit", "CompatTests"].contains(target.name) {

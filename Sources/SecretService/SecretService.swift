@@ -2,8 +2,35 @@
 // secrets where Apple platforms use the keychain: VaultKit's keychain and CryptoKit's SecureEnclave stand-in.
 // Items are generic passwords named by a service and an account, kept in the user's default (login) collection,
 // which the desktop unlocks at login; a locked one asks the user to unlock it.
-import CSecretService
 import Foundation
+
+// CSecretService's functions, declared here rather than imported: a C module in this module's interface would be
+// needed by every module that sees it, and the CryptoKit stand-in (which uses this) is imported by packages that
+// don't depend on it (HubService checks `canImport(CryptoKit)`).
+@_extern(c, "v57_secret_store")
+private func v57_secret_store(
+    _ service: UnsafePointer<CChar>, _ account: UnsafePointer<CChar>, _ label: UnsafePointer<CChar>,
+    _ data: UnsafePointer<UInt8>?, _ length: Int, _ error: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
+) -> Int32
+@_extern(c, "v57_secret_lookup")
+private func v57_secret_lookup(
+    _ service: UnsafePointer<CChar>, _ account: UnsafePointer<CChar>,
+    _ data: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>, _ length: UnsafeMutablePointer<Int>,
+    _ error: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
+) -> Int32
+@_extern(c, "v57_secret_clear")
+private func v57_secret_clear(
+    _ service: UnsafePointer<CChar>, _ account: UnsafePointer<CChar>,
+    _ error: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
+) -> Int32
+@_extern(c, "v57_secret_search")
+private func v57_secret_search(
+    _ service: UnsafePointer<CChar>, _ context: UnsafeMutableRawPointer?,
+    _ callback: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<CChar>?, UnsafePointer<UInt8>?, Int) -> Void,
+    _ error: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
+) -> Int32
+@_extern(c, "v57_secret_free")
+private func v57_secret_free(_ pointer: UnsafeMutableRawPointer?)
 
 public enum SecretService {
     /// The Secret Service refused or isn't running (no D-Bus session, no keyring daemon).
