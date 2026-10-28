@@ -546,7 +546,10 @@ public enum AppKitAppRunner {
         // size is not used (a tall scroll view opens in a 900x450 window).
         let minimum = host.sizeThatFits(ProposedViewSize(width: 0, height: 0))
         window.contentMinSize = minimum
-        if description.resizability == .contentSize {
+        // A Settings window fits its content unless the scene says otherwise, as on the Mac.
+        let resizability = description.role == .settings && description.resizability == .automatic
+            ? WindowResizability.contentSize : description.resizability
+        if resizability == .contentSize {
             // The window can't grow beyond the content's maximum size.
             let maximum = host.sizeThatFits(ProposedViewSize(width: .infinity, height: .infinity))
             window.contentMaxSize = CGSize(width: maximum.width.isFinite ? maximum.width : CGFloat.greatestFiniteMagnitude,
@@ -556,8 +559,8 @@ public enum AppKitAppRunner {
         let frameSize: CGSize
         if let size = description.defaultSize {
             frameSize = size
-        } else if description.kind == .utility || description.resizability == .contentSize {
-            // Panels and content-sized windows fit their content.
+        } else if description.kind == .utility || resizability == .contentSize {
+            // Panels, content-sized windows and Settings fit their content.
             let ideal = host.sizeThatFits(.unspecified)
             frameSize = CGSize(width: ideal.width, height: ideal.height + titleBar)
         } else {

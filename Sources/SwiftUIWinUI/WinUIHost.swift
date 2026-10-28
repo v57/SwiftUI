@@ -60,11 +60,14 @@ final class WinUIHost {
         hiddenTitleBar = description.kind == .hiddenTitleBar
         var size = CGSize(width: -1, height: -1)
         var fixed = false
-        if description.defaultSize == nil, description.kind == .utility || description.resizability == .contentSize {
+        // A Settings window fits its content unless the scene says otherwise, as on the Mac.
+        let resizability = description.role == .settings && description.resizability == .automatic
+            ? WindowResizability.contentSize : description.resizability
+        if description.defaultSize == nil, description.kind == .utility || resizability == .contentSize {
             let ideal = graph.sizeThatFits(.unspecified)
             let maximum = graph.sizeThatFits(ProposedViewSize(width: .infinity, height: .infinity))
             size = CGSize(width: ideal.width.rounded(.up), height: ideal.height.rounded(.up))
-            fixed = description.resizability == .contentSize && maximum.width <= ideal.width + 0.5
+            fixed = resizability == .contentSize && maximum.width <= ideal.width + 0.5
                 && maximum.height <= ideal.height + 0.5
         }
         let fields = [hidesMenuBar ? "1" : "0", "\(Float(size.width))", "\(Float(size.height))", fixed ? "1" : "0"]
