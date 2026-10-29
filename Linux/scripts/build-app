@@ -1,6 +1,7 @@
 #!/bin/bash
 # Builds a SwiftUI app for Linux (GTK) and stages it as a runnable folder. Runs on the Linux machine itself (in the
-# test VM: `Linux/scripts/vm ssh 'cd ~/v57/SwiftUI && Linux/scripts/build-app --package ../Component Component'`).
+# test VM: `Linux/scripts/vm ssh 'cd ~/v57/SwiftUI && Linux/scripts/build-app --package ../Component/App Component'`; a v57
+# app's package is its repository's App/ folder).
 #   1. `swift build --product <Product>` in the app's package (V57_LOCAL=1 builds against the sibling checkouts),
 #   2. stages <package>/.build/linux/<Product>/: the executable, its SwiftPM resource bundles, the Material Symbols
 #      font (Image(systemName:)), an Info.plist (the bundle identifier and version from the Xcode project, so the
@@ -64,11 +65,15 @@ for font in "$root/Android/swiftui/src/main/assets/MaterialSymbolsOutlined.ttf" 
 done
 [ -s "$out/MaterialSymbolsOutlined.ttf" ] || echo "build-app: no MaterialSymbolsOutlined.ttf (Linux/scripts/fetch-assets); symbols show placeholders" >&2
 
-# Name, identifier and version from the app's Xcode project (its first target's), as Windows/scripts/build-app.ps1.
+# Name, identifier and version from the app's Xcode project (its first target's), as Windows/scripts/build-app.ps1:
+# in the package, or beside it when the package is a repository's App/ folder (the Xcode project is at the root).
 name="$product"
 identifier="dev.v57.$(echo "$product" | tr '[:upper:]' '[:lower:]')"
 version="1.0"
 project="$(find "$package" -maxdepth 3 -name project.pbxproj -not -path '*/.build/*' 2>/dev/null | head -1)"
+if [ -z "$project" ] && [ "$(basename "$package")" = App ]; then
+  project="$(find "$(dirname "$package")" -maxdepth 2 -name project.pbxproj -not -path '*/.build/*' 2>/dev/null | head -1)"
+fi
 if [ -n "$project" ]; then
   value="$(grep -m1 -oE 'PRODUCT_BUNDLE_IDENTIFIER = "?[A-Za-z0-9.-]+' "$project" | sed -E 's/.*= "?//')" || true
   [ -n "$value" ] && identifier="$value"

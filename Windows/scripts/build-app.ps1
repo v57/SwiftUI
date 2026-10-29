@@ -4,7 +4,8 @@
 # 3. stages the app DLL and the Swift runtime next to SwiftUIHost.exe in .build\winui\<Product>,
 # 4. optionally runs it (-Run; -Script/-Log are passed to the host).
 # Usage: Windows/scripts/build-app.ps1 [-Product GalleryWinUI] [-PackagePath dir] [-Configuration debug|release] [-Run] [-Script file] [-Log file]
-#   -PackagePath builds an app from another package that depends on SwiftUI (e.g. Ports\hub-app\WindowsBuild).
+#   -PackagePath builds an app from another package that depends on SwiftUI (e.g. C:\dev\Get\App: a v57 app's package
+#   is its repository's App\ folder).
 param(
     [string]$Product = "GalleryWinUI",
     [string]$PackagePath,
@@ -65,10 +66,15 @@ Set-Content -Path "$out\swiftui-app.txt" -Value $Product -NoNewline
 
 # Info.plist next to the host, which Foundation reads as the main bundle's: the app's name, version and bundle
 # identifier from its Xcode project (the first target's), so its defaults are its own file
-# (%LOCALAPPDATA%\<identifier>.plist) and not the host's, shared by every app.
+# (%LOCALAPPDATA%\<identifier>.plist) and not the host's, shared by every app. The project is in the package, or beside
+# it when the package is a repository's App\ folder (the Xcode project is at the repository's root).
 $name = if ($Product -match '^(.+)WinUI$') { $Matches[1] } else { $Product }
 $project = Get-ChildItem $package -Filter project.pbxproj -Recurse -Depth 2 -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch '\\(\.build|Pods)\\' } | Select-Object -First 1
+if (-not $project -and (Split-Path $package -Leaf) -eq 'App') {
+    $project = Get-ChildItem (Split-Path $package) -Filter project.pbxproj -Recurse -Depth 1 -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+}
 $identifier = "dev.v57.$($name.ToLowerInvariant())"
 $version = "1.0"
 if ($project) {
