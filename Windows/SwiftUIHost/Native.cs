@@ -326,10 +326,24 @@ static unsafe class Native
     [UnmanagedCallersOnly]
     static void OnFree(void* pointer) => Marshal.FreeCoTaskMem((IntPtr)pointer);
 
+    [ThreadStatic] static bool reporting;
+
     public static void Report(Exception e)
     {
-        System.Diagnostics.Debug.WriteLine("[SwiftUIHost] " + e);
-        Console.Error.WriteLine("[SwiftUIHost] " + e);
+        // The type and message first: the full text resolves the stack trace's symbols, which can throw in turn (a
+        // file it can't find), and that report must not recurse into a stack overflow.
+        var summary = $"[SwiftUIHost] {e.GetType().FullName}: {e.Message}"
+            + (e is System.IO.FileNotFoundException missing ? $" ({missing.FileName})" : "");
+        Console.Error.WriteLine(summary);
+        if (reporting) return;
+        reporting = true;
+        try
+        {
+            System.Diagnostics.Debug.WriteLine("[SwiftUIHost] " + e);
+            Console.Error.WriteLine("[SwiftUIHost] " + e);
+        }
+        catch (Exception) { }
+        finally { reporting = false; }
     }
 }
 
