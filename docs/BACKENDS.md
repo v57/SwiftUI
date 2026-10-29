@@ -133,23 +133,25 @@ Smoke scripts live in `Linux/tests` (`gallery.script`, `presentations.script`, `
 
 ### Apps on Linux
 
-An app's package builds it on Linux as an **executable product named after the app**, from its Xcode
-app folder, like the Windows `<App>WinUI` library (the same target settings; Linux needs no host):
+A v57 app is a package of its own in its repository's `App/` folder (`App/Package.swift`, beside the libraries'
+package at the root; Get is the model): the `<App>App` library holds the app's code on every platform, and
+`App/Sources/<App>/<App>Main.swift` is the `@main` entry point. The Xcode project at the root builds that file into
+the Apple bundle; on Linux the package builds it as an **executable product named after the app**, like the Windows
+`<App>WinUI` library (the same settings; Linux needs no host):
 
 ```swift
 #elseif os(Linux)
 package.targets.append(
   .executableTarget(
-    name: "<App>App", dependencies: [/* the app's kits */, .product(name: "SwiftUI", package: "SwiftUI")],
-    path: "<App>", exclude: ["Assets.xcassets", "<App>.entitlements"],
+    name: "<App>", dependencies: ["<App>App", .product(name: "SwiftUI", package: "SwiftUI")],
     swiftSettings: [/* as the Windows target, including the -import-module flags */]))
-package.products.append(.executable(name: "<App>", targets: ["<App>App"]))
+package.products.append(.executable(name: "<App>", targets: ["<App>"]))
 #endif
 ```
 
-Build and run it in place (`V57_LOCAL=1 swift build --product <App>` against the sibling checkouts) or
-stage it with `Linux/scripts/build-app --package <dir> <App>`: `.build/linux/<App>/` gets the
+Build and run it in place (in `App/`: `V57_LOCAL=1 swift build --product <App>` against the sibling checkouts) or
+stage it with `Linux/scripts/build-app --package <repo>/App <App>`: `.build/linux/<App>/` gets the
 executable, its resource bundles, the Material Symbols font, an `Info.plist` (bundle identifier and
-version from the Xcode project, so `UserDefaults` are the app's own) and a `.desktop` file
+version from the Xcode project at the repository's root, so `UserDefaults` are the app's own) and a `.desktop` file
 (`--install` adds it to the user's applications, `--static` links the Swift runtime in, `--run` and
 `--script <file>` run it, under Xvfb when there is no display).
