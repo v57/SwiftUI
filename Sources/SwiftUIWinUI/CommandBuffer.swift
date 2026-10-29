@@ -295,6 +295,8 @@ extension ByteWriter {
             // Hover handlers (onHover, onContinuousHover): fed by mouse/stylus hover and by
             // touches (a touch platform has no hover); they never claim touches.
             if actions.hover != nil || actions.hoverLocation != nil { flags |= 16 }
+            // Raw input (`onWinUIInput`): every button, the wheel, and keys once pressed.
+            if actions.platformInput != nil { flags |= 32 }
             u8(flags)
         case .datePicker(let picker):
             f64(picker.date.timeIntervalSince1970)

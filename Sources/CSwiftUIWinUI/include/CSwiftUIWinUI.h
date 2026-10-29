@@ -38,6 +38,9 @@ typedef struct sui_callbacks {
     void (*close_window)(sui_ref host);
     /// Memory for strings returned to Swift.
     void (*free)(void *pointer);
+    /// Images.FromPixels: a bitmap from BGRA rows as they are (premultiplied; `opaque`: the fourth byte isn't
+    /// alpha), with no encoding, for images replaced many times a second (video). Returns the id, or -1.
+    int32_t (*pixel_image)(const void *bgra, int32_t width, int32_t height, int32_t bytesPerRow, bool opaque);
 } sui_callbacks;
 
 // MARK: Swift → C# (through the registered callbacks; same API as CSwiftUIAndroid)
@@ -49,6 +52,8 @@ char *sui_host_platform(sui_ref host, int32_t op, const char *argument);
 void sui_measure_text(const void *spec, int32_t length, float maxWidth, float *out);
 void sui_delete_global_ref(sui_ref ref);
 int32_t sui_decode_image(const void *bytes, int32_t length, int32_t *size);
+/// -1 when the host has no pixel images (an older host): use sui_decode_image.
+int32_t sui_pixel_image(const void *bgra, int32_t width, int32_t height, int32_t bytesPerRow, bool opaque);
 void sui_release_image(int32_t id);
 void sui_main_loop_arm_timer(double seconds);
 void sui_open_window(int32_t scene, int64_t value, const char *title, float width, float height);
@@ -72,4 +77,5 @@ __declspec(dllexport) void swiftui_drain_main_queue(void);
 // bool swiftui_back(int64_t host);
 // void swiftui_timer_fired(void);
 // bool swiftui_key(int64_t host, int32_t code, const char *characters, int32_t modifiers, int32_t phase);
+// bool swiftui_raw_input(int64_t host, int32_t node, const char *event, double x, double y, int32_t modifiers);
 #endif

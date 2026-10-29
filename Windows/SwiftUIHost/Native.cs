@@ -22,6 +22,7 @@ unsafe struct Callbacks
     public delegate* unmanaged<int, long, byte*, float, float, void> OpenWindow;
     public delegate* unmanaged<IntPtr, void> CloseWindow;
     public delegate* unmanaged<void*, void> Free;
+    public delegate* unmanaged<byte*, int, int, int, byte, int> PixelImage;
 }
 
 /// <summary>
@@ -44,6 +45,7 @@ static unsafe class Native
     static delegate* unmanaged<long, byte> back;
     static delegate* unmanaged<void> timerFired;
     static delegate* unmanaged<long, int, byte*, int, int, byte> key;
+    static delegate* unmanaged<long, int, byte*, double, double, int, byte> rawInput;
 
     static DispatcherQueue? queue;
     /// The thread timer that services Foundation's run loop (0: none armed).
@@ -68,6 +70,10 @@ static unsafe class Native
         back = (delegate* unmanaged<long, byte>)NativeLibrary.GetExport(library, "swiftui_back");
         timerFired = (delegate* unmanaged<void>)NativeLibrary.GetExport(library, "swiftui_timer_fired");
         key = (delegate* unmanaged<long, int, byte*, int, int, byte>)NativeLibrary.GetExport(library, "swiftui_key");
+        // Apps built against an older SwiftUI have no raw input.
+        if (NativeLibrary.TryGetExport(library, "swiftui_raw_input", out var raw))
+            rawInput = (delegate* unmanaged<long, int, byte*, double, double, int, byte>)raw;
+        DoubleClickMicroseconds = GetDoubleClickTime() * 1000UL;
 
         var callbacks = new Callbacks
         {
@@ -83,6 +89,7 @@ static unsafe class Native
             OpenWindow = &OnOpenWindow,
             CloseWindow = &OnCloseWindow,
             Free = &OnFree,
+            PixelImage = &OnPixelImage,
         };
         register(&callbacks);
     }
@@ -123,6 +130,20 @@ static unsafe class Native
         var utf8 = Utf8(characters);
         fixed (byte* bytes = utf8) return key(host, code, bytes, modifiers, phase) != 0;
     }
+
+    /// Raw input for a view with `_onPlatformInput` (`event`: "down <button> <clicks>", "up <button>", "move",
+    /// "wheel <dx> <dy> <precise>", "key <vk> <extended> <phase>", "char <text>", "focuslost"; a point in the view;
+    /// modifiers as Key's). Returns whether the view took it.
+    public static bool RawInput(long host, int node, string text, double x, double y, int modifiers)
+    {
+        if (host == 0 || rawInput == null) return false;
+        var utf8 = Utf8(text);
+        fixed (byte* bytes = utf8) return rawInput(host, node, bytes, x, y, modifiers) != 0;
+    }
+
+    /// The system's double-click time (Clicks of raw input).
+    public static ulong DoubleClickMicroseconds { get; private set; } = 500_000;
+    [DllImport("user32.dll")] static extern uint GetDoubleClickTime();
 
     public static void Event(long host, int node, int type, double a = 0, double b = 0, double c = 0, string? text = null)
     {
@@ -219,6 +240,13 @@ static unsafe class Native
     static int OnDecodeImage(byte* bytes, int length, int* size)
     {
         try { return Images.Decode(new ReadOnlySpan<byte>(bytes, length).ToArray(), out size[0], out size[1]); }
+        catch (Exception e) { Report(e); return -1; }
+    }
+
+    [UnmanagedCallersOnly]
+    static int OnPixelImage(byte* bgra, int width, int height, int bytesPerRow, byte opaque)
+    {
+        try { return Images.FromPixels(bgra, width, height, bytesPerRow, opaque != 0); }
         catch (Exception e) { Report(e); return -1; }
     }
 

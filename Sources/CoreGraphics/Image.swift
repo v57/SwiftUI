@@ -187,6 +187,16 @@ public final class CGImage: @unchecked Sendable, Hashable {
         return out
     }
 
+    /// Not Apple API: the pixels as they are when they're already BGRA in memory (32-bit little-endian, alpha or skip
+    /// first; not straight alpha), for backends that upload them without converting (video frames); `opaque` when
+    /// the fourth byte isn't alpha. Nil for other layouts.
+    public func _withBGRABytes<R>(_ body: (UnsafeRawBufferPointer, _ bytesPerRow: Int, _ opaque: Bool) -> R) -> R? {
+        guard !format.alphaOnly, format.bytesPerPixel == 4, format.b == 0, format.g == 1, format.r == 2,
+            format.alpha != .straight
+        else { return nil }
+        return bytes.withUnsafeBytes { body($0, bytesPerRow, format.a < 0) }
+    }
+
     /// The image as an (uncompressed) PNG file.
     public func _pngData() -> Data { PNG.encode(width: width, height: height, rgba: _rgbaBytes()) }
 

@@ -243,6 +243,17 @@ public func swiftui_event(_ handle: Int64, _ node: Int32, _ type: Int32, _ a: Do
     }
 }
 
+/// Raw input for a view with `_onPlatformInput` (`onWinUIInput`); returns whether the view took it.
+@_cdecl("swiftui_raw_input")
+public func swiftui_raw_input(_ handle: Int64, _ node: Int32, _ text: UnsafePointer<CChar>?, _ x: Double, _ y: Double, _ modifiers: Int32) -> Bool {
+    let string = text.map { String(cString: $0) } ?? ""
+    return MainActor.assumeIsolated {
+        let handled = host(handle)?.rawInput(node: node, event: string, x: x, y: y, modifiers: modifiers) ?? false
+        WinUIMainLoop.serviceTimers()
+        return handled
+    }
+}
+
 @_cdecl("swiftui_frame")
 public func swiftui_frame(_ handle: Int64, _ seconds: Double) {
     MainActor.assumeIsolated {

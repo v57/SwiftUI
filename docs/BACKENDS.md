@@ -91,7 +91,11 @@ Set `AppRuntime.runner` to a function that opens one platform window per `Window
 * Raw input (not Apple API): `onGtkInput { (event: GtkInputEvent) -> Bool }` gives a view every button's press
   and release (with click counts), pointer motion, the wheel and, while it has focus (pressed last), keys with
   their keysyms and hardware codes; core's `_onPlatformInput` carries it (`RenderActions.platformInput`). Remote's
-  picture uses it on Linux.
+  picture uses it on Linux. WinUI has the same as `onWinUIInput { (event: WinUIInputEvent) -> Bool }` (buttons
+  with click counts, motion, the wheel with precise touchpad deltas, virtual keys, characters and focus loss; the
+  host's effect node takes raw input with flag 32 and calls the `swiftui_raw_input` export; `SWIFTUI_DEBUG_RAW=1`
+  logs it), and an image whose pixels are already BGRA (`CGImage._withBGRABytes`) goes to the WinUI host as raw
+  pixels (`pixel_image` callback, a `WriteableBitmap`) instead of a PNG, for pictures redrawn every frame.
 * Test VM: `Linux/scripts/create-vm <ubuntu-desktop-arm64.iso>` (UTM bundle, unattended
   install); `Linux/scripts/vm run GalleryGtk`, `vm shot GalleryGtk out.png`, `vm click x y`.
 * Window chrome: a `GtkHeaderBar` holds the title and toolbar items; content that runs up into the

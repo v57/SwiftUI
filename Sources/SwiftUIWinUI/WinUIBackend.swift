@@ -52,14 +52,22 @@ final class WinUIBitmap {
     private nonisolated(unsafe) static var converted: [ObjectIdentifier: (image: Weak, bitmap: WinUIBitmap)] = [:]
     final class Weak { weak var object: AnyObject?; init(_ object: AnyObject) { self.object = object } }
 
-    /// The host bitmap of a platform image's object: a decoded bitmap, or a `CGImage` sent to the host as PNG
-    /// the first time it is drawn.
+    /// The host bitmap of a platform image's object: a decoded bitmap, or a `CGImage` sent to the host the first
+    /// time it is drawn: its pixels as they are when they're BGRA already (video frames, many a second), otherwise
+    /// as PNG.
     static func bitmap(for object: AnyObject) -> WinUIBitmap? {
         if let bitmap = object as? WinUIBitmap { return bitmap }
         guard let image = object as? CGImage else { return nil }
         let key = ObjectIdentifier(image)
         if let entry = converted[key], entry.image.object === image { return entry.bitmap }
         converted = converted.filter { $0.value.image.object != nil }
+        if let id = image._withBGRABytes({ bytes, bytesPerRow, opaque in
+            sui_pixel_image(bytes.baseAddress, Int32(image.width), Int32(image.height), Int32(bytesPerRow), opaque)
+        }), id >= 0 {
+            let bitmap = WinUIBitmap(id: id)
+            converted[key] = (Weak(image), bitmap)
+            return bitmap
+        }
         let png = image._pngData()
         var size: (Int32, Int32) = (0, 0)
         let id = png.withUnsafeBytes { buffer in

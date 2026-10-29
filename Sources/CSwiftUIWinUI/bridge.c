@@ -14,6 +14,7 @@
 #pragma comment(linker, "/EXPORT:swiftui_back")
 #pragma comment(linker, "/EXPORT:swiftui_timer_fired")
 #pragma comment(linker, "/EXPORT:swiftui_key")
+#pragma comment(linker, "/EXPORT:swiftui_raw_input")
 
 // The `@main App` of the app library; libraries without one link the stub instead.
 int main(int argc, char **argv);
@@ -64,6 +65,9 @@ char *sui_host_platform(sui_ref host, int32_t op, const char *argument) {
 void sui_measure_text(const void *spec, int32_t length, float maxWidth, float *out) { sui_host.measure_text(spec, length, maxWidth, out); }
 void sui_delete_global_ref(sui_ref ref) { if (ref && sui_host.release_ref) sui_host.release_ref(ref); }
 int32_t sui_decode_image(const void *bytes, int32_t length, int32_t *size) { return sui_host.decode_image(bytes, length, size); }
+int32_t sui_pixel_image(const void *bgra, int32_t width, int32_t height, int32_t bytesPerRow, bool opaque) {
+    return sui_host.pixel_image ? sui_host.pixel_image(bgra, width, height, bytesPerRow, opaque) : -1;
+}
 void sui_release_image(int32_t id) { if (sui_host.release_image) sui_host.release_image(id); }
 void sui_main_loop_arm_timer(double seconds) { if (sui_host.arm_timer) sui_host.arm_timer(seconds); }
 

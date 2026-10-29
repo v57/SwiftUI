@@ -93,6 +93,9 @@ sealed class HostView
         Window.Activated += (_, _) => EnsureFocus();
         RootElement.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, _) => EnsureFocus()), true);
         RootElement.AddHandler(UIElement.KeyUpEvent, new KeyEventHandler((_, e) => OnKey(e, 2)), true);
+        RootElement.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, _) => OnAnyPress()), true);
+        RootElement.CharacterReceived += (_, e) => OnCharacter(e);
+        Window.Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated) LoseRawFocus(); };
 
         var self = GCHandle.Alloc(this);
         Handle = Native.CreateHost(GCHandle.ToIntPtr(self), scene, value);
@@ -440,12 +443,76 @@ sealed class HostView
 
     /// Key events go to SwiftUI (onKeyPress, keyboard shortcuts, menu shortcuts) unless a text
     /// field is typing them; Escape that SwiftUI doesn't handle dismisses / goes back.
+    // MARK: Raw input (EffectNode's FlagRaw)
+
+    /// The raw-input view pressed last: it gets the keys and typed characters before SwiftUI's shortcuts, until
+    /// another view is pressed or the window deactivates.
+    EffectNode? rawFocus;
+    bool rawPressed;
+    char? highSurrogate;
+
+    static int Modifiers() =>
+        (Down(VirtualKey.Shift) ? 1 : 0) | (Down(VirtualKey.Control) ? 2 : 0) | (Down(VirtualKey.Menu) ? 4 : 0)
+        | (Down(VirtualKey.LeftWindows) || Down(VirtualKey.RightWindows) ? 8 : 0);
+
+    static readonly bool DebugRaw = Environment.GetEnvironmentVariable("SWIFTUI_DEBUG_RAW") != null;
+
+    public bool RawInput(int node, string text, double x = 0, double y = 0)
+    {
+        var taken = Native.RawInput(Handle, node, text, x, y, Modifiers());
+        if (DebugRaw) Console.Error.WriteLine($"[raw] #{node} {text} ({x:0}, {y:0}) taken {taken}");
+        return taken;
+    }
+
+    /// From the node's press (which reaches the node before the window's handler).
+    public void TakeRawFocus(EffectNode node)
+    {
+        rawPressed = true;
+        if (rawFocus == node) return;
+        LoseRawFocus();
+        rawFocus = node;
+        FocusRoot();
+    }
+
+    void LoseRawFocus()
+    {
+        if (rawFocus is not { } node) return;
+        rawFocus = null;
+        RawInput(node.Id, "focuslost");
+    }
+
+    void OnAnyPress()
+    {
+        if (rawPressed) rawPressed = false;
+        else LoseRawFocus();
+    }
+
+    bool RawKey(KeyRoutedEventArgs e, int phase)
+    {
+        if (rawFocus is not { } node || FocusManager.GetFocusedElement(RootElement.XamlRoot) is TextBox or PasswordBox or RichEditBox) return false;
+        var extended = e.KeyStatus.IsExtendedKey ? 1 : 0;
+        if (!RawInput(node.Id, $"key {(int)e.Key} {extended} {phase}")) return false;
+        e.Handled = true;
+        return true;
+    }
+
+    void OnCharacter(CharacterReceivedRoutedEventArgs e)
+    {
+        if (rawFocus is not { } node) return;
+        var unit = e.Character;
+        if (char.IsHighSurrogate(unit)) { highSurrogate = unit; return; }
+        var text = highSurrogate is { } high ? new string([high, unit]) : unit.ToString();
+        highSurrogate = null;
+        if (RawInput(node.Id, $"char {text}")) e.Handled = true;
+    }
+
     void OnKey(KeyRoutedEventArgs e, int phase)
     {
         if (DebugKeys) Console.Error.WriteLine($"[keys] {e.Key} phase {phase} handled {e.Handled} focus {FocusManager.GetFocusedElement(RootElement.XamlRoot)?.GetType().Name}");
         if (Handle == 0 || e.Handled && phase != 2) return;
+        if (RawKey(e, phase)) return;
         var shift = Down(VirtualKey.Shift);
-        var modifiers = (shift ? 1 : 0) | (Down(VirtualKey.Control) ? 2 : 0) | (Down(VirtualKey.Menu) ? 4 : 0) | (Down(VirtualKey.LeftWindows) || Down(VirtualKey.RightWindows) ? 8 : 0);
+        var modifiers = Modifiers();
         var code = KeyCode(e.Key, shift, out var characters);
         if (code == 0) return;
         var typing = FocusManager.GetFocusedElement(RootElement.XamlRoot) is TextBox or PasswordBox or RichEditBox;

@@ -452,6 +452,31 @@ static class Images
         return id;
     }
 
+    /// <summary>A bitmap from premultiplied BGRA rows for Swift's pixel images (video frames), with no decoding;
+    /// `opaque` rows get alpha 255 (their fourth byte is padding).</summary>
+    public static unsafe int FromPixels(byte* bgra, int width, int height, int bytesPerRow, bool opaque)
+    {
+        if (width <= 0 || height <= 0) return -1;
+        var rowBytes = width * 4;
+        var pixels = new byte[rowBytes * height];
+        fixed (byte* destination = pixels)
+        {
+            for (var y = 0; y < height; y++)
+                System.Buffer.MemoryCopy(bgra + (long)y * bytesPerRow, destination + (long)y * rowBytes, rowBytes, rowBytes);
+            if (opaque)
+            {
+                var words = (uint*)destination;
+                for (var i = 0; i < width * height; i++) words[i] |= 0xFF000000;
+            }
+        }
+        var bitmap = new WriteableBitmap(width, height);
+        pixels.CopyTo(bitmap.PixelBuffer);
+        bitmap.Invalidate();
+        var id = nextId++;
+        sources[id] = bitmap;
+        return id;
+    }
+
     public static ImageSource? Decoded(int id)
     {
         if (sources.TryGetValue(id, out var source)) return source;

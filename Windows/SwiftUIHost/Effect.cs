@@ -31,6 +31,8 @@ sealed class EffectNode : NodeView
     const int FlagPressed = 4;
     const int FlagSecondary = 8;
     const int FlagHover = 16;
+    /// Raw input (`_onPlatformInput`): every button, motion, the wheel, and keys once pressed (HostView.RawFocus).
+    const int FlagRaw = 32;
 
     static readonly SolidColorBrush transparent = new(Microsoft.UI.Colors.Transparent);
 
@@ -54,6 +56,7 @@ sealed class EffectNode : NodeView
         Element.PointerCaptureLost += OnCanceled;
         Element.PointerEntered += OnEntered;
         Element.PointerExited += OnExited;
+        Element.PointerWheelChanged += OnWheel;
         Element.RightTapped += OnRightTapped;
         Element.Holding += OnHolding;
     }
@@ -297,6 +300,7 @@ sealed class EffectNode : NodeView
 
     void OnPressed(object sender, PointerRoutedEventArgs e)
     {
+        if (Raw) { RawPointer(e); return; }
         var flags = Flags;
         if (flags == 0) return;
         var point = e.GetCurrentPoint(Element);
@@ -314,6 +318,7 @@ sealed class EffectNode : NodeView
 
     void OnMoved(object sender, PointerRoutedEventArgs e)
     {
+        if (Raw) { RawPointer(e); return; }
         var p = Local(e);
         if ((touchFlags & FlagHover) != 0) Host.Event(Id, Events.HoverLocation, p.X, p.Y, 1);
         if (!pressed) return;
@@ -330,6 +335,7 @@ sealed class EffectNode : NodeView
 
     void OnReleased(object sender, PointerRoutedEventArgs e)
     {
+        if (Raw) { RawPointer(e); return; }
         if (!pressed) return;
         e.Handled = true;
         pressed = false;
@@ -343,6 +349,7 @@ sealed class EffectNode : NodeView
 
     void OnCanceled(object sender, PointerRoutedEventArgs e)
     {
+        if (Raw) { RawReleaseAll(Local(e)); return; }
         if (!pressed) return;
         pressed = false;
         var flags = Flags;
@@ -379,5 +386,73 @@ sealed class EffectNode : NodeView
         e.Handled = true;
         secondaryFired = true;
         Host.Event(Id, Events.SecondaryClick);
+    }
+
+    // MARK: Raw input
+
+    bool Raw => (touchFlags & FlagRaw) != 0;
+    /// Buttons held (1 left, 2 middle, 3 right, 8 back, 9 forward: GDK's numbers, as GtkInputEvent has them).
+    readonly HashSet<int> rawButtons = new();
+    (ulong time, int button, Point point, int clicks)? lastRawPress;
+
+    /// Sends what changed: buttons pressed or released (several can change in one event, chords arrive as moves),
+    /// then the motion.
+    void RawPointer(PointerRoutedEventArgs e)
+    {
+        e.Handled = true;
+        var point = e.GetCurrentPoint(Element);
+        var props = point.Properties;
+        var p = point.Position;
+        var held = new HashSet<int>();
+        if (props.IsLeftButtonPressed) held.Add(1);
+        if (props.IsMiddleButtonPressed) held.Add(2);
+        if (props.IsRightButtonPressed) held.Add(3);
+        if (props.IsXButton1Pressed) held.Add(8);
+        if (props.IsXButton2Pressed) held.Add(9);
+        foreach (var button in rawButtons.Except(held).ToList())
+        {
+            rawButtons.Remove(button);
+            Host.RawInput(Id, $"up {button}", p.X, p.Y);
+        }
+        foreach (var button in held.Except(rawButtons).ToList())
+        {
+            if (rawButtons.Count == 0) Element.CapturePointer(e.Pointer);
+            rawButtons.Add(button);
+            Host.TakeRawFocus(this);
+            Host.RawInput(Id, $"down {button} {Clicks(button, p, point.Timestamp)}", p.X, p.Y);
+        }
+        if (rawButtons.Count == 0) Element.ReleasePointerCapture(e.Pointer);
+        Host.RawInput(Id, "move", p.X, p.Y);
+    }
+
+    /// Quick presses of one button in one place count up (the system's double-click time and distance).
+    int Clicks(int button, Point p, ulong time)
+    {
+        var clicks = 1;
+        if (lastRawPress is { } last && last.button == button && time - last.time <= Native.DoubleClickMicroseconds
+            && Math.Abs(last.point.X - p.X) <= 4 && Math.Abs(last.point.Y - p.Y) <= 4)
+            clicks = last.clicks + 1;
+        lastRawPress = (time, button, p, clicks);
+        return clicks;
+    }
+
+    void RawReleaseAll(Point p)
+    {
+        foreach (var button in rawButtons) Host.RawInput(Id, $"up {button}", p.X, p.Y);
+        rawButtons.Clear();
+    }
+
+    /// Wheel notches (±1 per 120) or a precision touchpad's small steps; positive dy scrolls down, as on GTK.
+    void OnWheel(object sender, PointerRoutedEventArgs e)
+    {
+        if (!Raw) return;
+        e.Handled = true;
+        var point = e.GetCurrentPoint(Element);
+        var delta = point.Properties.MouseWheelDelta;
+        var precise = delta % 120 != 0;
+        var amount = delta / 120.0;
+        // Windows' positive vertical delta scrolls up, its positive horizontal one right.
+        var (dx, dy) = point.Properties.IsHorizontalMouseWheel ? (amount, 0.0) : (0.0, -amount);
+        Host.RawInput(Id, FormattableString.Invariant($"wheel {dx} {dy} {(precise ? 1 : 0)}"), point.Position.X, point.Position.Y);
     }
 }
