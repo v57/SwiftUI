@@ -55,8 +55,9 @@ case "$1" in
       --exclude '*/bin' --exclude '*/obj' --exclude .DS_Store -cf "$TAR" .
     copy "$TAR" "$USER_NAME@$(vm_ip):C:/dev/$name-src.tar"
     rm -f "$TAR"
-    # Files removed or renamed here go there too: everything but the build folder is replaced.
-    remote "New-Item -ItemType Directory -Force 'C:\\dev\\$name' | Out-Null; Get-ChildItem -Force 'C:\\dev\\$name' -Exclude .build | Remove-Item -Recurse -Force; tar -xf C:/dev/$name-src.tar -C 'C:\\dev\\$name'; Remove-Item C:/dev/$name-src.tar"
+    # Files removed or renamed here go there too: everything but the build folders (the package's, and its App\
+    # package's: a v57 app's own package) is replaced.
+    remote "New-Item -ItemType Directory -Force 'C:\\dev\\$name' | Out-Null; Get-ChildItem -Force 'C:\\dev\\$name' -Exclude .build,App | Remove-Item -Recurse -Force; if (Test-Path 'C:\\dev\\$name\\App') { Get-ChildItem -Force 'C:\\dev\\$name\\App' -Exclude .build | Remove-Item -Recurse -Force }; tar -xf C:/dev/$name-src.tar -C 'C:\\dev\\$name'; Remove-Item C:/dev/$name-src.tar"
     ;;
   build) shift; "$0" sync; remote "& '$REMOTE\\Windows\\scripts\\build-app.ps1' $*" ;;
   run)
