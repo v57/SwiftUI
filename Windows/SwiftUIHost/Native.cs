@@ -46,6 +46,7 @@ static unsafe class Native
     static delegate* unmanaged<void> timerFired;
     static delegate* unmanaged<long, int, byte*, int, int, byte> key;
     static delegate* unmanaged<long, int, byte*, double, double, int, byte> rawInput;
+    static delegate* unmanaged<long, byte*, int, int> inspect;
 
     static DispatcherQueue? queue;
     /// The thread timer that services Foundation's run loop (0: none armed).
@@ -70,6 +71,9 @@ static unsafe class Native
         back = (delegate* unmanaged<long, byte>)NativeLibrary.GetExport(library, "swiftui_back");
         timerFired = (delegate* unmanaged<void>)NativeLibrary.GetExport(library, "swiftui_timer_fired");
         key = (delegate* unmanaged<long, int, byte*, int, int, byte>)NativeLibrary.GetExport(library, "swiftui_key");
+        // Apps built against an older SwiftUI have no element channel or raw input.
+        if (NativeLibrary.TryGetExport(library, "swiftui_inspect", out var inspectExport))
+            inspect = (delegate* unmanaged<long, byte*, int, int>)inspectExport;
         // Apps built against an older SwiftUI have no raw input.
         if (NativeLibrary.TryGetExport(library, "swiftui_raw_input", out var raw))
             rawInput = (delegate* unmanaged<long, int, byte*, double, double, int, byte>)raw;
@@ -121,6 +125,22 @@ static unsafe class Native
     public static void SetEnvironment(long host, int key, int value) => setEnvironment(host, key, value);
     public static void Frame(long host, double seconds) => frame(host, seconds);
     public static bool Back(long host) => back(host) != 0;
+
+    /// <summary>The host's elements as Swift lists them (JSON, by node id), or null when the app has no element
+    /// channel.</summary>
+    public static string? Inspect(long host)
+    {
+        if (inspect == null || host == 0) return null;
+        var buffer = new byte[64 * 1024];
+        while (true)
+        {
+            int needed;
+            fixed (byte* pointer = buffer) needed = inspect(host, pointer, buffer.Length);
+            if (needed <= 0) return null;
+            if (needed <= buffer.Length) return Encoding.UTF8.GetString(buffer, 0, needed - 1);
+            buffer = new byte[needed];
+        }
+    }
 
     /// A key event (code: Unicode scalar or WinUIKeys code; modifiers: 1 Shift, 2 Ctrl, 4 Alt,
     /// 8 Windows; phase: 0 down, 1 repeat, 2 up). Returns whether SwiftUI handled it.

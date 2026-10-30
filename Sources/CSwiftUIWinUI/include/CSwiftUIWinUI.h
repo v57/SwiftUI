@@ -78,4 +78,5 @@ __declspec(dllexport) void swiftui_drain_main_queue(void);
 // void swiftui_timer_fired(void);
 // bool swiftui_key(int64_t host, int32_t code, const char *characters, int32_t modifiers, int32_t phase);
 // bool swiftui_raw_input(int64_t host, int32_t node, const char *event, double x, double y, int32_t modifiers);
+// int32_t swiftui_inspect(int64_t host, char *buffer, int32_t capacity);  (the element channel's JSON)
 #endif

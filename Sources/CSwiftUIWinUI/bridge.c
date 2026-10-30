@@ -15,6 +15,7 @@
 #pragma comment(linker, "/EXPORT:swiftui_timer_fired")
 #pragma comment(linker, "/EXPORT:swiftui_key")
 #pragma comment(linker, "/EXPORT:swiftui_raw_input")
+#pragma comment(linker, "/EXPORT:swiftui_inspect")
 
 // The `@main App` of the app library; libraries without one link the stub instead.
 int main(int argc, char **argv);

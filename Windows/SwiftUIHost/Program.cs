@@ -94,6 +94,7 @@ sealed class App : Application, IXamlMetadataProvider
             return;
         }
         if (Option("--script") is { } script) _ = Script.Run(File.ReadAllLines(script));
+        Inspector.StartIfRequested(DispatcherQueue.GetForCurrentThread());
     }
 
     public IXamlType GetXamlType(Type type) => provider.GetXamlType(type);

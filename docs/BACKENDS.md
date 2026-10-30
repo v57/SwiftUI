@@ -54,6 +54,23 @@ Set `AppRuntime.runner` to a function that opens one platform window per `Window
 (each with a host) and runs the main loop, then add the platform branch to
 `Sources/SwiftUI/SwiftUI.swift` so `@main struct MyApp: App` works unchanged.
 
+## 4. The element channel (for test tools)
+
+Run an app with `SWIFTUI_INSPECT=1` and it answers on a local endpoint named after its process:
+`$XDG_RUNTIME_DIR/swiftui-inspect-<pid>` (a Unix socket, mode 0600) on Linux, the named pipe
+`\\.\pipe\swiftui-inspect-<pid>` (this user only) on Windows. Send `elements` and a newline; the answer is one
+line of JSON, `{"windows": [{"title", "id", "width", "height", "scale", "elements": [{"role", "label", "value",
+"x", "y", "width", "height", "depth", "enabled"}]}]}`. Frames are the window's pixels from the top-left of what
+shows of it (no GTK shadow, no invisible resize borders), as a capture of the window shows them; `id` is the X
+window id or the HWND. Roles and labels come from `_Inspection.decide` (`_SwiftUICore/Render/Inspection.swift`),
+as a screen reader names things: the accessibility label first, else a control's own text, a field's placeholder
+or a symbol's name; a field without a placeholder goes by the text on its left (a form row); buttons and toggles
+speak for their labels; secure fields give no value; the title bar's back and toolbar buttons are listed too. Remote's Linux and
+Windows hosts read it for `elements`, `click "Save"` and `waitfor`, and Remote's `launch` sets the variable. Off
+by default: nothing is opened unless the person running the app asks for it. GTK serves it in `GtkInspect`; on
+WinUI Swift lists the elements by node id (`swiftui_inspect`) and the C# host places them (`HostView.WriteElements`,
+`Inspector`), since XAML knows where each node ended up (scrolling, transforms, the title bar).
+
 ## Platform notes
 
 * **Combine**: on Linux/Windows/Android the package's `Combine` stand-in (vendored OpenCombine,

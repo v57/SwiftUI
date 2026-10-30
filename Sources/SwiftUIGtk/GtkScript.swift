@@ -367,7 +367,7 @@ enum GtkScript {
 
     /// The label of a field in a form row (a text on its left, on the same line): grouped forms show the title
     /// there instead of a placeholder.
-    private static func formLabel(of field: GtkNode, among nodes: [GtkNode]) -> String? {
+    static func formLabel(of field: GtkNode, among nodes: [GtkNode]) -> String? {
         guard case .textField(let resolved) = field.content, resolved.placeholder.isEmpty else { return nil }
         let rect = field.windowRect().rect
         var best: (String, CGFloat)?
@@ -462,7 +462,7 @@ enum GtkScript {
         return found
     }
 
-    private static func visitWidgets(_ widget: UnsafeMutablePointer<GtkWidget>, _ body: (UnsafeMutablePointer<GtkWidget>) -> Void) {
+    static func visitWidgets(_ widget: UnsafeMutablePointer<GtkWidget>, _ body: (UnsafeMutablePointer<GtkWidget>) -> Void) {
         body(widget)
         guard g_type_check_instance_is_a(UnsafeMutablePointer(OpaquePointer(widget)), gtk_container_get_type()) != 0 else { return }
         let list = gtk_container_get_children(sui_container(raw(widget)))

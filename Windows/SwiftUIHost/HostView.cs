@@ -765,6 +765,109 @@ sealed class HostView
         return lines.ToString();
     }
 
+    /// <summary>The element channel (Inspector): this window's elements, from Swift's list of them by node id, each
+    /// placed by XAML (scrolling and transforms included) in pixels from the top-left of what shows of the window.</summary>
+    public void WriteElements(System.Text.Json.Utf8JsonWriter json)
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(Window);
+        var s = RootElement.XamlRoot?.RasterizationScale ?? 1;
+        // The content starts at the client area's origin; the visible frame leaves out the invisible borders.
+        if (DwmGetWindowAttribute(hwnd, 9, out var frame, 16) != 0) GetWindowRect(hwnd, out frame);
+        var client = new Point32();
+        ClientToScreen(hwnd, ref client);
+        double ox = client.X - frame.Left, oy = client.Y - frame.Top;
+        var bounds = new Windows.Foundation.Rect(0, 0, RootElement.ActualWidth, RootElement.ActualHeight);
+
+        json.WriteStartObject();
+        json.WriteString("title", Window.Title);
+        json.WriteNumber("id", (ulong)hwnd);
+        json.WriteNumber("width", frame.Right - frame.Left);
+        json.WriteNumber("height", frame.Bottom - frame.Top);
+        json.WriteNumber("scale", s);
+        json.WriteStartArray("elements");
+        var elements = new List<(string Role, string Label, string Value, Windows.Foundation.Rect Rect, int Depth, bool Enabled)>();
+        void Add(string role, string label, string value, Windows.Foundation.Rect r, int depth, bool enabled) => elements.Add((role, label, value, r, depth, enabled));
+        void Write(string role, string label, string value, Windows.Foundation.Rect r, int depth, bool enabled)
+        {
+            json.WriteStartObject();
+            json.WriteString("role", role);
+            json.WriteString("label", label);
+            json.WriteString("value", value);
+            json.WriteNumber("x", Math.Round(ox + r.X * s, 1));
+            json.WriteNumber("y", Math.Round(oy + r.Y * s, 1));
+            json.WriteNumber("width", Math.Round(r.Width * s, 1));
+            json.WriteNumber("height", Math.Round(r.Height * s, 1));
+            json.WriteNumber("depth", depth);
+            json.WriteBoolean("enabled", enabled);
+            json.WriteEndObject();
+        }
+        Windows.Foundation.Rect? Place(FrameworkElement element, double width, double height)
+        {
+            if (element.Visibility != Visibility.Visible || element.XamlRoot == null) return null;
+            var r = element.TransformToVisual(RootElement).TransformBounds(new Windows.Foundation.Rect(0, 0, width, height));
+            r.Intersect(bounds);
+            return r.IsEmpty || r.Width < 1 || r.Height < 1 ? null : r;
+        }
+        // The title bar's own controls: the menu bar's menus and the toolbar's buttons.
+        if (menuBar.Visibility == Visibility.Visible)
+            foreach (var item in menuBar.Items)
+                if (Place(item, item.ActualWidth, item.ActualHeight) is { } r) Add("menu", item.Title, "", r, 0, item.IsEnabled);
+        if (commandBar.Visibility == Visibility.Visible)
+        {
+            if (commandBar.Content is Button back && Place(back, back.ActualWidth, back.ActualHeight) is { } b) Add("button", "Back", "", b, 0, back.IsEnabled);
+            foreach (var command in commandBar.PrimaryCommands.OfType<AppBarButton>())
+                if (Place(command, command.ActualWidth, command.ActualHeight) is { } r) Add("button", command.Label, "", r, 0, command.IsEnabled);
+        }
+
+        var list = Native.Inspect(Handle);
+        if (list != null)
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(list);
+            foreach (var item in document.RootElement.EnumerateArray())
+            {
+                if (!nodes.TryGetValue(item.GetProperty("id").GetInt32(), out var node) || !Shown(node)) continue;
+                if (Place(node.Element, node.FrameWidth, node.FrameHeight) is not { } r) continue;
+                // Scrolled out of an enclosing scroll view's viewport.
+                for (var parent = node.ParentNode; parent != null; parent = parent.ParentNode)
+                    if (parent is ScrollNode && Place(parent.Element, parent.FrameWidth, parent.FrameHeight) is { } viewport) r.Intersect(viewport);
+                if (r.IsEmpty || r.Width < 1 || r.Height < 1) continue;
+                Add(item.GetProperty("role").GetString() ?? "", item.GetProperty("label").GetString() ?? "", item.GetProperty("value").GetString() ?? "",
+                    r, item.GetProperty("depth").GetInt32(), item.GetProperty("enabled").GetBoolean());
+            }
+        }
+        foreach (var e in elements)
+        {
+            var label = e.Label;
+            // A field without a placeholder goes by its form label: the nearest text on its left in the same row.
+            if (label.Length == 0 && e.Role is "textfield" or "securefield" or "searchfield")
+            {
+                var best = double.MaxValue;
+                foreach (var t in elements)
+                {
+                    if (t.Role != "text" || t.Rect.Right > e.Rect.Left + 1) continue;
+                    if (Math.Abs((t.Rect.Top + t.Rect.Bottom) / 2 - (e.Rect.Top + e.Rect.Bottom) / 2) >= Math.Max(e.Rect.Height, 12) / 2 + 4) continue;
+                    if (e.Rect.Left - t.Rect.Right < best) (best, label) = (e.Rect.Left - t.Rect.Right, t.Label);
+                }
+            }
+            Write(e.Role, label, e.Value, e.Rect, e.Depth, e.Enabled);
+        }
+        json.WriteEndArray();
+        json.WriteEndObject();
+    }
+
+    static bool Shown(NodeView node)
+    {
+        for (NodeView? n = node; n != null; n = n.ParentNode)
+            if (n.Element.Visibility != Visibility.Visible || n.Element.Opacity <= 0) return false;
+        return true;
+    }
+
+    [StructLayout(LayoutKind.Sequential)] struct Point32 { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)] struct Rect32 { public int Left, Top, Right, Bottom; }
+    [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out Rect32 value, int size);
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out Rect32 rect);
+    [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr hwnd, ref Point32 point);
+
     /// <summary>The innermost button or tap target at a point (dump coordinates), for script mode's `tapat`.</summary>
     public NodeView? TapTarget(double px, double py)
     {

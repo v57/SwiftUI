@@ -291,3 +291,75 @@ public func swiftui_timer_fired() {
     MainActor.assumeIsolated { WinUIMainLoop.fireTimers() }
 }
 #endif
+
+#if os(Windows)
+/// The element channel (`_Inspection`): the host's elements as JSON, `[{"id", "role", "label", "value", "depth",
+/// "enabled"}]` by host node id, for the C# host to place (it knows where each node is in the window) and serve.
+/// Writes into `buffer` when it fits and returns the length needed, with the terminating zero.
+@_cdecl("swiftui_inspect")
+public func swiftui_inspect(_ handle: Int64, _ buffer: UnsafeMutablePointer<CChar>?, _ capacity: Int32) -> Int32 {
+    nonisolated(unsafe) let buffer = buffer
+    return MainActor.assumeIsolated {
+        guard let host = host(handle) else { return 0 }
+        let data = WinUIInspect.elements(host.graph.renderer.root)
+        if let buffer, data.count < Int(capacity) {
+            data.withUnsafeBytes { raw in
+                raw.withMemoryRebound(to: CChar.self) { buffer.update(from: $0.baseAddress!, count: data.count) }
+            }
+            buffer[data.count] = 0
+        }
+        return Int32(data.count + 1)
+    }
+}
+
+@MainActor
+enum WinUIInspect {
+    struct NodeElement: Encodable {
+        var id: Int32
+        var role: String
+        var label: String
+        var value: String
+        var depth: Int
+        var enabled: Bool
+    }
+
+    static func elements(_ root: RenderNode) -> Data {
+        var out: [NodeElement] = []
+        func visit(_ node: RenderNode, depth: Int) {
+            let decision = _Inspection.decide(
+                node.content, accessibility: node.accessibility, hasPrimaryAction: node.actions.primary != nil,
+                descendantText: { text(under: node) })
+            switch decision {
+            case .hidden: return
+            case .element(let role, let label, let value, let leaf):
+                // Only nodes with a host view have a place in the window; the others pass their children on.
+                if let view = node.handle as? WinUIView {
+                    out.append(NodeElement(id: view.id, role: role, label: label, value: value, depth: depth, enabled: _Inspection.takesInput(node.content)))
+                    if !leaf { for child in node.children { visit(child, depth: depth + 1) } }
+                    return
+                }
+                fallthrough
+            case .pass:
+                for child in node.children { visit(child, depth: depth) }
+            }
+        }
+        visit(root, depth: 0)
+        return (try? JSONEncoder().encode(out)) ?? Data("[]".utf8)
+    }
+
+    /// The texts under a node, in order: a button's or toggle's label.
+    private static func text(under node: RenderNode) -> String {
+        var parts: [String] = []
+        func visit(_ node: RenderNode) {
+            if case .text(let text) = node.content { parts.append(text.string) }
+            if let label = node.accessibility?.label, !label.isEmpty {
+                parts.append(label)
+                return
+            }
+            for child in node.children where parts.count < 8 { visit(child) }
+        }
+        for child in node.children { visit(child) }
+        return parts.joined(separator: " ")
+    }
+}
+#endif

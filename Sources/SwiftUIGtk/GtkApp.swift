@@ -62,6 +62,7 @@ public enum GtkAppRunner {
         GtkMainLoop.serviceTimers()
         openLaunchFiles()
         GtkScript.startIfRequested()
+        GtkInspect.startIfRequested()
         gtk_main()
         UserDefaults.standard.synchronize()
         exit(0)
