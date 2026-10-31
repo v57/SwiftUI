@@ -35,6 +35,10 @@
 extension App {
     @MainActor
     public static func main() {
+        #if os(Windows) || os(Linux)
+        // Before the app can format anything: the app's language, and ICU reads its data folder once (a language pack).
+        AppLanguage.launch()
+        #endif
         #if os(Android)
         // The activity owns the main loop: register the scenes and return to the host.
         AndroidAppRunner.register(AppRuntime.prepare(Self.self))

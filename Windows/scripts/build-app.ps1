@@ -164,6 +164,27 @@ if ($project) {
     if ($settings -match 'PRODUCT_BUNDLE_IDENTIFIER = "?([A-Za-z0-9.\-]+)"?;') { $identifier = $Matches[1] }
     if ($settings -match 'MARKETING_VERSION = "?([0-9.]+)"?;') { $version = $Matches[1] }
 }
+if ($release) {
+    # The app's languages: English and the Xcode project's.
+    $languages = @("en")
+    if ($project -and $settings -match 'knownRegions = \(([^)]*)\)') {
+        $languages += $Matches[1] -split '[,\s"]+' | Where-Object { $_ -and $_ -ne "Base" } | ForEach-Object { ($_ -split '-')[0].ToLowerInvariant() }
+    }
+    # ICU with only these languages' data: 36 → 8 MB for English alone. Other languages' formats come from a language
+    # pack the app offers to download (ICULanguagePack in SwiftUI): Info.plist names the built-in languages and the
+    # ICU version the packs must match.
+    $icu = Get-ChildItem $out -Filter _FoundationICU.dll
+    if ($icu -and -not $FullICU) {
+        try {
+            $icuBuild = & "$PSScriptRoot\build-icu.ps1" -Languages $languages | Select-Object -Last 1
+            Copy-Item $icuBuild.Path $icu.FullName -Force
+            $icuKeys = "`n    <key>SwiftUIICUVersion</key><string>$($icuBuild.Version)</string>" +
+                "`n    <key>SwiftUIICULanguages</key><string>$($icuBuild.Languages -join ' ')</string>"
+        } catch {
+            Write-Warning "Keeping the toolchain's ICU (36 MB): $_"
+        }
+    }
+}
 $escape = { param($text) [Security.SecurityElement]::Escape($text) }
 @"
 <?xml version="1.0" encoding="UTF-8"?>
@@ -172,26 +193,12 @@ $escape = { param($text) [Security.SecurityElement]::Escape($text) }
 <dict>
     <key>CFBundleIdentifier</key><string>$(& $escape $identifier)</string>
     <key>CFBundleName</key><string>$(& $escape $name)</string>
-    <key>CFBundleShortVersionString</key><string>$(& $escape $version)</string>
+    <key>CFBundleShortVersionString</key><string>$(& $escape $version)</string>$icuKeys
 </dict>
 </plist>
 "@ | Set-Content -Path "$out\Info.plist" -Encoding UTF8
 
 if ($release) {
-    # The app's languages: English and the Xcode project's.
-    $languages = @("en")
-    if ($project -and $settings -match 'knownRegions = \(([^)]*)\)') {
-        $languages += $Matches[1] -split '[,\s"]+' | Where-Object { $_ -and $_ -ne "Base" } | ForEach-Object { ($_ -split '-')[0].ToLowerInvariant() }
-    }
-    # ICU with only these languages' data: 36 → 8 MB for English alone. Locales of other languages format as English.
-    $icu = Get-ChildItem $out -Filter _FoundationICU.dll
-    if ($icu -and -not $FullICU) {
-        try {
-            Copy-Item (& "$PSScriptRoot\build-icu.ps1" -Languages $languages | Select-Object -Last 1) $icu.FullName -Force
-        } catch {
-            Write-Warning "Keeping the toolchain's ICU (36 MB): $_"
-        }
-    }
     # WinUI's translations (a folder of .mui files per culture).
     Get-ChildItem $out -Directory | Where-Object {
         $files = @(Get-ChildItem $_.FullName -Recurse -File)

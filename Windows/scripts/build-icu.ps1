@@ -6,9 +6,14 @@
 # transliteration (applyingTransform), Unicode character names and stringprep. Locales of other languages format
 # as English.
 # Built once per toolchain and language set in <SwiftUI>\.build\icu\<toolchain version> (the first build clones the
-# sources and takes a few minutes); returns the DLL's path.
+# sources and takes a few minutes); returns the DLL's path, the ICU version and the languages it holds.
+# -Packs <folder> writes the language packs instead: icudt<ICU version>l-<language>.dat for every language but English,
+# each that language's locale data (and word-break dictionary), which an app with this ICU downloads on request and
+# ICU merges with its built-in data (ICULanguagePack in SwiftUI). They go to the SwiftUI repository's GitHub release
+# icu-<ICU version>.
 # Usage: Windows/scripts/build-icu.ps1 [-Languages en,de,...]   (language codes; regions are ignored: de-AT → de)
-param([string[]]$Languages = @("en"))
+#        Windows/scripts/build-icu.ps1 -Packs <folder>
+param([string[]]$Languages = @("en"), [string]$Packs)
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path "$PSScriptRoot\..\..").Path
 
@@ -75,14 +80,13 @@ public static class IcuData
 
     static readonly Regex Locale = new Regex("^[a-z]{2,3}(_[A-Za-z0-9]+)*$");
 
-    // Keeps the locale data of `languages` (and everything that isn't locale data) minus the drops above.
-    public static byte[] Filter(byte[] d, string[] languages, string[] converters, string[] dictionaries)
+    static void Read(byte[] d, out int hs, out string[] names, out int[] offsets)
     {
-        int hs = BitConverter.ToUInt16(d, 0);
+        hs = BitConverter.ToUInt16(d, 0);
         if (d[2] != 0xDA || d[3] != 0x27) throw new InvalidDataException("not ICU data");
         int count = (int)BitConverter.ToUInt32(d, hs);
-        var names = new string[count];
-        var offsets = new int[count];
+        names = new string[count];
+        offsets = new int[count];
         for (int i = 0; i < count; i++)
         {
             int name = hs + (int)BitConverter.ToUInt32(d, hs + 4 + 8 * i);
@@ -90,27 +94,92 @@ public static class IcuData
             names[i] = Encoding.ASCII.GetString(d, name, end - name);
             offsets[i] = hs + (int)BitConverter.ToUInt32(d, hs + 8 + 8 * i);
         }
+    }
+
+    // An item's subfolder ("" at the top), name without extension, and extension.
+    static void Split(string name, out string sub, out string stem, out string ext)
+    {
+        string[] parts = name.Split('/');
+        string file = parts[parts.Length - 1];
+        int dot = file.LastIndexOf('.');
+        stem = dot < 0 ? file : file.Substring(0, dot);
+        ext = dot < 0 ? file : file.Substring(dot + 1);
+        sub = parts.Length > 2 ? parts[1] : "";
+    }
+
+    static bool IsLocale(string stem, string ext)
+    {
+        return ext == "res" && Locale.IsMatch(stem) && stem != "root" && stem != "res_index";
+    }
+
+    // The ICU major version the package belongs to (its items are named icudt<version>l/...).
+    public static string Version(byte[] d)
+    {
+        int hs; string[] names; int[] offsets;
+        Read(d, out hs, out names, out offsets);
+        return Regex.Match(names[0], "^icudt([0-9]+)").Groups[1].Value;
+    }
+
+    // The languages the package has locale data for.
+    public static string[] Languages(byte[] d)
+    {
+        int hs; string[] names; int[] offsets;
+        Read(d, out hs, out names, out offsets);
+        var languages = new SortedSet<string>();
+        foreach (var name in names)
+        {
+            string sub, stem, ext;
+            Split(name, out sub, out stem, out ext);
+            if (sub == "" && IsLocale(stem, ext)) languages.Add(stem.Split('_')[0]);
+        }
+        return new List<string>(languages).ToArray();
+    }
+
+    // Keeps the locale data of `languages` (and everything that isn't locale data) minus the drops above.
+    public static byte[] Filter(byte[] d, string[] languages, string[] converters, string[] dictionaries)
+    {
+        int hs; string[] names; int[] offsets;
+        Read(d, out hs, out names, out offsets);
         var keepLanguages = new HashSet<string>(languages);
         var keepConverters = new HashSet<string>(converters);
         var keepDictionaries = new HashSet<string>(dictionaries);
         var kept = new List<int>();
-        for (int i = 0; i < count; i++)
+        for (int i = 0; i < names.Length; i++)
         {
-            string[] parts = names[i].Split('/');
-            string file = parts[parts.Length - 1];
-            int dot = file.LastIndexOf('.');
-            string stem = dot < 0 ? file : file.Substring(0, dot), ext = dot < 0 ? file : file.Substring(dot + 1);
-            string sub = parts.Length > 2 ? parts[1] : "";
+            string sub, stem, ext;
+            Split(names[i], out sub, out stem, out ext);
             bool keep = true;
-            if (ext == "res" && Locale.IsMatch(stem) && stem != "root" && stem != "res_index")
+            if (IsLocale(stem, ext))
                 keep = keepLanguages.Contains(stem.Split('_')[0]) || keepLanguages.Contains(stem);
             if (ext == "cnv" && !keepConverters.Contains(stem)) keep = false;
             if (sub == "brkitr" && ext == "dict" && !keepDictionaries.Contains(stem)) keep = false;
             if (sub == "translit" || stem == "unames" || ext == "spp" || ext == "cfu") keep = false;
             if (keep) kept.Add(i);
         }
+        return Write(d, hs, names, offsets, kept);
+    }
 
-        // The same layout: names after the table, each item 16-byte aligned.
+    // A language pack: only the locale data of `languages` and the given word-break dictionaries.
+    public static byte[] Pack(byte[] d, string[] languages, string[] dictionaries)
+    {
+        int hs; string[] names; int[] offsets;
+        Read(d, out hs, out names, out offsets);
+        var keepLanguages = new HashSet<string>(languages);
+        var keepDictionaries = new HashSet<string>(dictionaries);
+        var kept = new List<int>();
+        for (int i = 0; i < names.Length; i++)
+        {
+            string sub, stem, ext;
+            Split(names[i], out sub, out stem, out ext);
+            if (IsLocale(stem, ext) && (keepLanguages.Contains(stem.Split('_')[0]) || keepLanguages.Contains(stem))) kept.Add(i);
+            else if (sub == "brkitr" && ext == "dict" && keepDictionaries.Contains(stem)) kept.Add(i);
+        }
+        return Write(d, hs, names, offsets, kept);
+    }
+
+    // The same layout: names after the table, each item 16-byte aligned.
+    static byte[] Write(byte[] d, int hs, string[] names, int[] offsets, List<int> kept)
+    {
         var nameBytes = new MemoryStream();
         var nameOffsets = new int[kept.Count];
         int tableSize = 4 + 8 * kept.Count;
@@ -131,7 +200,7 @@ public static class IcuData
         for (int n = 0; n < kept.Count; n++)
         {
             int i = kept[n];
-            int end = i + 1 < count ? offsets[i + 1] : d.Length;
+            int end = i + 1 < names.Length ? offsets[i + 1] : d.Length;
             output.Write(BitConverter.GetBytes((uint)nameOffsets[n]), 0, 4);
             output.Write(BitConverter.GetBytes((uint)offset), 0, 4);
             blobs.Write(d, offsets[i], end - offsets[i]);
@@ -166,10 +235,15 @@ $version = Split-Path (Split-Path (Split-Path $runtime)) -Leaf
 if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "can't tell the toolchain's version from $runtime" }
 $cache = "$root\.build\icu\$version"
 $dll = "$cache\_FoundationICU.$($codes -join '-').dll"
-if (Test-Path $dll) { return $dll }
-
 $src = "$cache\src"
 $full = "$cache\icudt.dat"
+# The ICU major version (packs are named for it), read from the data once.
+if ((Test-Path $full) -and -not (Test-Path "$cache\icu-version.txt")) {
+    Set-Content "$cache\icu-version.txt" ([IcuData]::Version([IO.File]::ReadAllBytes($full))) -NoNewline
+}
+$result = { [pscustomobject]@{ Path = $dll; Version = (Get-Content "$cache\icu-version.txt"); Languages = $codes } }
+if (-not $Packs -and (Test-Path $dll)) { return & $result }
+
 if (-not (Test-Path $full)) {
     if (Test-Path $src) { Remove-Item -Recurse -Force $src }
     Write-Host "Cloning swift-foundation-icu (swift-$version-RELEASE)"
@@ -180,7 +254,24 @@ if (-not (Test-Path $full)) {
     $dynamic = $manifest -replace '(\.library\(\s*name: "_FoundationICU",)', '$1 type: .dynamic,'
     if ($dynamic -eq $manifest) { throw "swift-foundation-icu's Package.swift has no _FoundationICU library" }
     Set-Content "$src\Package.swift" $dynamic -NoNewline
-    [IO.File]::WriteAllBytes($full, [IcuData]::ReadHeaders("$src\icuSources\common"))
+    $bytes = [IcuData]::ReadHeaders("$src\icuSources\common")
+    Set-Content "$cache\icu-version.txt" ([IcuData]::Version($bytes)) -NoNewline
+    [IO.File]::WriteAllBytes($full, $bytes)
+}
+if ($Packs) {
+    $all = [IO.File]::ReadAllBytes($full)
+    $icuVersion = Get-Content "$cache\icu-version.txt"
+    New-Item -ItemType Directory -Force $Packs | Out-Null
+    $total = 0
+    foreach ($language in [IcuData]::Languages($all) | Where-Object { $_ -ne "en" }) {
+        $pack = [IcuData]::Pack($all, @(@($language) + @($aliases[$language] | Where-Object { $_ })),
+            @($dictionaries.Keys | Where-Object { $dictionaries[$_] -contains $language }))
+        [IO.File]::WriteAllBytes("$Packs\icudt$($icuVersion)l-$language.dat", $pack)
+        $total += $pack.Length
+    }
+    $written = @(Get-ChildItem $Packs -Filter "icudt$($icuVersion)l-*.dat")
+    Write-Host ("{0} language packs for ICU {1} in {2}: {3:N1} MB together" -f $written.Count, $icuVersion, $Packs, ($total / 1MB))
+    return
 }
 $data = [IcuData]::Filter([IO.File]::ReadAllBytes($full), $keep, $converters, $keepDictionaries)
 [IcuData]::WriteHeaders($data, "$src\icuSources\common")
@@ -200,4 +291,4 @@ llvm-strip --strip-all "$bin\_FoundationICU.dll" -o $dll
 if ($LASTEXITCODE -ne 0) { throw "llvm-strip failed on _FoundationICU.dll" }
 $count = @(llvm-readobj --coff-exports $dll | Select-String '^\s+Name: ').Count
 if ($count -ne $exports.Count) { Remove-Item $dll; throw "the built _FoundationICU.dll exports $count symbols, the toolchain's $($exports.Count)" }
-return $dll
+return & $result
