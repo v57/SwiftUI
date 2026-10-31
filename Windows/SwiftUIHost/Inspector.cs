@@ -79,7 +79,8 @@ static class Inspector
             }
             catch (Exception error)
             {
-                result = JsonSerializer.Serialize(error.Message) is var message ? $"{{\"error\":{message}}}" : null;
+                // JsonEncodedText, not JsonSerializer: the Native AOT host has no reflection-based serialization.
+                result = $"{{\"error\":\"{JsonEncodedText.Encode(error.Message)}\"}}";
             }
             finally
             {

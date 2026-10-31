@@ -33,7 +33,9 @@ static class Program
     }
 }
 
-sealed class App : Application, IXamlMetadataProvider
+// partial: CsWinRT generates its WinRT interop for it (CsWinRT1028); a trimmed or Native AOT host without it
+// dies in Microsoft.UI.Xaml.dll (stowed exception 0xc000027b) before OnLaunched.
+sealed partial class App : Application, IXamlMetadataProvider
 {
     readonly XamlControlsXamlMetaDataProvider provider = new();
     readonly string[] args;

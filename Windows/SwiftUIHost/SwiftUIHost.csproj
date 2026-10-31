@@ -35,6 +35,6 @@
     <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\**" Exclude="Assets\*.sha256" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
