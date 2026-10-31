@@ -74,6 +74,9 @@ extension Transferable {
     public static var _exportedContentTypes: [UTType] { _transferEntries.filter { $0.exportData != nil || $0.exportFile != nil }.map(\.contentType) }
     public static var _importedContentTypes: [UTType] { _transferEntries.filter { $0.importData != nil || $0.importFile != nil }.map(\.contentType) }
 
+    /// The types the item can be read from, in its representations' order.
+    public static func importedContentTypes() -> [UTType] { _importedContentTypes }
+
     /// The item's data in the first exportable representation (files are read).
     public func _exportedData() async throws -> (UTType, Data)? {
         for entry in Self._transferEntries where entry.isExportable(self) {

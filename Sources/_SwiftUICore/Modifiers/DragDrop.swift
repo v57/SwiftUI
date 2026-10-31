@@ -1,4 +1,5 @@
 import Foundation
+import CoreTransferable
 #if canImport(CoreGraphics)
 import CoreGraphics
 #endif
@@ -227,4 +228,19 @@ extension View {
     public func onDragSessionUpdated(_ action: @escaping (DragSession) -> Void) -> some View {
         modifier(_DragSessionObserverModifier(action: action))
     }
+}
+
+// MARK: - Drag containers (macOS 26, iOS 27)
+
+extension View {
+    /// Marks the view as the item `containerItemID` of the drag container around it (`dragContainer`). Backends drag
+    /// no containers yet, so the view drags nothing.
+    public func draggable<ItemID: Hashable & Sendable>(containerItemID: ItemID, containerNamespace: Namespace.ID? = nil) -> some View { self }
+
+    /// The ids a drag of a selected item in this container drags together. Backends drag no containers yet.
+    public func dragContainerSelection<ItemID: Hashable & Sendable>(_ selection: @autoclosure @escaping () -> [ItemID], containerNamespace: Namespace.ID? = nil) -> some View { self }
+
+    /// What the container's items (`draggable(containerItemID:)`) drag: `payload` gets the dragged ids. Backends drag
+    /// no containers yet.
+    public func dragContainer<ItemID: Hashable & Sendable, Item: Transferable, Data: Collection>(for itemType: Item.Type = Item.self, itemID: KeyPath<Item, ItemID>, in namespace: Namespace.ID? = nil, _ payload: @escaping (_ draggedItemIDs: [ItemID]) -> Data) -> some View where Item == Data.Element { self }
 }
