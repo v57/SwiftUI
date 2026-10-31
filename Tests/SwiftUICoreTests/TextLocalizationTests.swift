@@ -58,6 +58,35 @@ struct TextLocalizationTests {
         #expect(Text("Missing", bundle: bundle).plainString == "Missing")
     }
 
+    @Test func appLocalePicksItsLanguagesStrings() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loc-\(UUID().uuidString).bundle")
+        for (folder, strings) in [("en", "\"Plain\" = \"Simple\";\n\"Only English\" = \"English\";\n"),
+                                  ("de", "\"Plain\" = \"Einfach\";\n"),
+                                  ("pt-BR", "\"Plain\" = \"Simples\";\n")] {
+            let lproj = root.appendingPathComponent("\(folder).lproj")
+            try FileManager.default.createDirectory(at: lproj, withIntermediateDirectories: true)
+            try strings.write(to: lproj.appendingPathComponent("Localizable.strings"), atomically: true, encoding: .utf8)
+        }
+        defer {
+            _AppLocale.clear()
+            try? FileManager.default.removeItem(at: root)
+        }
+        _AppLocale.set(identifier: "de_AT")
+        #expect(_AppLocale.lprojNames == ["de-AT", "de_AT", "de"])
+        let german = try #require(Bundle(path: root.path))
+        #expect(Text("Plain", bundle: german).plainString == "Einfach")
+        // A key its language lacks comes from the development language.
+        #expect(Text("Only English", bundle: german).plainString == "English")
+        #expect(_AppLocale.current.identifier == "de_AT")
+        // Texts are looked up once per bundle (the app's language is set once, at launch): another copy.
+        let copy = root.deletingPathExtension().appendingPathExtension("copy.bundle")
+        try FileManager.default.copyItem(at: root, to: copy)
+        defer { try? FileManager.default.removeItem(at: copy) }
+        _AppLocale.set(identifier: "pt-BR")
+        let portuguese = try #require(Bundle(path: copy.path))
+        #expect(Text("Plain", bundle: portuguese).plainString == "Simples")
+    }
+
     @Test func textViewRendersLocalizedRuns() {
         let host = TestHost(Text("Tap **here**"))
         #expect(host.texts.contains("Tap here"))

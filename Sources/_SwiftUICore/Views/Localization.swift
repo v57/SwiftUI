@@ -226,11 +226,11 @@ enum LocalizedTextResolver {
     @MainActor private static var translations: [TranslationKey: String] = [:]
 
     private static func translation(of key: String, tableName: String?, bundle: Bundle) -> String {
-        guard isOnMainQueue else { return bundle.localizedString(forKey: key, value: key, table: tableName) }
+        guard isOnMainQueue else { return _AppLocale.localizedString(bundle, key: key, table: tableName) }
         return _onMainActor {
             let cacheKey = TranslationKey(bundle: ObjectIdentifier(bundle), table: tableName, key: key)
             if let cached = translations[cacheKey] { return cached }
-            let translated = bundle.localizedString(forKey: key, value: key, table: tableName)
+            let translated = _AppLocale.localizedString(bundle, key: key, table: tableName)
             if translations.count >= 4096 { translations.removeAll(keepingCapacity: true) }
             translations[cacheKey] = translated
             return translated
@@ -292,7 +292,7 @@ enum LocalizedTextResolver {
         // Foundation applies stringsdict plural rules to translated formats; keys made by plain
         // interpolation (`%@`, `%lld`, `%llu`, `%%` only) are filled in directly.
         let formatted = simpleFormat(format, arguments: cArguments)
-            ?? String(format: format, locale: Locale.current, arguments: cArguments)
+            ?? String(format: format, locale: _AppLocale.current, arguments: cArguments)
         guard !embedded.isEmpty else { return [.string(formatted)] }
         var result: [Piece] = []
         let parts = formatted.split(separator: marker, omittingEmptySubsequences: false)

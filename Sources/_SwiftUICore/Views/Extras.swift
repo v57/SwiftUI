@@ -627,8 +627,15 @@ extension SceneStorage: _GraphComparable {
 public enum UserInterfaceSizeClass: Hashable, Sendable { case compact, regular }
 public enum ScenePhase: Hashable, Sendable { case background, inactive, active }
 
-struct LocaleKey: EnvironmentKey { static let defaultValue = Locale.current }
-struct CalendarKey: EnvironmentKey { static let defaultValue = Calendar.current }
+struct LocaleKey: EnvironmentKey { static let defaultValue = _AppLocale.current }
+struct CalendarKey: EnvironmentKey {
+    static let defaultValue: Calendar = {
+        guard let locale = _AppLocale.locale else { return .current }
+        var calendar = Calendar.current
+        calendar.locale = locale
+        return calendar
+    }()
+}
 struct TimeZoneKey: EnvironmentKey { static let defaultValue = TimeZone.current }
 struct HorizontalSizeClassKey: EnvironmentKey { static let defaultValue: UserInterfaceSizeClass? = .regular }
 struct VerticalSizeClassKey: EnvironmentKey { static let defaultValue: UserInterfaceSizeClass? = .regular }

@@ -394,11 +394,13 @@ public struct Text: Equatable {
             let formatter = DateFormatter()
             formatter.dateStyle = .none
             formatter.timeStyle = .short
+            formatter.locale = _AppLocale.current
             return formatter.string(from: date)
         case .date:
             let formatter = DateFormatter()
             formatter.dateStyle = .long
             formatter.timeStyle = .none
+            formatter.locale = _AppLocale.current
             return formatter.string(from: date)
         case .relative, .offset:
             #if !canImport(ObjectiveC)
@@ -538,7 +540,7 @@ public struct Text: Equatable {
         case .localized: return expanded.plainString
         case .image: return ""
         case let .date(date, style): return Text.format(date, style: style, now: Date())
-        case .formatted(let value): return value.string(in: .autoupdatingCurrent)
+        case .formatted(let value): return value.string(in: _AppLocale.locale ?? .autoupdatingCurrent)
         case let .timerInterval(range, pauseTime, countsDown, showsHours):
             let now = min(max(pauseTime ?? Date(), range.lowerBound), range.upperBound)
             let elapsed = countsDown ? range.upperBound.timeIntervalSince(now) : now.timeIntervalSince(range.lowerBound)
