@@ -3,11 +3,12 @@
 # 2. builds the C# host (Windows/SwiftUIHost, unpackaged, self-contained Windows App SDK),
 # 3. stages the app DLL and the Swift runtime next to SwiftUIHost.exe in .build\winui\<Product>,
 # 4. optionally runs it (-Run; -Script/-Log are passed to the host).
-# A release build is cut for size (363 → 110 MB for Markdown): the Swift code is built with dead-code flags and staged
+# A release build is cut for size (363 → 108 MB for Markdown): the Swift code is built with dead-code flags and staged
 # without its symbols (the unstripped DLLs and PDBs go to .build\winui\<Product>.symbols), the host is a Native AOT
-# exe (no .NET runtime), and the folder holds only the runtime DLLs something imports, WinUI's translations for the
-# app's languages (the Xcode project's knownRegions) and no WinRT metadata (.winmd), WebView2 or RestartAgent.
-# Usage: Windows/scripts/build-app.ps1 [-Product GalleryWinUI] [-PackagePath dir] [-Configuration debug|release] [-Run] [-Script file] [-Log file]
+# exe (no .NET runtime), ICU's data holds only the app's languages (build-icu.ps1; -FullICU keeps the toolchain's),
+# and the folder holds only the runtime DLLs something imports, WinUI's translations for the app's languages (the
+# Xcode project's knownRegions) and no WinRT metadata (.winmd), WebView2 or RestartAgent.
+# Usage: Windows/scripts/build-app.ps1 [-Product GalleryWinUI] [-PackagePath dir] [-Configuration debug|release] [-Run] [-Script file] [-Log file] [-FullICU]
 #   -PackagePath builds an app from another package that depends on SwiftUI (e.g. C:\dev\Get\App: a v57 app's package
 #   is its repository's App\ folder).
 param(
@@ -17,7 +18,8 @@ param(
     [switch]$Run,
     [string]$Script,
     [string]$Log,
-    [switch]$SkipHost
+    [switch]$SkipHost,
+    [switch]$FullICU
 )
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path "$PSScriptRoot\..\..").Path
@@ -176,11 +178,21 @@ $escape = { param($text) [Security.SecurityElement]::Escape($text) }
 "@ | Set-Content -Path "$out\Info.plist" -Encoding UTF8
 
 if ($release) {
-    # WinUI's translations (a folder of .mui files per culture): only the app's languages, and US English.
+    # The app's languages: English and the Xcode project's.
     $languages = @("en")
     if ($project -and $settings -match 'knownRegions = \(([^)]*)\)') {
         $languages += $Matches[1] -split '[,\s"]+' | Where-Object { $_ -and $_ -ne "Base" } | ForEach-Object { ($_ -split '-')[0].ToLowerInvariant() }
     }
+    # ICU with only these languages' data: 36 → 8 MB for English alone. Locales of other languages format as English.
+    $icu = Get-ChildItem $out -Filter _FoundationICU.dll
+    if ($icu -and -not $FullICU) {
+        try {
+            Copy-Item (& "$PSScriptRoot\build-icu.ps1" -Languages $languages | Select-Object -Last 1) $icu.FullName -Force
+        } catch {
+            Write-Warning "Keeping the toolchain's ICU (36 MB): $_"
+        }
+    }
+    # WinUI's translations (a folder of .mui files per culture).
     Get-ChildItem $out -Directory | Where-Object {
         $files = @(Get-ChildItem $_.FullName -Recurse -File)
         $files.Count -and -not ($files | Where-Object Extension -ne ".mui") -and $languages -notcontains ($_.Name -split '-')[0].ToLowerInvariant()

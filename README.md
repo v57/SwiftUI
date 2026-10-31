@@ -147,7 +147,8 @@ swift package resolve
 with the Windows SDK, Git and the .NET SDK (10); `Windows/scripts/setup-toolchain.ps1` installs them.
 `build-app.ps1` builds `Hello.dll` and the WinUI host and stages both, with the Swift runtime, in
 `.build\winui\Hello` (`-Run` starts `SwiftUIHost.exe`; `-Configuration release` stages a release cut for size: a
-Native AOT host, stripped DLLs, and only the runtime files and WinUI translations the app uses):
+Native AOT host, stripped DLLs, ICU data for the app's languages only, and only the runtime files and WinUI translations
+the app uses):
 
 ```powershell
 swift package resolve
