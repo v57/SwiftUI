@@ -46,6 +46,9 @@ public struct PlatformImage: Hashable, @unchecked Sendable {
     public func hash(into hasher: inout Hasher) { hasher.combine(ObjectIdentifier(object)) }
 }
 
+/// Sendable as Apple's is: its source never changes, and a platform image's object isn't mutated after it's made.
+extension Image: @unchecked Sendable {}
+
 public struct Image: Equatable {
     public enum Scale: Hashable, Sendable { case small, medium, large }
     public enum Interpolation: Hashable, Sendable { case none, low, medium, high }
