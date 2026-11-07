@@ -54,10 +54,31 @@ public enum _AppLocale {
         return found
     }
 
-    /// `key` translated into the app's language when its `.lproj` has it, else the bundle's own lookup.
+    nonisolated(unsafe) private static var packBundles: [Bundle] = []
+
+    /// Bundles of a downloaded language pack, asked before the main bundle's own tables, best first (PlatformLanguages:
+    /// each holds the app's language's `.lproj`). Texts already shown keep their strings until they're rebuilt.
+    @MainActor public static func _setPackBundles(_ bundles: [Bundle]) {
+        lock.lock()
+        packBundles = bundles
+        lock.unlock()
+        LocalizedTextResolver.forgetTranslations()
+    }
+
+    /// `key` translated into the app's language: from a language pack (main bundle only), else from the bundle's
+    /// `.lproj` for that language, else the bundle's own lookup.
     static func localizedString(_ bundle: Bundle, key: String, table: String?) -> String {
+        let missing = "\u{0}missing"
+        if bundle.bundlePath == Bundle.main.bundlePath {
+            lock.lock()
+            let packs = packBundles
+            lock.unlock()
+            for pack in packs {
+                let translated = pack.localizedString(forKey: key, value: missing, table: table)
+                if translated != missing { return translated }
+            }
+        }
         if let localized = localizedBundle(bundle) {
-            let missing = "\u{0}missing"
             let translated = localized.localizedString(forKey: key, value: missing, table: table)
             if translated != missing { return translated }
         }

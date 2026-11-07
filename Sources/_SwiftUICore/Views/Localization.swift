@@ -225,6 +225,9 @@ enum LocalizedTextResolver {
     /// Bundle lookups, remembered (every text resolved looked its key up in the bundle again).
     @MainActor private static var translations: [TranslationKey: String] = [:]
 
+    /// Forgets the remembered lookups (a language pack came or went).
+    @MainActor static func forgetTranslations() { translations.removeAll() }
+
     private static func translation(of key: String, tableName: String?, bundle: Bundle) -> String {
         guard isOnMainQueue else { return _AppLocale.localizedString(bundle, key: key, table: tableName) }
         return _onMainActor {

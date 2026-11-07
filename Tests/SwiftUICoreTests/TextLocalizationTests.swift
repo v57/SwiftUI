@@ -87,6 +87,34 @@ struct TextLocalizationTests {
         #expect(Text("Plain", bundle: portuguese).plainString == "Simples")
     }
 
+    @Test func languagePacksAnswerTheMainBundleFirst() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("pack-\(UUID().uuidString)")
+        for (source, strings) in [("App", "\"Pack Hello %@\" = \"Hallo %@\";\n"),
+                                  ("Kit", "\"Pack Hello %@\" = \"Kit %@\";\n\"Pack Cancel\" = \"Abbrechen\";\n")] {
+            let lproj = root.appendingPathComponent("\(source)/de.lproj")
+            try FileManager.default.createDirectory(at: lproj, withIntermediateDirectories: true)
+            try strings.write(to: lproj.appendingPathComponent("Localizable.strings"), atomically: true, encoding: .utf8)
+        }
+        defer {
+            _AppLocale._setPackBundles([])
+            try? FileManager.default.removeItem(at: root)
+        }
+        let name = "Ana"
+        #expect(Text("Pack Hello \(name)").plainString == "Pack Hello Ana")
+        _AppLocale._setPackBundles(try ["App", "Kit"].map { try #require(Bundle(path: root.appendingPathComponent($0).path)) })
+        // The first pack wins, a key only the second has comes from it, the rest from the bundle itself.
+        #expect(Text("Pack Hello \(name)").plainString == "Hallo Ana")
+        #expect(Text("Pack Cancel").plainString == "Abbrechen")
+        #expect(Text("Pack Missing").plainString == "Pack Missing")
+        // Packs answer only for the main bundle.
+        let other = root.appendingPathComponent("Other.bundle")
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        #expect(Text("Pack Cancel", bundle: try #require(Bundle(path: other.path))).plainString == "Pack Cancel")
+        // Taking the packs away forgets what they answered.
+        _AppLocale._setPackBundles([])
+        #expect(Text("Pack Cancel").plainString == "Pack Cancel")
+    }
+
     @Test func textViewRendersLocalizedRuns() {
         let host = TestHost(Text("Tap **here**"))
         #expect(host.texts.contains("Tap here"))
