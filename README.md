@@ -76,6 +76,28 @@ against both Apple SwiftUI and this SwiftUI):
 Not implemented by design: shaders, blur and compositing filters, Apple-only views (Maps, Photos,
 SwiftData, ShareLink, ...).
 
+## Libraries
+
+Products an app or library can import. The stand-ins for Apple frameworks are defined only when building for
+Linux, Windows or Android (on Apple platforms the real framework is used); add them to a target only there.
+
+| Library | Purpose | Platforms | Import |
+|---------|---------|-----------|--------|
+| [SwiftUI](docs/SwiftUI.md) | SwiftUI's API with the platform's backend; also gives Combine, UniformTypeIdentifiers, CoreTransferable, CoreGraphics and SwiftUIPortability off Apple platforms | macOS (AppKit), Linux (GTK 3), Windows (WinUI 3), Android | `import SwiftUI` |
+| [SwiftUIHeadless](docs/SwiftUIHeadless.md) | `TestHost`: views in memory for tests, with deterministic updates and text metrics | all of the above | `import SwiftUIHeadless` |
+| [SwiftUICharts](docs/SwiftUICharts.md) | A subset of Swift Charts drawn with `Canvas` | all of the above | `import SwiftUICharts` |
+| [Charts](docs/SwiftUICharts.md) | `SwiftUICharts` under Apple's module name (shares its page) | Linux, Windows, Android | `import Charts` |
+| [CryptoKit](docs/CryptoKit.md) | swift-crypto, plus `SecureEnclave` keys sealed to the device's user | Linux, Windows, Android | `import CryptoKit` |
+| [Network](docs/Network.md) | `NWConnection` (TCP, TLS, UDP) and `NWListener` on sockets | Linux, Windows (Android: no TLS) | `import Network` |
+| [SwiftData](docs/SwiftData.md) | `@Model`, containers and contexts over a JSON file | Linux, Windows, Android | `import SwiftData` |
+| [os](docs/os.md) | `Logger`, `os_log`, signposts (dropped) and `OSAllocatedUnfairLock` | Linux, Windows, Android | `import os` |
+| [SQLite3](docs/SQLite3.md) | SQLite's C API | Linux, Windows, Android | `import SQLite3` |
+| [SwiftUIPortability](docs/SwiftUIPortability.md) | Foundation API swift-corelibs-foundation lacks, `ChildProcess`, `DirectoryWatcher` | Linux, Windows, Android | `import SwiftUIPortability` |
+| [SecretService](docs/SecretService.md) | Secrets in the freedesktop Secret Service (libsecret) | Linux | `import SecretService` |
+
+`_SwiftUICore` is also a product: the platform-independent core the backends build on. Apps don't import it;
+`SwiftUI` and `SwiftUIHeadless` re-export it. `Demo` and `ReferenceApp2` are sample executables.
+
 ## Using SwiftUI in an app
 
 Apps depend on the package with SwiftPM on every platform and keep writing `import SwiftUI`. On macOS and
@@ -157,6 +179,7 @@ swift package resolve
 
 ## Docs
 
+* [docs/SwiftUI.md](docs/SwiftUI.md) — using SwiftUI in an app: backends, building on each platform, testing
 * [ARCHITECTURE.md](ARCHITECTURE.md) — how updates, identity and layout boundaries work
 * [docs/PARITY.md](docs/PARITY.md) — verifying behaviour and update counts against Apple SwiftUI
 * [docs/BACKENDS.md](docs/BACKENDS.md) — writing the GTK / WinUI / Android backends
