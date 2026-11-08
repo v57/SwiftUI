@@ -74,7 +74,8 @@ against both Apple SwiftUI and this SwiftUI):
   fills), shapes (trim, inset, stroke styles, transforms), opacity/clip/shadow/scale/rotation.
 
 Not implemented by design: shaders, blur and compositing filters, Apple-only views (Maps, Photos,
-SwiftData, ShareLink, ...).
+ShareLink, ...). SwiftData is a stand-in off Apple platforms (`@Model`, containers and contexts over a JSON file;
+`@Query` through SwiftUI), below.
 
 ## Libraries
 
@@ -146,10 +147,12 @@ swift run Hello
 Keep code that should use Apple's SwiftUI in a separate package: SwiftPM searches the modules it builds
 before the SDK, so in a package that also builds this SwiftUI, `import SwiftUI` finds this one.
 
-**Linux** (GTK 3; tested on Ubuntu 24.04 with Swift 6.3):
+**Linux** (GTK 3; tested on Ubuntu 24.04 with Swift 6.3). The package's system libraries need their dev packages:
+GTK 3 (`SwiftUIGtk`), libsecret (`SecretService`, the keychain stand-in CryptoKit and VaultKit use), SQLite
+(`SQLite3`, the system's) and OpenSSL (`Network`'s TLS):
 
 ```bash
-sudo apt install libgtk-3-dev
+sudo apt install libgtk-3-dev libsecret-1-dev libsqlite3-dev libssl-dev
 swift run Hello
 ```
 
