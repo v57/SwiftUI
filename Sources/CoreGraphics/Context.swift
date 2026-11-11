@@ -165,7 +165,7 @@ public final class CGContext: @unchecked Sendable {
     public func strokePath() {
         let user = CGPath(elements: devicePath.transformed(state.ctm.inverted()))
         devicePath = CGMutablePath()
-        let polygons = strokePolygons(user).map { $0.map { $0.applying(state.ctm) } }
+        let polygons = user._strokePolygons(width: state.lineWidth, cap: state.lineCap, join: state.lineJoin, miterLimit: state.miterLimit).map { $0.map { $0.applying(state.ctm) } }
         let color = state.stroke
         paint(polygons, rule: .winding) { _, _ in color }
     }
@@ -452,13 +452,31 @@ public final class CGContext: @unchecked Sendable {
             }
         }
     }
+}
 
-    // MARK: - Stroking
+// MARK: - Stroking
+
+extension CGPath {
+    /// The outline of a stroke of this path, as Core Graphics' `copy(strokingWithWidth:…)`: filled with the non-zero
+    /// rule it covers what stroking the path draws (polygons from the flattened path, not curves).
+    public func copy(
+        strokingWithWidth lineWidth: CGFloat, lineCap: CGLineCap, lineJoin: CGLineJoin, miterLimit: CGFloat,
+        transform: CGAffineTransform = .identity
+    ) -> CGPath {
+        let outline = CGMutablePath()
+        for polygon in _strokePolygons(width: lineWidth, cap: lineCap, join: lineJoin, miterLimit: miterLimit) {
+            guard let first = polygon.first else { continue }
+            outline.move(to: first, transform: transform)
+            for point in polygon.dropFirst() { outline.addLine(to: point, transform: transform) }
+            outline.closeSubpath()
+        }
+        return outline
+    }
 
     /// The outline of the stroke as polygons (user space), all counter-clockwise so their union fills with the
     /// non-zero rule.
-    private func strokePolygons(_ path: CGPath) -> [[CGPoint]] {
-        let half = max(state.lineWidth, 0.0001) / 2
+    func _strokePolygons(width: CGFloat, cap: CGLineCap, join: CGLineJoin, miterLimit: CGFloat) -> [[CGPoint]] {
+        let half = max(width, 0.0001) / 2
         var polygons: [[CGPoint]] = []
         func add(_ polygon: [CGPoint]) {
             var area: CGFloat = 0
@@ -475,13 +493,13 @@ public final class CGContext: @unchecked Sendable {
                 return CGPoint(x: c.x + half * cos(angle), y: c.y + half * sin(angle))
             })
         }
-        for (points, closed) in path._flattened(tolerance: 0.1) {
+        for (points, closed) in _flattened(tolerance: 0.1) {
             var pts: [CGPoint] = []
             for p in points where pts.last.map({ hypot($0.x - p.x, $0.y - p.y) > 1e-6 }) ?? true { pts.append(p) }
             if closed, pts.count > 2, let first = pts.first, let last = pts.last, hypot(first.x - last.x, first.y - last.y) < 1e-6 { pts.removeLast() }
             if pts.count == 1 {
-                if state.lineCap == .round { circle(pts[0]) }
-                if state.lineCap == .square { add([CGPoint(x: pts[0].x - half, y: pts[0].y - half), CGPoint(x: pts[0].x + half, y: pts[0].y - half), CGPoint(x: pts[0].x + half, y: pts[0].y + half), CGPoint(x: pts[0].x - half, y: pts[0].y + half)]) }
+                if cap == .round { circle(pts[0]) }
+                if cap == .square { add([CGPoint(x: pts[0].x - half, y: pts[0].y - half), CGPoint(x: pts[0].x + half, y: pts[0].y - half), CGPoint(x: pts[0].x + half, y: pts[0].y + half), CGPoint(x: pts[0].x - half, y: pts[0].y + half)]) }
                 continue
             }
             let count = closed ? pts.count : pts.count - 1
@@ -489,7 +507,7 @@ public final class CGContext: @unchecked Sendable {
                 var a = pts[i], b = pts[(i + 1) % pts.count]
                 let length = hypot(b.x - a.x, b.y - a.y)
                 let dx = (b.x - a.x) / length, dy = (b.y - a.y) / length
-                if !closed, state.lineCap == .square {
+                if !closed, cap == .square {
                     if i == 0 { a = CGPoint(x: a.x - dx * half, y: a.y - dy * half) }
                     if i == count - 1 { b = CGPoint(x: b.x + dx * half, y: b.y + dy * half) }
                 }
@@ -500,7 +518,7 @@ public final class CGContext: @unchecked Sendable {
             let joints = closed ? Array(0..<pts.count) : Array(1..<max(1, pts.count - 1))
             for i in joints {
                 let v = pts[i], p = pts[(i - 1 + pts.count) % pts.count], n = pts[(i + 1) % pts.count]
-                if state.lineJoin == .round { circle(v); continue }
+                if join == .round { circle(v); continue }
                 let l1 = hypot(v.x - p.x, v.y - p.y), l2 = hypot(n.x - v.x, n.y - v.y)
                 let d1 = CGPoint(x: (v.x - p.x) / l1, y: (v.y - p.y) / l1), d2 = CGPoint(x: (n.x - v.x) / l2, y: (n.y - v.y) / l2)
                 let cross = d1.x * d2.y - d1.y * d2.x
@@ -510,10 +528,10 @@ public final class CGContext: @unchecked Sendable {
                 let o1 = CGPoint(x: v.x - d1.y * half * side, y: v.y + d1.x * half * side)
                 let o2 = CGPoint(x: v.x - d2.y * half * side, y: v.y + d2.x * half * side)
                 var polygon = [v, o1, o2]
-                if state.lineJoin == .miter {
+                if join == .miter {
                     let cosine = -(d1.x * d2.x + d1.y * d2.y)
                     let miterRatio = 1 / max(1e-9, sin(acos(max(-1, min(1, cosine))) / 2))
-                    if miterRatio <= state.miterLimit {
+                    if miterRatio <= miterLimit {
                         let bisector = CGPoint(x: (o1.x + o2.x) / 2 - v.x, y: (o1.y + o2.y) / 2 - v.y)
                         let bl = hypot(bisector.x, bisector.y)
                         if bl > 1e-9 {
@@ -524,7 +542,7 @@ public final class CGContext: @unchecked Sendable {
                 }
                 add(polygon)
             }
-            if !closed, state.lineCap == .round {
+            if !closed, cap == .round {
                 circle(pts[0]); circle(pts[pts.count - 1])
             }
         }
