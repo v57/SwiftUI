@@ -1,4 +1,7 @@
 import Foundation
+#if !canImport(ObjectiveC)
+import SwiftUIPortability
+#endif
 
 /// The app's locale where Foundation doesn't follow the user: off Apple platforms swift-foundation's `Locale.current`
 /// is always `en_001` and `Locale.preferredLanguages` `["en-001"]`, whatever the system's language. The umbrella
@@ -14,6 +17,11 @@ public enum _AppLocale {
     /// environment's defaults are read once.
     public static func set(identifier: String) {
         locale = Locale(identifier: identifier)
+        #if !canImport(ObjectiveC)
+        // `String(localized:)` (SwiftUIPortability) translates and formats as texts do.
+        _StringLocalization.locale = locale
+        _StringLocalization.lookup = { localizedString($0, key: $1, table: $2) }
+        #endif
         let parts = identifier.split(whereSeparator: { $0 == "-" || $0 == "_" }).map(String.init)
         guard let language = parts.first?.lowercased(), !language.isEmpty else { return }
         var names: [String] = []
@@ -30,6 +38,10 @@ public enum _AppLocale {
     /// Back to Foundation's locale (tests).
     static func clear() {
         locale = nil
+        #if !canImport(ObjectiveC)
+        _StringLocalization.locale = nil
+        _StringLocalization.lookup = nil
+        #endif
         lprojNames = []
         lock.lock()
         bundles.removeAll()
