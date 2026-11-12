@@ -8,9 +8,11 @@
 # exe (no .NET runtime), ICU's data holds only the app's languages (build-icu.ps1; -FullICU keeps the toolchain's),
 # and the folder holds only the runtime DLLs something imports, WinUI's translations for the app's languages (the
 # Xcode project's knownRegions) and no WinRT metadata (.winmd), WebView2 or RestartAgent.
-# Usage: Windows/scripts/build-app.ps1 [-Product GalleryWinUI] [-PackagePath dir] [-Configuration debug|release] [-Run] [-Script file] [-Log file] [-FullICU]
+# Usage: Windows/scripts/build-app.ps1 [-Product GalleryWinUI] [-PackagePath dir] [-Configuration debug|release] [-Icon file.ico] [-Run] [-Script file] [-Log file] [-FullICU]
 #   -PackagePath builds an app from another package that depends on SwiftUI (e.g. C:\dev\Get\App: a v57 app's package
 #   is its repository's App\ folder).
+#   -Icon: the app's icon (a multi-size .ico): the host exe carries it (Explorer, shortcuts, the pinned taskbar
+#   button) and it is staged as AppIcon.ico, which the host gives its windows (title bar, taskbar, Alt+Tab).
 param(
     [string]$Product = "GalleryWinUI",
     [string]$PackagePath,
@@ -18,6 +20,7 @@ param(
     [switch]$Run,
     [string]$Script,
     [string]$Log,
+    [string]$Icon,
     [switch]$SkipHost,
     [switch]$FullICU
 )
@@ -53,6 +56,12 @@ if (-not (Test-Path $dll)) { throw "Build failed: $dll missing" }
 
 $out = Join-Path $package ".build\winui\$Product"
 $hostProject = "$root\Windows\SwiftUIHost\SwiftUIHost.csproj"
+# The exe's icon: ApplicationIcon puts it in the host assembly's Win32 resources, which Native AOT copies into the exe.
+$iconProperty = @()
+if ($Icon) {
+    $Icon = (Resolve-Path $Icon).Path
+    $iconProperty = @("-p:ApplicationIcon=$Icon")
+}
 if (-not $SkipHost -or -not (Test-Path "$out\SwiftUIHost.exe")) {
     if ($release) {
         Write-Host "Publishing the WinUI host (Native AOT)"
@@ -71,7 +80,7 @@ if (-not $SkipHost -or -not (Test-Path "$out\SwiftUIHost.exe")) {
         $env:PATH = "$msvc\bin\Host$arch\$arch;$env:PATH"
         $env:LIB = "$msvc\lib\$arch;$($sdk.FullName)\um\$arch;$($sdk.FullName)\ucrt\$arch"
         try {
-            dotnet publish $hostProject -c Release -r "win-$arch" -p:Platform=$($arch.ToUpper()) -p:PublishAot=true -p:IlcUseEnvironmentalTools=true -o $out --nologo -v quiet
+            dotnet publish $hostProject -c Release -r "win-$arch" -p:Platform=$($arch.ToUpper()) -p:PublishAot=true -p:IlcUseEnvironmentalTools=true @iconProperty -o $out --nologo -v quiet
             if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
         } finally {
             $env:PATH, $env:LIB = $saved
@@ -82,7 +91,7 @@ if (-not $SkipHost -or -not (Test-Path "$out\SwiftUIHost.exe")) {
         Copy-Item $pri.FullName $out
     } else {
         Write-Host "Building the WinUI host"
-        dotnet build $hostProject -c Debug -r "win-$arch" -p:Platform=$($arch.ToUpper()) -o $out --nologo -v quiet
+        dotnet build $hostProject -c Debug -r "win-$arch" -p:Platform=$($arch.ToUpper()) @iconProperty -o $out --nologo -v quiet
         if ($LASTEXITCODE -ne 0) { throw "dotnet build failed" }
     }
 }
@@ -145,6 +154,7 @@ if (-not $release) {
     }
 }
 Set-Content -Path "$out\swiftui-app.txt" -Value $Product -NoNewline
+if ($Icon) { Copy-Item $Icon "$out\AppIcon.ico" -Force } else { Remove-Item "$out\AppIcon.ico" -ErrorAction SilentlyContinue }
 
 # Info.plist next to the host, which Foundation reads as the main bundle's: the app's name, version and bundle
 # identifier from its Xcode project (the first target's), so its defaults are its own file

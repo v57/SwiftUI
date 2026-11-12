@@ -143,7 +143,8 @@ Swift runtime, in `<package>\.build\winui\<Product>`:
 
 `-Configuration release` cuts the folder for size (a Native AOT host, stripped DLLs whose symbols go to
 `<Product>.symbols`, ICU data for the app's languages only). `-FullICU` keeps the toolchain's ICU. `-Script <file>`
-and `-Log <file>` are passed to the host.
+and `-Log <file>` are passed to the host. `-Icon <file.ico>` gives the host exe the app's icon and stages it as
+`AppIcon.ico`, which the host sets on its windows (title bar, taskbar, Alt+Tab).
 
 **Android** (arm64 devices, Android 9 / API 28 and later). Cross-compiled on macOS with the swift.org toolchain and
 the Swift SDK for Android of the same version, a JDK and Gradle; `Android/scripts/env.sh` lists the expected

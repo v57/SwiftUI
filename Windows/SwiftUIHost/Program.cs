@@ -122,9 +122,14 @@ static class HostWindow
     [DllImport("user32.dll")]
     static extern uint GetDpiForWindow(IntPtr hwnd);
 
+    static readonly string IconPath = Path.Combine(AppContext.BaseDirectory, "AppIcon.ico");
+
     public static void Open(int scene, long value, string title, float width, float height)
     {
         var window = new Window { Title = title.Length > 0 ? title : AppName };
+        // The app's icon (build-app.ps1 -Icon) for the title bar, the taskbar button and Alt+Tab, which otherwise
+        // show a blank one.
+        if (File.Exists(IconPath)) window.AppWindow.SetIcon(IconPath);
         var view = new HostView(window, scene, value, title);
         if (view.Handle == 0) return;
         window.Content = view.RootElement;
