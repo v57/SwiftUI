@@ -158,6 +158,11 @@ if (-not $release) {
         }
     }
 }
+# Resource bundles (`<Package>_<Target>.resources`), as on Linux: Bundle.module and PlatformLanguages' English plural
+# table ("1 server", not "1 servers") look next to the executable.
+Get-ChildItem $out -Directory -Filter *.resources -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
+Get-ChildItem $bin -Directory -Filter *.resources | Where-Object { -not ($_.BaseName -like "*Tests*") } |
+    Copy-Item -Destination $out -Recurse -Force
 Set-Content -Path "$out\swiftui-app.txt" -Value $Product -NoNewline
 if ($Icon) { Copy-Item $Icon "$out\AppIcon.ico" -Force } else { Remove-Item "$out\AppIcon.ico" -ErrorAction SilentlyContinue }
 
