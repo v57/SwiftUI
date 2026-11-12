@@ -8,11 +8,12 @@
 # exe (no .NET runtime), ICU's data holds only the app's languages (build-icu.ps1; -FullICU keeps the toolchain's),
 # and the folder holds only the runtime DLLs something imports, WinUI's translations for the app's languages (the
 # Xcode project's knownRegions) and no WinRT metadata (.winmd), WebView2 or RestartAgent.
-# Usage: Windows/scripts/build-app.ps1 [-Product GalleryWinUI] [-PackagePath dir] [-Configuration debug|release] [-Icon file.ico] [-Run] [-Script file] [-Log file] [-FullICU]
+# Usage: Windows/scripts/build-app.ps1 [-Product GalleryWinUI] [-PackagePath dir] [-Configuration debug|release] [-Icon file.ico] [-Version X.Y.Z] [-Build N] [-Run] [-Script file] [-Log file] [-FullICU]
 #   -PackagePath builds an app from another package that depends on SwiftUI (e.g. C:\dev\Get\App: a v57 app's package
 #   is its repository's App\ folder).
 #   -Icon: the app's icon (a multi-size .ico): the host exe carries it (Explorer, shortcuts, the pinned taskbar
 #   button) and it is staged as AppIcon.ico, which the host gives its windows (title bar, taskbar, Alt+Tab).
+#   -Version and -Build: the version and build number Info.plist names (a release's), else the Xcode project's.
 param(
     [string]$Product = "GalleryWinUI",
     [string]$PackagePath,
@@ -21,10 +22,14 @@ param(
     [string]$Script,
     [string]$Log,
     [string]$Icon,
+    [string]$Version,
+    [string]$Build,
     [switch]$SkipHost,
     [switch]$FullICU
 )
 $ErrorActionPreference = "Stop"
+# PowerShell's names ignore case: $version below is the Xcode project's, so the parameter is kept apart.
+$releaseVersion, $releaseBuild = $Version, $Build
 $root = (Resolve-Path "$PSScriptRoot\..\..").Path
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
 
@@ -174,6 +179,8 @@ if ($project) {
     if ($settings -match 'PRODUCT_BUNDLE_IDENTIFIER = "?([A-Za-z0-9.\-]+)"?;') { $identifier = $Matches[1] }
     if ($settings -match 'MARKETING_VERSION = "?([0-9.]+)"?;') { $version = $Matches[1] }
 }
+if ($releaseVersion) { $version = $releaseVersion }
+$buildKey = if ($releaseBuild) { "`n    <key>CFBundleVersion</key><string>$([Security.SecurityElement]::Escape($releaseBuild))</string>" } else { "" }
 if ($release) {
     # The app's languages: English and the Xcode project's.
     $languages = @("en")
@@ -203,7 +210,7 @@ $escape = { param($text) [Security.SecurityElement]::Escape($text) }
 <dict>
     <key>CFBundleIdentifier</key><string>$(& $escape $identifier)</string>
     <key>CFBundleName</key><string>$(& $escape $name)</string>
-    <key>CFBundleShortVersionString</key><string>$(& $escape $version)</string>$icuKeys
+    <key>CFBundleShortVersionString</key><string>$(& $escape $version)</string>$buildKey$icuKeys
 </dict>
 </plist>
 "@ | Set-Content -Path "$out\Info.plist" -Encoding UTF8

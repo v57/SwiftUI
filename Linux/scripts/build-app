@@ -8,8 +8,9 @@
 #      app's defaults are its own) and a <Product>.desktop file (an app icon PNG from its asset catalog, if any),
 #   3. optionally installs the .desktop file for the user (--install) and runs the app (--run, --script <file>).
 # Usage: Linux/scripts/build-app [--package <dir>] [-c debug|release] [--static] [--install] [--run] [--script <file>]
-#                                [--jobs n] <Product>
+#                                [--jobs n] [--version X.Y.Z] [--build N] <Product>
 #   --static links the Swift runtime and Foundation into the executable (a folder that runs without the toolchain).
+#   --version and --build: the version and build number Info.plist names (a release's), else the Xcode project's.
 # On Linux an app is an executable product named after the app, built from its Xcode app folder: see
 # docs/BACKENDS.md ("Apps on Linux").
 set -euo pipefail
@@ -31,7 +32,9 @@ while [ $# -gt 0 ]; do
     --run) run=1; shift ;;
     --script) script="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; run=1; shift 2 ;;
     -j|--jobs) jobs="$2"; shift 2 ;;
-    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+    --version) app_version="$2"; shift 2 ;;
+    --build) app_build="$2"; shift 2 ;;
+    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
     -*) echo "build-app: unknown option $1" >&2; exit 2 ;;
     *) product="$1"; shift ;;
   esac
@@ -80,6 +83,10 @@ if [ -n "$project" ]; then
   value="$(grep -m1 -oE 'MARKETING_VERSION = "?[0-9.]+' "$project" | sed -E 's/.*= "?//')" || true
   [ -n "$value" ] && version="$value"
 fi
+version="${app_version:-$version}"
+build_key=""
+[ -n "${app_build:-}" ] && build_key="
+    <key>CFBundleVersion</key><string>$app_build</string>"
 cat > "$out/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -87,7 +94,7 @@ cat > "$out/Info.plist" <<PLIST
 <dict>
     <key>CFBundleIdentifier</key><string>$identifier</string>
     <key>CFBundleName</key><string>$name</string>
-    <key>CFBundleShortVersionString</key><string>$version</string>
+    <key>CFBundleShortVersionString</key><string>$version</string>$build_key
 </dict>
 </plist>
 PLIST
