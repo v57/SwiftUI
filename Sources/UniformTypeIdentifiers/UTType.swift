@@ -170,6 +170,7 @@ enum Registry {
         "public.url": d(["public.data"]),
         "public.file-url": d(["public.url"]),
         "com.apple.bookmark": d(["public.data"]),
+        "com.microsoft.internet-shortcut": d(["public.data"], ["url"], ["application/x-mswinurl"]),
         "public.text": d(["public.data", "public.content"]),
         "public.plain-text": d(["public.text"], ["txt", "text"], ["text/plain"]),
         "public.utf8-plain-text": d(["public.plain-text"]),
@@ -267,6 +268,7 @@ extension UTType {
     public static let url = UTType(known: "public.url")
     public static let fileURL = UTType(known: "public.file-url")
     public static let urlBookmarkData = UTType(known: "com.apple.bookmark")
+    public static let internetShortcut = UTType(known: "com.microsoft.internet-shortcut")
     public static let text = UTType(known: "public.text")
     public static let plainText = UTType(known: "public.plain-text")
     public static let utf8PlainText = UTType(known: "public.utf8-plain-text")
