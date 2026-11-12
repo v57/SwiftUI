@@ -9,6 +9,21 @@ import SwiftUIHeadless
 struct ExtrasTests {
     init() { Counter.reset() }
 
+    @Test func timelineUpdatesAtTheScheduleOwnDates() {
+        struct Steps: TimelineSchedule {
+            let dates: [Date]
+            func entries(from startDate: Date, mode: TimelineScheduleMode) -> [Date] { [startDate] + dates }
+        }
+        let start = Date()
+        let host = TestHost(TimelineView(Steps(dates: [start.addingTimeInterval(0.1)])) { context in
+            Text(context.date > start.addingTimeInterval(0.05) ? "later" : "now")
+        })
+        #expect(host.texts.contains("now"))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        host.flush()
+        #expect(host.texts.contains("later"))
+    }
+
     @Test func canvasRecordsDrawing() {
         let host = TestHost(Canvas { context, size in
             context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.red))

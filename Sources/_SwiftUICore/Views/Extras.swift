@@ -11,10 +11,60 @@ public struct TimelineViewDefaultContext {
     public enum Cadence: Comparable, Sendable { case live, seconds, minutes }
 }
 
+/// How often a timeline's dates are wanted (SwiftUI asks for fewer in the background on Apple platforms; here it's
+/// always normal).
+public enum TimelineScheduleMode: Sendable { case normal, lowFrequency }
+
 @MainActor @preconcurrency
 public protocol TimelineSchedule {
-    /// Seconds between updates (nil: no periodic updates).
+    associatedtype Entries: Sequence = [Date] where Entries.Element == Date
+    /// Seconds between updates (nil: the schedule's own `entries(from:mode:)`).
     var _interval: Double? { get }
+    /// The dates the view updates at, from `startDate` on, in increasing order (a schedule of the app's own).
+    func entries(from startDate: Date, mode: TimelineScheduleMode) -> Entries
+}
+
+extension TimelineSchedule {
+    public var _interval: Double? { nil }
+}
+
+extension TimelineSchedule where Entries == [Date] {
+    public func entries(from startDate: Date, mode: TimelineScheduleMode) -> [Date] { [startDate] }
+}
+
+/// A schedule's own dates as one-shot timers: each fire updates the date and arms the next date still ahead.
+@MainActor final class TimelineEntryTimer {
+    private var dates: AnyIterator<Date>
+    private weak var date: Attribute<Date>?
+    private var timer: Timer?
+
+    init<S: Sequence>(_ dates: S, date: Attribute<Date>) where S.Element == Date {
+        self.dates = AnyIterator(dates.makeIterator())
+        self.date = date
+        armNext(after: Date())
+    }
+
+    private func armNext(after now: Date) {
+        while let next = dates.next() {
+            guard next > now else { continue }
+            let timer = Timer(fire: next, interval: 0, repeats: false) { [weak self] _ in
+                MainActor.assumeIsolated { self?.fire(at: next) }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            self.timer = timer
+            return
+        }
+    }
+
+    private func fire(at scheduled: Date) {
+        date?.setValue(Date())
+        armNext(after: max(scheduled, Date()))
+    }
+
+    func invalidate() {
+        timer?.invalidate()
+        timer = nil
+    }
 }
 
 public struct PeriodicTimelineSchedule: TimelineSchedule {
@@ -33,7 +83,8 @@ public struct AnimationTimelineSchedule: TimelineSchedule {
 }
 
 public struct ExplicitTimelineSchedule: TimelineSchedule {
-    public var _interval: Double? { nil }
+    let dates: [Date]
+    public func entries(from startDate: Date, mode: TimelineScheduleMode) -> [Date] { dates }
 }
 
 extension TimelineSchedule where Self == PeriodicTimelineSchedule {
@@ -52,7 +103,9 @@ extension TimelineSchedule where Self == AnimationTimelineSchedule {
 }
 
 extension TimelineSchedule where Self == ExplicitTimelineSchedule {
-    public static func explicit<S: Sequence>(_ dates: S) -> ExplicitTimelineSchedule where S.Element == Date { ExplicitTimelineSchedule() }
+    public static func explicit<S: Sequence>(_ dates: S) -> ExplicitTimelineSchedule where S.Element == Date {
+        ExplicitTimelineSchedule(dates: Array(dates))
+    }
 }
 
 /// Re-evaluates its content on a schedule (a timer drives a date source attribute).
@@ -76,6 +129,11 @@ public struct TimelineView<Schedule: TimelineSchedule, Content: View>: View {
                 MainActor.assumeIsolated { date?.setValue(Date()) }
             }
             RunLoop.main.add(timer, forMode: .common)
+            inputs.subgraph.onDestroy { timer.invalidate() }
+        } else {
+            // A schedule of the app's own: its dates from now on (read once, as the interval is).
+            let entries = AnyAttribute.withoutDependencies { view.attribute.value.schedule.entries(from: Date(), mode: .normal) }
+            let timer = TimelineEntryTimer(entries, date: date)
             inputs.subgraph.onDestroy { timer.invalidate() }
         }
         let content = makeObservedAttribute(inputs.subgraph, of: Content.self) {
