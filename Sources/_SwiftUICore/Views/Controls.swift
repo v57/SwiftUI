@@ -230,6 +230,14 @@ extension Button where Label == Text {
 }
 
 extension Button where Label == _SwiftUICore.Label<Text, Image> {
+    public init(_ titleKey: LocalizedStringKey, systemImage: String, action: @escaping @MainActor () -> Void) {
+        self.init(action: action) { _SwiftUICore.Label(titleKey, systemImage: systemImage) }
+    }
+
+    public init(_ titleKey: LocalizedStringKey, systemImage: String, role: ButtonRole?, action: @escaping @MainActor () -> Void) {
+        self.init(role: role, action: action) { _SwiftUICore.Label(titleKey, systemImage: systemImage) }
+    }
+
     @_disfavoredOverload public init<S: StringProtocol>(_ title: S, systemImage: String, action: @escaping @MainActor () -> Void) {
         self.init(action: action) { _SwiftUICore.Label(title, systemImage: systemImage) }
     }
