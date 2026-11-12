@@ -24,6 +24,35 @@ struct ExtrasTests {
         #expect(host.texts.contains("later"))
     }
 
+    @Test func timelineReplansWhenTheScheduleChanges() {
+        struct Steps: TimelineSchedule {
+            let dates: [Date]
+            func entries(from startDate: Date, mode: TimelineScheduleMode) -> [Date] { [startDate] + dates }
+        }
+        // A relative time after a new sync: the first schedule's next date is far off, the new one's is close.
+        struct Synced: View {
+            let start: Date
+            @State var next: Date
+            var body: some View {
+                VStack {
+                    Button("Sync") { next = Date().addingTimeInterval(0.1) }
+                    TimelineView(Steps(dates: [next])) { context in
+                        Text(context.date > start.addingTimeInterval(0.05) ? "later" : "now")
+                    }
+                }
+            }
+        }
+        let start = Date()
+        let host = TestHost(Synced(start: start, next: start.addingTimeInterval(60)))
+        #expect(host.texts.contains("now"))
+        host.tap("Sync")
+        host.flush()
+        #expect(host.texts.contains("now"))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        host.flush()
+        #expect(host.texts.contains("later"))
+    }
+
     @Test func canvasRecordsDrawing() {
         let host = TestHost(Canvas { context, size in
             context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.red))

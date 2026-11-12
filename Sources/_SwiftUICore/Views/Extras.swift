@@ -32,20 +32,35 @@ extension TimelineSchedule where Entries == [Date] {
     public func entries(from startDate: Date, mode: TimelineScheduleMode) -> [Date] { [startDate] }
 }
 
-/// A schedule's own dates as one-shot timers: each fire updates the date and arms the next date still ahead.
-@MainActor final class TimelineEntryTimer {
-    private var dates: AnyIterator<Date>
+/// What updates a timeline's date: a repeating timer for a schedule with an interval, else the schedule's own dates as
+/// one-shot timers (each fire updates the date and arms the next date still ahead). `plan` drops the previous plan, so
+/// a view updated with a different schedule re-plans from now, as in SwiftUI.
+@MainActor final class TimelineTimer {
+    private var dates: AnyIterator<Date>?
     private weak var date: Attribute<Date>?
     private var timer: Timer?
 
-    init<S: Sequence>(_ dates: S, date: Attribute<Date>) where S.Element == Date {
-        self.dates = AnyIterator(dates.makeIterator())
+    init(date: Attribute<Date>) {
         self.date = date
-        armNext(after: Date())
+    }
+
+    func plan<Schedule: TimelineSchedule>(_ schedule: Schedule) {
+        invalidate()
+        if let interval = schedule._interval {
+            let timer = Timer(fire: Date(timeIntervalSinceNow: interval), interval: interval, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.date?.setValue(Date()) }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            self.timer = timer
+        } else {
+            let now = Date()
+            dates = AnyIterator(schedule.entries(from: now, mode: .normal).makeIterator())
+            armNext(after: now)
+        }
     }
 
     private func armNext(after now: Date) {
-        while let next = dates.next() {
+        while let next = dates?.next() {
             guard next > now else { continue }
             let timer = Timer(fire: next, interval: 0, repeats: false) { [weak self] _ in
                 MainActor.assumeIsolated { self?.fire(at: next) }
@@ -64,6 +79,7 @@ extension TimelineSchedule where Entries == [Date] {
     func invalidate() {
         timer?.invalidate()
         timer = nil
+        dates = nil
     }
 }
 
@@ -123,21 +139,25 @@ public struct TimelineView<Schedule: TimelineSchedule, Content: View>: View {
     public static func _makeView(view: _GraphValue<Self>, inputs: _ViewInputs) -> _ViewOutputs {
         let inputs = inputs.with(path: "TimelineView")
         let date = Attribute<Date>(inputs.subgraph, value: Date(), isEqual: { $0 == $1 })
-        let interval = AnyAttribute.withoutDependencies { view.attribute.value.schedule._interval }
-        if let interval {
-            let timer = Timer(fire: Date(timeIntervalSinceNow: interval), interval: interval, repeats: true) { [weak date] _ in
-                MainActor.assumeIsolated { date?.setValue(Date()) }
-            }
-            RunLoop.main.add(timer, forMode: .common)
-            inputs.subgraph.onDestroy { timer.invalidate() }
-        } else {
-            // A schedule of the app's own: its dates from now on (read once, as the interval is).
-            let entries = AnyAttribute.withoutDependencies { view.attribute.value.schedule.entries(from: Date(), mode: .normal) }
-            let timer = TimelineEntryTimer(entries, date: date)
-            inputs.subgraph.onDestroy { timer.invalidate() }
+        let timer = TimelineTimer(date: date)
+        timer.plan(AnyAttribute.withoutDependencies { view.attribute.value.schedule })
+        inputs.subgraph.onDestroy { timer.invalidate() }
+        // A view updated with a different schedule (another interval, or a schedule of the app's own whose dates
+        // moved, e.g. a relative time after a new sync) re-plans after that update: its dates from then on.
+        let host = inputs.host
+        let schedule = Attribute<Schedule>(inputs.subgraph, isEqual: { GraphComparison.isIdentical($0, $1) }) {
+            view.attribute.value.schedule
         }
+        schedule.order = inputs.depth
+        let planned = LastValue<Bool>()
+        schedule.onChange = { [weak timer] newSchedule in
+            guard planned.value != nil else { planned.value = true; return }
+            host.enqueueAfterUpdate { timer?.plan(newSchedule) }
+        }
+        schedule.isEager = true
         let content = makeObservedAttribute(inputs.subgraph, of: Content.self) {
             let timeline = view.attribute.value
+            let interval = timeline.schedule._interval
             let cadence: TimelineViewDefaultContext.Cadence = (interval ?? 60) < 1 ? .live : (interval ?? 60) < 60 ? .seconds : .minutes
             return timeline.content(TimelineViewDefaultContext(date: date.value, cadence: cadence))
         }
