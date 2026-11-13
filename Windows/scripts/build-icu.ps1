@@ -11,9 +11,14 @@
 # each that language's locale data (and word-break dictionary), which an app with this ICU downloads on request and
 # ICU merges with its built-in data (ICULanguagePack in SwiftUI). They go to the SwiftUI repository's GitHub release
 # icu-<ICU version>.
-# Usage: Windows/scripts/build-icu.ps1 [-Languages en,de,...]   (language codes; regions are ignored: de-AT → de)
+# -Arch builds it for another architecture than this machine's (x64 on arm64: swift-build's --arch, not the native
+# build system build-app.ps1 cross-compiles with, which links a C library with swiftrt.obj and no Swift runtime), with
+# the exports of -Runtime's _FoundationICU.dll (that architecture's Swift runtime folder, build-app.ps1's
+# Get-SwiftRuntime).
+# Usage: Windows/scripts/build-icu.ps1 [-Languages en,de,...] [-Arch arm64|x64 -Runtime <folder>]   (language codes;
+#        regions are ignored: de-AT → de)
 #        Windows/scripts/build-icu.ps1 -Packs <folder>
-param([string[]]$Languages = @("en"), [string]$Packs)
+param([string[]]$Languages = @("en"), [string]$Packs, [ValidateSet("arm64", "x64")][string]$Arch, [string]$Runtime)
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path "$PSScriptRoot\..\..").Path
 
@@ -230,11 +235,16 @@ $converters = @("ibm-1252_P100-2000", "ibm-5346_P100-1998", "ibm-5347_P100-1998"
     "ibm-9447_P100-2002", "ibm-9448_X100-2005", "ibm-9449_P100-2002", "ibm-943_P15A-2003", "ibm-943_P130-1999")
 
 # The toolchain's runtime folder (…\Runtimes\<version>\usr\bin) names the version, and swift-foundation-icu tags it.
-$runtime = Split-Path (Get-Command swiftCore.dll).Source
-$version = Split-Path (Split-Path (Split-Path $runtime)) -Leaf
-if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "can't tell the toolchain's version from $runtime" }
+$hostRuntime = Split-Path (Get-Command swiftCore.dll).Source
+$version = Split-Path (Split-Path (Split-Path $hostRuntime)) -Leaf
+if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "can't tell the toolchain's version from $hostRuntime" }
+$hostArch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
+if (-not $Arch) { $Arch = $hostArch }
+$cross = $Arch -ne $hostArch
+$runtime = if ($Runtime) { $Runtime } elseif (-not $cross) { $hostRuntime } else { throw "-Arch $Arch needs -Runtime (its Swift runtime folder)" }
 $cache = "$root\.build\icu\$version"
-$dll = "$cache\_FoundationICU.$($codes -join '-').dll"
+# The host's DLLs keep their old names; another architecture's go to a folder of its own.
+$dll = if ($cross) { "$cache\$Arch\_FoundationICU.$($codes -join '-').dll" } else { "$cache\_FoundationICU.$($codes -join '-').dll" }
 $src = "$cache\src"
 $full = "$cache\icudt.dat"
 # The ICU major version (packs are named for it), read from the data once.
@@ -283,6 +293,10 @@ $exports = llvm-readobj --coff-exports "$runtime\_FoundationICU.dll" | Select-St
     Set-Content "$cache\exports.def" -Encoding Ascii
 $flags = @("--package-path", $src, "--scratch-path", "$cache\build", "--product", "_FoundationICU", "-c", "release",
     "-Xlinker", "/DEF:$cache\exports.def", "-Xlinker", "/DEFAULTLIB:advapi32")
+if ($cross) {
+    $flags += @("--arch", $(if ($Arch -eq "x64") { "x86_64" } else { "aarch64" }))
+    New-Item -ItemType Directory -Force (Split-Path $dll) | Out-Null
+}
 Write-Host "Building _FoundationICU"
 swift build @flags | Write-Host
 if ($LASTEXITCODE -ne 0) { throw "building _FoundationICU failed" }

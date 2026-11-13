@@ -36,16 +36,25 @@ function Add-UserPath($dir) {
 Set-ExecutionPolicy RemoteSigned -Scope LocalMachine -Force
 
 # 1. Visual Studio Build Tools (MSVC for the host architecture + Windows 11 SDK). Don't create
-#    "Windows Kits" beforehand: the SDK installer fails (1307) on a folder it doesn't own.
+#    "Windows Kits" beforehand: the SDK installer fails (1307) on a folder it doesn't own. An ARM64 machine also gets
+#    the x64 tools: build-app.ps1 -Arch x64 cross-compiles with their linker, libraries and VC runtime (Redist\x64).
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-$vc = if ($arch -eq "arm64") { "Microsoft.VisualStudio.Component.VC.Tools.ARM64" } else { "Microsoft.VisualStudio.Component.VC.Tools.x86.x64" }
-$hasVC = (Test-Path $vswhere) -and (& $vswhere -products * -requires $vc -property installationPath)
-if (-not $hasVC) {
+$components = @("Microsoft.VisualStudio.Component.VC.Tools.x86.x64")
+if ($arch -eq "arm64") { $components = @("Microsoft.VisualStudio.Component.VC.Tools.ARM64") + $components }
+$missing = @($components | Where-Object { -not ((Test-Path $vswhere) -and (& $vswhere -products * -requires $_ -property installationPath)) })
+$existing = if (Test-Path $vswhere) { & $vswhere -products * -property installationPath | Select-Object -First 1 }
+if ($missing -and $existing) {
+    # Build Tools already there: the installer adds the missing components to it.
+    Write-Host "Adding $($missing -join ', ') to $existing"
+    $p = Start-Process "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe" -Wait -PassThru -ArgumentList (@(
+        "modify", "--installPath", $existing, "--quiet", "--norestart", "--nocache") + ($missing | ForEach-Object { "--add", $_ }))
+    if ($p.ExitCode -notin 0, 3010) { throw "Visual Studio Installer failed: $($p.ExitCode)" }
+} elseif ($missing) {
     $installer = Fetch "https://aka.ms/vs/17/release/vs_BuildTools.exe" "vs_BuildTools.exe"
-    Write-Host "Installing Visual Studio Build Tools ($vc, Windows 11 SDK)"
-    $p = Start-Process $installer -Wait -PassThru -ArgumentList @(
+    Write-Host "Installing Visual Studio Build Tools ($($missing -join ', '), Windows 11 SDK)"
+    $p = Start-Process $installer -Wait -PassThru -ArgumentList (@(
         "--quiet", "--wait", "--norestart", "--nocache", "--installPath", "C:\BuildTools",
-        "--add", $vc, "--add", "Microsoft.VisualStudio.Component.Windows11SDK.26100")
+        "--add", "Microsoft.VisualStudio.Component.Windows11SDK.26100") + ($missing | ForEach-Object { "--add", $_ }))
     if ($p.ExitCode -notin 0, 3010) { throw "Build Tools installer failed: $($p.ExitCode)" }
     Remove-Item $installer
 }
