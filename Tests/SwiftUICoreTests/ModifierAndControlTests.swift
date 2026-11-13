@@ -170,6 +170,18 @@ struct ModifierAndControlTests {
         #expect(Counter["gone"] == 1)
         #expect(host.allViews.isEmpty)
     }
+
+    /// ComponentKit's ContDropHintPublisher reads its environment only in onDisappear: closing Shell's window
+    /// trapped ("attribute read before it had a value"), the attribute destroyed before anything read it.
+    @Test func onDisappearReadsAnEnvironmentNothingReadBefore() {
+        struct Reader: View {
+            @Environment(\.lineLimit) var limit
+            var body: some View { Text("x").onDisappear { Counter.hit("limit \(limit ?? 0)") } }
+        }
+        let host = TestHost(Reader().lineLimit(4))
+        host.graph.tearDown()
+        #expect(Counter["limit 4"] == 1)
+    }
 }
 
 @MainActor

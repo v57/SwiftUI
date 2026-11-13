@@ -76,7 +76,7 @@ extension EnvironmentValues: _GraphComparable {
 public struct Environment<Value>: DynamicProperty {
     enum Content {
         case reader(@MainActor (EnvironmentValues) -> Value)
-        case installed(Attribute<Value>)
+        case installed(EnvironmentStorage<Value>)
     }
 
     var content: Content
@@ -87,8 +87,11 @@ public struct Environment<Value>: DynamicProperty {
 
     public var wrappedValue: Value {
         switch content {
-        case .installed(let attribute):
-            return attribute.value
+        case .installed(let storage):
+            // Torn down before anything read this property (an onDisappear action reading it as its window
+            // closes): the attribute is destroyed without a value, so read the environment as it last was.
+            if storage.attribute.isDestroyed, storage.attribute.peekValue == nil { return storage.lastValue() }
+            return storage.attribute.value
         case .reader(let reader):
             if let ambient = EnvironmentValues.ambient { return reader(ambient) }
             runtimeWarning("Accessing Environment's value outside of being installed on a View. This will always read the default value.")
@@ -118,7 +121,7 @@ extension Environment {
 extension Environment: _DynamicPropertyInstallable {
     mutating func _install(slot: inout AnyObject?, context: DynamicPropertyContext) {
         if let storage = slot as? EnvironmentStorage<Value> {
-            content = .installed(storage.attribute)
+            content = .installed(storage)
             return
         }
         guard case .reader(let reader) = content else { return }
@@ -126,8 +129,9 @@ extension Environment: _DynamicPropertyInstallable {
         // Per-property projection with equality cut-off: body only depends on *this* key.
         let attribute = Attribute<Value>(context.subgraph) { reader(environment.value) }
         attribute.setLabel("environment \(context.path)")
-        slot = EnvironmentStorage(attribute: attribute)
-        content = .installed(attribute)
+        let storage = EnvironmentStorage(attribute: attribute, environment: environment, reader: reader)
+        slot = storage
+        content = .installed(storage)
     }
 }
 
@@ -138,7 +142,18 @@ extension Environment: _GraphComparable {
 @MainActor
 final class EnvironmentStorage<Value> {
     let attribute: Attribute<Value>
-    init(attribute: Attribute<Value>) { self.attribute = attribute }
+    /// The view's environment and the key's reader, for `lastValue()`.
+    private let environment: Attribute<EnvironmentValues>
+    private let reader: @MainActor (EnvironmentValues) -> Value
+
+    init(attribute: Attribute<Value>, environment: Attribute<EnvironmentValues>, reader: @escaping @MainActor (EnvironmentValues) -> Value) {
+        self.attribute = attribute
+        self.environment = environment
+        self.reader = reader
+    }
+
+    /// The value in the environment's last value (the defaults if it never had one), without updating anything.
+    func lastValue() -> Value { reader(environment.peekValue ?? EnvironmentValues()) }
 }
 
 // MARK: - Built-in keys
