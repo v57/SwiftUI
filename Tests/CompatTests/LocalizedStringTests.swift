@@ -23,7 +23,7 @@ struct LocalizedStringTests {
     }
 
     @Test func lookupTranslates() {
-        _StringLocalization.lookup = { _, key, _ in
+        _StringLocalization.lookup = { _, key, _, _ in
             switch key {
             case "Open %@ (%lld)": return "%2$lld × %1$@ öffnen"
             case "greeting.key": return "Hallo %@"

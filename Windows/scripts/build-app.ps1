@@ -158,11 +158,14 @@ if (-not $release) {
         }
     }
 }
-# Resource bundles (`<Package>_<Target>.resources`), as on Linux: Bundle.module and PlatformLanguages' English plural
-# table ("1 server", not "1 servers") look next to the executable.
-Get-ChildItem $out -Directory -Filter *.resources -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
-Get-ChildItem $bin -Directory -Filter *.resources | Where-Object { -not ($_.BaseName -like "*Tests*") } |
-    Copy-Item -Destination $out -Recurse -Force
+# Resource bundles, as on Linux: Bundle.module and PlatformLanguages' English plural table ("1 server", not
+# "1 servers") look next to the executable. SwiftPM names them `<Package>_<Target>.resources`, swift-build (SwiftPM 6.4
+# on Windows) `<Package>_<Target>.bundle`.
+foreach ($pattern in "*.resources", "*.bundle") {
+    Get-ChildItem $out -Directory -Filter $pattern -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
+    Get-ChildItem $bin -Directory -Filter $pattern | Where-Object { -not ($_.BaseName -like "*Tests*") } |
+        Copy-Item -Destination $out -Recurse -Force
+}
 Set-Content -Path "$out\swiftui-app.txt" -Value $Product -NoNewline
 if ($Icon) { Copy-Item $Icon "$out\AppIcon.ico" -Force } else { Remove-Item "$out\AppIcon.ico" -ErrorAction SilentlyContinue }
 

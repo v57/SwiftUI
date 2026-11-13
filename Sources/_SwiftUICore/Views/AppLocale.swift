@@ -20,7 +20,7 @@ public enum _AppLocale {
         #if !canImport(ObjectiveC)
         // `String(localized:)` (SwiftUIPortability) translates and formats as texts do.
         _StringLocalization.locale = locale
-        _StringLocalization.lookup = { localizedString($0, key: $1, table: $2) }
+        _StringLocalization.lookup = { localizedString($0, key: $1, table: $2, count: $3) }
         #endif
         let parts = identifier.split(whereSeparator: { $0 == "-" || $0 == "_" }).map(String.init)
         guard let language = parts.first?.lowercased(), !language.isEmpty else { return }
@@ -46,6 +46,7 @@ public enum _AppLocale {
         lock.lock()
         bundles.removeAll()
         lock.unlock()
+        PluralTables.forget()
     }
 
     /// The locale to format with: the app's, else Foundation's.
@@ -77,23 +78,58 @@ public enum _AppLocale {
         LocalizedTextResolver.forgetTranslations()
     }
 
+    /// A lookup's result: the translated text, or off Apple platforms a `.stringsdict` entry whose form depends on the
+    /// count (Apple's Foundation picks the form itself, from the format its lookup returns).
+    enum Translation: Equatable {
+        case text(String)
+        case plural(PluralFormat)
+
+        /// The format to fill in, with plural forms picked for the counts (`count(index)`: the argument's number).
+        func format(count: (Int) -> Int64?) -> String {
+            switch self {
+            case .text(let text): return text
+            case .plural(let plural): return plural.resolved(count: count)
+            }
+        }
+    }
+
+    /// `key` translated into the app's language, its plural forms picked for `count(index)`.
+    static func localizedString(
+        _ bundle: Bundle, key: String, table: String?, count: (Int) -> Int64? = { _ in nil }
+    ) -> String {
+        translation(bundle, key: key, table: table).format(count: count)
+    }
+
     /// `key` translated into the app's language: from a language pack (main bundle only), else from the bundle's
-    /// `.lproj` for that language, else the bundle's own lookup.
-    static func localizedString(_ bundle: Bundle, key: String, table: String?) -> String {
+    /// `.lproj` for that language, else the bundle's own lookup. Off Apple platforms each bundle's `.stringsdict` is
+    /// read first: swift-corelibs-foundation stops the app on a key one holds (`Plurals.swift`).
+    static func translation(_ bundle: Bundle, key: String, table: String?) -> Translation {
         let missing = "\u{0}missing"
         if bundle.bundlePath == Bundle.main.bundlePath {
             lock.lock()
             let packs = packBundles
             lock.unlock()
             for pack in packs {
+                if let plural = plural(in: pack, key: key, table: table) { return .plural(plural) }
                 let translated = pack.localizedString(forKey: key, value: missing, table: table)
-                if translated != missing { return translated }
+                if translated != missing { return .text(translated) }
             }
         }
         if let localized = localizedBundle(bundle) {
+            if let plural = plural(in: localized, key: key, table: table) { return .plural(plural) }
             let translated = localized.localizedString(forKey: key, value: missing, table: table)
-            if translated != missing { return translated }
+            if translated != missing { return .text(translated) }
         }
-        return bundle.localizedString(forKey: key, value: key, table: table)
+        if let plural = plural(in: bundle, key: key, table: table) { return .plural(plural) }
+        return .text(bundle.localizedString(forKey: key, value: key, table: table))
+    }
+
+    /// `key`'s `.stringsdict` entry in `bundle`, read by SwiftUI; nil on Apple platforms, where Foundation reads them.
+    private static func plural(in bundle: Bundle, key: String, table: String?) -> PluralFormat? {
+        #if canImport(ObjectiveC)
+        return nil
+        #else
+        return PluralTables.format(in: bundle, key: key, table: table, languages: lprojNames)
+        #endif
     }
 }

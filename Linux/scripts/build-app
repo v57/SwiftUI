@@ -55,8 +55,10 @@ out="$package/.build/linux/$product"
 rm -rf "${out:?}"
 mkdir -p "$out"
 cp "$bin/$product" "$out/"
-# Resource bundles (`<Package>_<Target>.resources`): GtkImages and Bundle.module look next to the executable.
-for bundle in "$bin"/*.resources; do
+# Resource bundles: GtkImages, Bundle.module and PlatformLanguages' English plural table look next to the executable.
+# SwiftPM names them `<Package>_<Target>.resources`, swift-build `<Package>_<Target>.bundle`; test targets' stay out.
+for bundle in "$bin"/*.resources "$bin"/*.bundle; do
+  case "$(basename "$bundle")" in *Tests*) continue ;; esac
   [ -e "$bundle" ] && cp -R "$bundle" "$out/"
 done
 

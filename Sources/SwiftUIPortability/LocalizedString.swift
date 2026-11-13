@@ -8,12 +8,15 @@ import Foundation
 /// How `String(localized:)` looks a key up and which locale formats it. SwiftUI's `_AppLocale` sets both at launch
 /// (the app's language, its `.lproj` and language packs); until then a key is looked up in the bundle as it is.
 public enum _StringLocalization {
-    nonisolated(unsafe) public static var lookup: ((_ bundle: Bundle, _ key: String, _ table: String?) -> String)?
+    /// The translated format for `key`, its plural forms picked for `count(index)` (an argument's number, or nil).
+    nonisolated(unsafe) public static var lookup: (
+        (_ bundle: Bundle, _ key: String, _ table: String?, _ count: (Int) -> Int64?) -> String
+    )?
     nonisolated(unsafe) public static var locale: Locale?
 
-    static func string(key: String, table: String?, bundle: Bundle?) -> String {
+    static func string(key: String, table: String?, bundle: Bundle?, count: (Int) -> Int64? = { _ in nil }) -> String {
         let bundle = bundle ?? .main
-        if let lookup { return lookup(bundle, key, table) }
+        if let lookup { return lookup(bundle, key, table, count) }
         return bundle.localizedString(forKey: key, value: key, table: table)
     }
 }
@@ -35,6 +38,17 @@ extension String {
                 case .uint(let value): return value
                 case .double(let value): return value
                 case .float(let value): return value
+                }
+            }
+
+            /// The number a plural form is picked for: a whole number's value, else nil ("other").
+            var count: Int64? {
+                switch self {
+                case .int(let value): return value
+                case .uint(let value): return Int64(exactly: value)
+                case .double(let value): return value.rounded() == value ? Int64(exactly: value) : nil
+                case .float(let value): return value.rounded() == value ? Int64(exactly: value) : nil
+                case .string: return nil
                 }
             }
         }
@@ -126,7 +140,10 @@ extension String {
         localized keyAndValue: LocalizationValue, table: String? = nil, bundle: Bundle? = nil, locale: Locale? = nil,
         comment: StaticString? = nil
     ) {
-        let translated = _StringLocalization.string(key: keyAndValue.key, table: table, bundle: bundle)
+        let arguments = keyAndValue.arguments
+        let translated = _StringLocalization.string(key: keyAndValue.key, table: table, bundle: bundle) { index in
+            arguments.indices.contains(index) ? arguments[index].count : nil
+        }
         self = String.format(
             translated, arguments: keyAndValue.arguments, hasFormatting: keyAndValue.hasFormatting,
             locale: locale ?? _StringLocalization.locale)
@@ -138,7 +155,10 @@ extension String {
         locale: Locale? = nil, comment: StaticString? = nil
     ) {
         let key = "\(key)"
-        let found = _StringLocalization.string(key: key, table: table, bundle: bundle)
+        let arguments = defaultValue.arguments
+        let found = _StringLocalization.string(key: key, table: table, bundle: bundle) { index in
+            arguments.indices.contains(index) ? arguments[index].count : nil
+        }
         let translated = found == key ? defaultValue.key : found
         self = String.format(
             translated, arguments: defaultValue.arguments, hasFormatting: defaultValue.hasFormatting,

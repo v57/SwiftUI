@@ -44,6 +44,16 @@ public struct LocalizedStringKey: Equatable, @unchecked Sendable, ExpressibleByS
             case .text, .image: return ""
             }
         }
+
+        /// The number a plural form is picked for: a whole number's value, else nil ("other").
+        var count: Int64? {
+            switch self {
+            case .int(let value): return value
+            case .uint(let value): return Int64(exactly: value)
+            case .double(let value): return value.rounded() == value ? Int64(exactly: value) : nil
+            default: return nil
+            }
+        }
     }
 
     public struct StringInterpolation: StringInterpolationProtocol {
@@ -213,7 +223,9 @@ enum LocalizedTextResolver {
     /// formats the arguments into it.
     static func pieces(for key: LocalizedStringKey, tableName: String?, bundle: Bundle?) -> [Piece] {
         let translated = translation(of: key.key, tableName: tableName, bundle: bundle ?? .main)
-        return pieces(format: translated, arguments: key.arguments, hasFormatting: key.hasFormatting)
+        let arguments = key.arguments
+        let format = translated.format { index in arguments.indices.contains(index) ? arguments[index].count : nil }
+        return pieces(format: format, arguments: arguments, hasFormatting: key.hasFormatting)
     }
 
     private struct TranslationKey: Hashable {
@@ -223,17 +235,17 @@ enum LocalizedTextResolver {
     }
 
     /// Bundle lookups, remembered (every text resolved looked its key up in the bundle again).
-    @MainActor private static var translations: [TranslationKey: String] = [:]
+    @MainActor private static var translations: [TranslationKey: _AppLocale.Translation] = [:]
 
     /// Forgets the remembered lookups (a language pack came or went).
     @MainActor static func forgetTranslations() { translations.removeAll() }
 
-    private static func translation(of key: String, tableName: String?, bundle: Bundle) -> String {
-        guard isOnMainQueue else { return _AppLocale.localizedString(bundle, key: key, table: tableName) }
+    private static func translation(of key: String, tableName: String?, bundle: Bundle) -> _AppLocale.Translation {
+        guard isOnMainQueue else { return _AppLocale.translation(bundle, key: key, table: tableName) }
         return _onMainActor {
             let cacheKey = TranslationKey(bundle: ObjectIdentifier(bundle), table: tableName, key: key)
             if let cached = translations[cacheKey] { return cached }
-            let translated = _AppLocale.localizedString(bundle, key: key, table: tableName)
+            let translated = _AppLocale.translation(bundle, key: key, table: tableName)
             if translations.count >= 4096 { translations.removeAll(keepingCapacity: true) }
             translations[cacheKey] = translated
             return translated
